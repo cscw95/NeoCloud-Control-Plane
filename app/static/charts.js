@@ -55,8 +55,11 @@ function ncChart(canvas, series, opts = {}) {
       ctx.closePath(); ctx.fillStyle = s.color + "20"; ctx.fill();
     }
     const last = s.data[s.data.length - 1];          // 범례 + 현재값
+    // "11.9k"+"kW"="11.9kkW" 중복 방지 — kW 만 단위 승격(MW)
+    const lastTxt = opts.unit === "kW" && Math.abs(last) >= 10000
+      ? (last / 1000).toFixed(1) + " MW" : fmt(last) + (opts.unit || "");
     ctx.fillStyle = s.color; ctx.font = "10.5px -apple-system, sans-serif";
-    ctx.fillText(`● ${s.label} ${fmt(last)}${opts.unit || ""}`,
+    ctx.fillText(`● ${s.label} ${lastTxt}`,
                  padL + 4 + si * ((w - padL) / Math.min(ds.length, 3)), 12);
   });
 }

@@ -22,15 +22,18 @@
   --nc-line:#223142; --nc-mut:#8aa0b4;
 }
 
-/* ── 헤더: 상단 바(52px) + 타이틀 행 ─────────────────────── */
+/* ── 헤더: 상단 바(52px) + 타이틀 행 — 스크롤 시 상단 고정 ── */
 .nc-header{
   background:var(--header); border-bottom:1px solid var(--line);
   font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
+  position:sticky; top:0; z-index:90;   /* 말풍선(z 1000)보다 아래 */
 }
 .nc-topbar{
-  display:flex; align-items:stretch; gap:22px; padding:0 26px; height:52px;
-  flex-wrap:wrap;
+  display:flex; align-items:stretch; gap:22px; padding:0 26px;
+  min-height:52px; flex-wrap:wrap;      /* 좁은 폭: 고정 높이 클리핑 방지 */
 }
+/* 고정 헤더가 앵커(#inbox 등) 이동 시 대상을 가리지 않도록 */
+[id]{scroll-margin-top:128px}
 .nc-brand{
   color:var(--green); font-weight:800; font-size:14px;
   display:flex; align-items:center; gap:8px; flex:none;
