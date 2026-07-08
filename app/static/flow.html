@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NeoCloud OS × NICo Emulator — 동작 검증 콘솔</title>
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+  :root{--g:#76b900;--navy:#0b1f3a;--bg:#0f1722;--card:#16202e;--line:#2a3848;--mut:#8aa0b4;
+        --blue:#5aa7e8;--amber:#e8c66a;--red:#f0a3b0;--purple:#b48ce8;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
+       background:var(--bg);color:#e6edf3;font-size:13px;line-height:1.5}
+  header{background:linear-gradient(90deg,var(--navy),#13314f);padding:14px 22px;
+         border-bottom:3px solid var(--g);display:flex;align-items:center;gap:12px}
+  header h1{font-size:18px;margin:0}
+  header .tag{color:var(--g);font-weight:700}
+  header a{color:var(--mut);margin-left:auto;font-size:12px;text-decoration:none}
+  header a:hover{color:var(--g)}
+  .wrap{max-width:1440px;margin:0 auto;padding:18px 22px}
+  h2{font-size:14px;color:var(--g);border-bottom:1px solid var(--line);padding-bottom:6px;margin:0 0 10px}
+  h3{font-size:12px;color:var(--mut);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.04em}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:330px 1fr;gap:16px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:1100px){.grid,.grid2{grid-template-columns:1fr}}
+  input,select{background:#0d141d;border:1px solid var(--line);color:#e6edf3;
+        border-radius:6px;padding:6px 8px;font-size:12px;width:100%}
+  label{display:block;color:var(--mut);font-size:11px;margin:8px 0 3px}
+  button{background:var(--g);color:#08210a;border:0;border-radius:6px;padding:7px 12px;
+         font-weight:700;cursor:pointer;font-size:12px}
+  button.ghost{background:transparent;color:var(--g);border:1px solid var(--g)}
+  button.warn{background:transparent;color:var(--amber);border:1px solid var(--amber)}
+  button.danger{background:transparent;color:var(--red);border:1px solid var(--red)}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  .row{display:flex;gap:8px}.row>*{flex:1}
+  .muted{color:var(--mut)}
+  /* -- architecture flow ------------------------------------------------ */
+  .arch{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:4px 0}
+  .mod{flex:1;min-width:84px;background:#0d141d;border:1px solid var(--line);border-radius:8px;
+       padding:8px 5px;text-align:center;position:relative;transition:all .25s}
+  .mod .nm{font-weight:700;font-size:11px;line-height:1.3}
+  .mod .rl{font-size:9.5px;color:var(--mut);margin-top:2px}
+  .mod.skt{border-top:3px solid #5aa7e8}
+  .mod.oss{border-top:3px solid var(--g)}
+  .mod.ptr{border-top:3px solid #8a8f98}
+  .mod.on{background:#1d3a26;border-color:var(--g);box-shadow:0 0 12px rgba(118,185,0,.35)}
+  .mod.err{background:#3a1f25;border-color:var(--red);box-shadow:0 0 12px rgba(240,163,176,.3)}
+  .arrow{align-self:center;color:var(--mut);padding:0 2px;font-size:13px}
+  .legend{display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--mut)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+  /* -- pipeline track ---------------------------------------------------- */
+  .track{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .step{padding:5px 10px;border-radius:14px;font-size:11px;font-weight:700;
+        background:#0d141d;border:1px solid var(--line);color:var(--mut);transition:all .25s}
+  .step.done{background:#1c2e20;border-color:#3a5a40;color:#9fe0a8}
+  .step.now{background:var(--g);color:#08210a;box-shadow:0 0 10px rgba(118,185,0,.5)}
+  .step.fail{background:#3a1f25;border-color:var(--red);color:var(--red)}
+  .evt{font-family:"SF Mono",Menlo,monospace;font-size:11px;max-height:170px;overflow:auto;
+       background:#0d141d;border:1px solid var(--line);border-radius:6px;padding:8px;margin-top:10px}
+  .evt div{padding:1px 0;border-bottom:1px dashed #1d2836}
+  .evt .st{color:var(--g);font-weight:700}
+  /* -- node grids -------------------------------------------------------- */
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .chip{padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;background:#0d141d;border:1px solid var(--line)}
+  .rackrow{display:flex;align-items:center;gap:6px;padding:1.5px 0}
+  .rackrow .rid{font-family:Menlo,monospace;font-size:10px;color:var(--mut);width:110px;flex:none}
+  .cells{display:flex;gap:2px;flex-wrap:wrap}
+  .cell{width:11px;height:11px;border-radius:2px;background:#233043;cursor:default}
+  .racks{max-height:300px;overflow:auto}
+  /* state colors (shared node/host) */
+  .c-pool_ready{background:#2e5a38}.c-ready{background:#2e5a38}
+  .c-reserved{background:#2a4a72}
+  .c-provisioning{background:#7a6420}.c-provisioned{background:#9a7d22}
+  .c-allocated{background:#a86a2a}
+  .c-in_service{background:#76b900}
+  .c-cordoned{background:#8a5a9a}.c-draining{background:#6a4a8a}
+  .c-releasing{background:#4a6a8a}.c-sanitizing{background:#7a4ab0}
+  .c-quarantined{background:#b04a5a}.c-rma{background:#701020}
+  .c-discovered{background:#3a4a5a}.c-released{background:#4a6a8a}
+  /* -- manual stepper ----------------------------------------------------- */
+  .sm{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}
+  .sm .s{padding:3px 8px;border-radius:10px;font-size:10.5px;background:#0d141d;
+         border:1px solid var(--line);color:var(--mut)}
+  .sm .s.here{background:var(--g);color:#08210a;font-weight:700}
+  .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .btns button{padding:5px 9px;font-size:11px}
+  /* -- findings / api log -------------------------------------------------- */
+  .finding{padding:5px 8px;border-radius:6px;margin:4px 0;font-size:11.5px}
+  .f-info{background:#1c2e20;color:#9fe0a8}
+  .f-major{background:#332c14;color:var(--amber)}
+  .f-critical{background:#3a1f25;color:var(--red)}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th,td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600;text-transform:uppercase;font-size:10px}
+  .m{font-family:Menlo,monospace;font-size:10.5px;padding:1px 6px;border-radius:4px;font-weight:700}
+  .m-GET{background:#153a5a;color:#9fd0ff}.m-POST{background:#1c3a20;color:#9fe0a8}
+  .m-DELETE{background:#3a1f25;color:var(--red)}.m-PATCH{background:#332c14;color:var(--amber)}
+  .code-ok{color:#9fe0a8}.code-err{color:var(--red)}
+  tr.logrow{cursor:pointer}tr.logrow:hover{background:#1a2635}
+  pre{background:#0d141d;border:1px solid var(--line);border-radius:6px;padding:8px;
+      font-size:10.5px;overflow:auto;max-height:220px;margin:4px 0;white-space:pre-wrap}
+  #apilog-box{max-height:340px;overflow:auto}
+  .san{font-family:Menlo,monospace;font-size:11px}
+  .san .ok{color:#9fe0a8}.san .no{color:var(--red)}
+  /* -- system detail trace ------------------------------------------------- */
+  .ch{font-family:Menlo,monospace;font-size:9.5px;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap}
+  .ch-REST{background:#233043;color:#9fb8d0}.ch-gRPC{background:#153a5a;color:#9fd0ff}
+  .ch-Redfish{background:#3a2a12;color:#e8a55a}.ch-DHCP{background:#123a3a;color:#5ad0c8}
+  .ch-PXE{background:#3a3512;color:#e0d05a}.ch-cloud-init{background:#1c3a20;color:#9fe0a8}
+  .ch-NVUE-HBN{background:#2a1c3a;color:#c8a5e8}.ch-UFM{background:#3a1c2e;color:#e8a5c8}
+  .ch-NMX{background:#3a122a;color:#f0a3d0}.ch-VAST-API{background:#1c3a2e;color:#5ae0a8}
+  .ch-OIDC-IAM{background:#0e2f44;color:#4fd8ff}.ch-Vault{background:#332c14;color:#e8c66a}
+  .ch-PAM{background:#3a2a2a;color:#e8b0a0}
+  .ch-internal{background:#1a2230;color:#8aa0b4}
+  #trace-box{max-height:420px;overflow:auto}
+  .tr-actor{font-family:Menlo,monospace;font-size:10px;color:#9fb8d0;white-space:nowrap}
+  .kv{font-family:Menlo,monospace;font-size:10.5px}
+</style>
+</head>
+<body>
+<header class="nc-header">
+  <span class="nc-brand">NeoCloud OS</span>
+  <div class="nc-head-txt">
+    <div class="nc-title">동작 검증 콘솔</div>
+    <div class="nc-sub">주문 파이프라인 · NICo Day 0/1/2 · reconcile — 모듈별 API 흐름 시각화</div>
+  </div>
+  <nav class="nc-nav">
+    <a href="/customer">👤 고객 포털</a>
+    <a href="/biz">💼 비즈 포털</a>
+    <a href="/ops">🛠 운영 포털</a>
+    <a href="/arch">🧭 NeoCloud Control-Plane</a>
+    <a href="/nico">⚙️ NICo</a>
+    <a href="/flow" class="act">🔬 검증 콘솔</a>
+    <a href="/">📊 VRCM</a>
+  </nav>
+</header>
+
+<div class="wrap">
+
+  <!-- 모듈 아키텍처 — NeoCloud Control-Plane(/arch)과 동일 명명 -->
+  <div class="panel">
+    <h2>모듈 아키텍처 — 요청이 지나가는 경로 <small class="muted">
+      (NeoCloud Control-Plane 모듈명 기준 · 괄호는 코드 모듈 · 실행 시 점등)</small></h2>
+    <div class="arch" id="arch">
+      <div class="mod skt" data-m="portal"><div class="nm">Portals · Public APIs</div><div class="rl">①~③ · cp-api</div></div>
+      <div class="arrow">→</div>
+      <div class="mod skt" data-m="intake"><div class="nm">Service-Order Intake</div><div class="rl">cp-intake</div></div>
+      <div class="arrow">→</div>
+      <div class="mod skt" data-m="fulfill"><div class="nm">Tenant Fulfillment</div><div class="rl">cp-fulfill · M1 saga</div></div>
+      <div class="arrow">→</div>
+      <div class="mod skt" data-m="policy"><div class="nm">Policy Orchestration</div><div class="rl">cp-policy · M4 배치</div></div>
+      <div class="arrow">→</div>
+      <div class="mod skt" data-m="model"><div class="nm">Resource &amp; Service Model</div><div class="rl">cp-model · M3 미러</div></div>
+      <div class="arrow">→</div>
+      <div class="mod skt" data-m="provision"><div class="nm">BM Provisioning</div><div class="rl">cp-provision · D1 어댑터</div></div>
+      <div class="arrow">→</div>
+      <div class="mod oss" data-m="nico"><div class="nm">④ Compute Services</div><div class="rl">NICo Day 0/1/2</div></div>
+      <div class="arrow">→</div>
+      <div class="mod oss" data-m="sdn"><div class="nm">⑤ SDN / Network Fabric</div><div class="rl">D2 — HBN·UFM·NMX</div></div>
+      <div class="arrow">→</div>
+      <div class="mod ptr" data-m="storage"><div class="nm">⑥ Storage Services</div><div class="rl">D4 — VAST VMS</div></div>
+      <div class="arrow">→</div>
+      <div class="mod ptr" data-m="shared"><div class="nm">⑦ Shared Services</div><div class="rl">IAM · Vault · PAM</div></div>
+      <div class="arrow">→</div>
+      <div class="mod skt" data-m="delivery"><div class="nm">Delivery · Reclamation</div><div class="rl">cp-delivery · cp-reclaim</div></div>
+    </div>
+    <div class="legend">
+      <span><i style="background:#5aa7e8"></i>SKT IN-HOUSE (NeoCloud OS)</span>
+      <span><i style="background:var(--g)"></i>NVIDIA (Emulator)</span>
+      <span><i style="background:#8a8f98"></i>PARTNER / COMMON PLATFORM</span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- ② 컨트롤 -->
+    <div>
+      <div class="panel">
+        <h2>시나리오 컨트롤</h2>
+        <button class="danger" style="width:100%" onclick="resetAll()">⟲ 전체 리셋 (재시드 — 테넌트·주문·NICo 초기화)</button>
+
+        <h3>테넌트</h3>
+        <div class="row">
+          <input id="t-name" placeholder="acme-ai">
+          <button style="flex:0 0 auto" onclick="createTenant()">+ 생성</button>
+        </div>
+        <label>대상 테넌트</label>
+        <select id="tenant"></select>
+
+        <h3>F1 — 신규 개통 주문</h3>
+        <div class="row">
+          <div><label>블루프린트</label>
+            <select id="o-bp"><option value="vr-nvl72">vr-nvl72</option>
+              <option value="gb200-nvl72">gb200-nvl72</option></select></div>
+          <div><label>랙 수 <span class="muted">(1 SU = 16 · NCP RD)</span></label>
+            <input id="o-racks" type="number" value="1" min="1" max="140"></div>
+        </div>
+        <div class="btns" style="margin-top:6px">
+          <button class="ghost" onclick="$('#o-racks').value=1">1랙</button>
+          <button class="ghost" onclick="$('#o-racks').value=16">1 SU</button>
+          <button class="ghost" onclick="$('#o-racks').value=32">2 SU</button>
+          <button class="ghost" onclick="$('#o-racks').value=48">3 SU</button>
+        </div>
+        <div style="margin-top:8px"><button onclick="runOrder()">▸ 개통 실행</button>
+          <span class="muted" id="o-msg"></span></div>
+
+        <h3>장애 주입 (saga 검증)</h3>
+        <div class="row">
+          <div><label>대상 호스트</label><input id="i-host" value="nh-su-2-rack-00-tray-00"></div>
+          <div><label>실패 지점</label>
+            <select id="i-op"><option value="provision">provision → 격리(quarantine)</option>
+              <option value="sanitize">sanitize → RMA</option></select></div>
+        </div>
+        <div style="margin-top:8px"><button class="warn" onclick="inject()">⚡ 주입 (다음 1회 실패)</button></div>
+
+        <h3>테넌트 장비 장애 스테이징 <span class="muted">(장비 헬스 시연)</span></h3>
+        <div class="row">
+          <div><label>장비 · 상태</label>
+            <select id="eqf-kind">
+              <option value="tray:maintenance">트레이 — 정비(maintenance)</option>
+              <option value="tray:faulted">트레이 — 장애(faulted)</option>
+              <option value="rack:faulted">랙 — 장애(faulted)</option>
+            </select></div>
+          <div style="flex:0 0 auto;display:flex;align-items:flex-end;gap:6px">
+            <button class="warn" onclick="stageEquipFault()">⚡ 생성</button>
+            <button class="ghost" onclick="clearEquipFault()">전체 복구</button></div>
+        </div>
+        <div id="eqf-msg" class="muted" style="margin-top:4px">
+          선택 테넌트의 할당 장비 중 무작위 1대를 비정상 처리 — 운영 포털 🩺 장비 헬스에서 조치</div>
+
+        <h3>F4 — 회수(terminate)</h3>
+        <label>대상 allocation</label>
+        <select id="alloc"></select>
+        <div style="margin-top:8px"><button class="danger" onclick="runTerminate()">▸ 회수 실행</button></div>
+
+        <h3>Reconcile 시나리오 스테이징</h3>
+        <div class="btns">
+          <button class="ghost" onclick="stageGhost()">GHOST 생성</button>
+          <button class="ghost" onclick="stageOrphan()">ORPHAN 생성</button>
+          <button class="ghost" onclick="stageMismatch()">MISMATCH 생성</button>
+        </div>
+        <div style="margin-top:8px"><button onclick="runReconcile()">▸ Reconcile 실행</button></div>
+
+        <h3>NICo job 지연 (폴링-수렴 데모)</h3>
+        <div class="row">
+          <input id="lat" type="number" value="0" min="0" max="10">
+          <button class="ghost" style="flex:0 0 auto" onclick="setLatency()">적용</button>
+        </div>
+        <div class="muted" style="margin-top:4px">n &gt; 0이면 job이 n회 폴링 후 완료 — 수동 모드에서 확인</div>
+      </div>
+    </div>
+
+    <!-- ③ 파이프라인 + 결과 -->
+    <div>
+      <div class="panel">
+        <h2>주문 파이프라인 상태머신 — Tenant Fulfillment <small class="muted">(cp-fulfill · 이벤트 리플레이)</small></h2>
+        <div class="track" id="track"></div>
+        <div class="evt" id="evt"><span class="muted">주문을 실행하면 상태 전이 이벤트가 시간순으로 재생됩니다.</span></div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <h2>Resource &amp; Service Model — NodeInstance 미러 <small class="muted">(cp-model · M3)</small></h2>
+          <div class="chips" id="node-chips"></div>
+          <div class="racks" id="node-racks"></div>
+        </div>
+        <div class="panel">
+          <h2>④ Compute Services — NICo Emulator 호스트 <small class="muted">(외부 SoT)</small></h2>
+          <div class="chips" id="host-chips"></div>
+          <div class="racks" id="host-racks"></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <h2>⑤ SDN / Network Fabric — 테넌트 격리 <small class="muted">(D2 · VPC · IB P_Key · NVLink)</small></h2>
+          <div id="iso"><span class="muted">테넌트를 선택하고 개통을 실행하면 격리 구성이 표시됩니다.</span></div>
+        </div>
+        <div class="panel">
+          <h2>⑥ Storage Services — VAST VMS <small class="muted">(D4 · View · Quota · QoS)</small></h2>
+          <table><thead><tr><th>View 경로</th><th>용량</th><th>QoS</th><th>테넌트</th><th>Export 제한</th></tr></thead>
+            <tbody id="vast"></tbody></table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>④ Compute Services — NICo Day 0/1/2 API 수동 실행 <small class="muted">(D1 어댑터 경계 검증)</small></h2>
+        <div class="row">
+          <div><label>호스트</label><input id="mh" value="nh-su-1-rack-13-tray-17"></div>
+          <div style="flex:0 0 auto;display:flex;align-items:flex-end">
+            <button class="ghost" onclick="refreshManual()">상태 조회</button></div>
+        </div>
+        <div class="sm" id="hostsm"></div>
+        <div class="btns">
+          <button onclick="mStep('reserve')">1. reserve</button>
+          <button onclick="mStep('provision')">2. provision (PXE)</button>
+          <button class="ghost" onclick="mPoll()">2-1. job 폴링</button>
+          <button onclick="mAllocate()">3. allocate (테넌트)</button>
+          <button class="warn" onclick="mRelease()">4. release</button>
+          <button class="warn" onclick="mStep('sanitize')">5. sanitize</button>
+          <button class="ghost" onclick="mReport()">5-1. 소거 보고서</button>
+        </div>
+        <div id="m-msg" class="muted" style="margin-top:6px"></div>
+        <div id="san" class="san"></div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <h2>Resource &amp; Service Model — Reconcile <small class="muted">(GHOST / ORPHAN / STATE_MISMATCH)</small></h2>
+          <div id="rec"><span class="muted">Reconcile을 실행하면 정합성 감사 결과가 표시됩니다.</span></div>
+        </div>
+        <div class="panel">
+          <h2>⑦ Shared Services — 테넌트 자격증명 <small class="muted">(IAM · Vault · Audit)</small></h2>
+          <div id="shared"><span class="muted">테넌트 생성·개통 시 IAM realm·시크릿·감사 트레일이 표시됩니다.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 시스템 세부 동작 트레이스 -->
+  <div class="panel">
+    <h2>시스템 세부 동작 트레이스 <small class="muted">— NeoCloud OS ↔ NICo ↔ BMC(Redfish)/DHCP/PXE/DPU(HBN) ↔ UFM/NMX ↔ VAST ↔ IAM/Vault(⑦) · 행 클릭 시 메시지 페이로드</small></h2>
+    <div class="row" style="margin-bottom:8px">
+      <input id="tq" placeholder="필터 — 호스트/키워드 (예: nh-su-2-rack-00, VRF, P_Key)">
+      <select id="tch" style="flex:0 0 170px">
+        <option value="">전체 채널</option>
+        <option>REST</option><option>gRPC</option><option>Redfish</option>
+        <option>DHCP</option><option>PXE</option><option>cloud-init</option>
+        <option>NVUE/HBN</option><option>UFM</option><option>NMX</option>
+        <option>VAST-API</option><option>OIDC/IAM</option><option>Vault</option>
+        <option>PAM</option><option>internal</option>
+      </select>
+      <button class="ghost" style="flex:0 0 auto" onclick="refreshTrace()">새로고침</button>
+      <button class="ghost" style="flex:0 0 auto" onclick="clearTrace()">지우기</button>
+    </div>
+    <div id="trace-box">
+      <table><thead><tr><th style="width:44px">#</th><th style="width:76px">시간</th>
+        <th style="width:300px">송신 → 수신</th><th style="width:92px">채널</th>
+        <th>동작 — 상세</th></tr></thead><tbody id="trace"></tbody></table>
+    </div>
+  </div>
+
+  <!-- API 로그 -->
+  <div class="panel">
+    <h2>API 콜 로그 <small class="muted">— 콘솔이 호출한 Northbound API(cp-api) · 행 클릭 시 요청/응답 JSON</small>
+      <button class="ghost" style="float:right;padding:3px 8px" onclick="clearLog()">지우기</button></h2>
+    <div id="apilog-box">
+      <table><thead><tr><th style="width:80px">시간</th><th style="width:64px">METHOD</th>
+        <th>경로</th><th style="width:60px">상태</th><th style="width:56px">ms</th></tr></thead>
+        <tbody id="apilog"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const NODE_STATES=["pool_ready","reserved","provisioning","allocated","in_service",
+                   "cordoned","draining","releasing","sanitizing","quarantined","rma","discovered"];
+const HOST_STATES=["pool_ready","reserved","provisioning","provisioned","allocated",
+                   "released","sanitizing","quarantined","rma","discovered"];
+const ORDER_STEPS={new:["received","validated","reserved","provisioning","isolating",
+                        "storage_binding","acceptance","delivered"],
+                   terminate:["received","validated","reclaiming","closed"]};
+const FAIL_STEPS=["rejected","compensating","failed"];
+// 상태 → 점등 모듈 (arch.html의 BLOCKS 매핑과 동일 기준)
+const MOD_MAP={received:["portal","intake"],validated:["intake","policy","model"],
+  reserved:["fulfill","model","nico"],provisioning:["provision","nico"],
+  isolating:["fulfill","policy","sdn"],storage_binding:["fulfill","storage"],
+  acceptance:["policy","sdn","shared"],delivered:["shared","delivery","portal"],
+  rejected:["policy","intake"],compensating:["fulfill","provision","nico","sdn","storage"],
+  failed:["intake"],reclaiming:["delivery","nico","sdn","storage","shared"],
+  closed:["delivery","portal"]};
+
+// ---- API wrapper: 모든 호출을 로그에 기록 --------------------------------
+const LOG=[];
+async function call(method,path,body){
+  const t0=performance.now();
+  const opt={method,headers:{"Content-Type":"application/json"}};
+  if(body!==undefined)opt.body=JSON.stringify(body);
+  const r=await fetch(path,opt);
+  const ms=Math.round(performance.now()-t0);
+  let data=null;try{data=await r.json()}catch(e){}
+  LOG.unshift({t:new Date().toLocaleTimeString("ko-KR",{hour12:false}),method,path,
+               status:r.status,ms,req:body,res:data});
+  renderLog();
+  if(!r.ok)throw new Error((data&&data.detail)||("HTTP "+r.status));
+  return data;
+}
+function renderLog(){
+  $("#apilog").innerHTML=LOG.slice(0,80).map((l,i)=>{
+    const cls=l.status<400?"code-ok":"code-err";
+    return `<tr class="logrow" onclick="toggleLog(${i},this)">
+      <td class="muted">${l.t}</td><td><span class="m m-${l.method}">${l.method}</span></td>
+      <td style="font-family:Menlo,monospace;font-size:10.5px">${l.path}</td>
+      <td class="${cls}">${l.status}</td><td class="muted">${l.ms}</td></tr>`;}).join("");
+}
+function toggleLog(i,tr){
+  const nxt=tr.nextElementSibling;
+  if(nxt&&nxt.classList.contains("detail")){nxt.remove();return}
+  document.querySelectorAll("tr.detail").forEach(e=>e.remove());
+  const l=LOG[i];
+  const row=document.createElement("tr");row.className="detail";
+  row.innerHTML=`<td colspan="5">
+    ${l.req!==undefined?`<div class="muted">요청</div><pre>${JSON.stringify(l.req,null,1)}</pre>`:""}
+    <div class="muted">응답</div><pre>${JSON.stringify(l.res,null,1)}</pre></td>`;
+  tr.after(row);
+}
+function clearLog(){LOG.length=0;renderLog()}
+
+// ---- 아키텍처 점등 ---------------------------------------------------------
+function lightMods(state,err){
+  document.querySelectorAll(".mod").forEach(m=>m.classList.remove("on","err"));
+  (MOD_MAP[state]||[]).forEach(k=>{
+    const el=document.querySelector(`.mod[data-m="${k}"]`);
+    if(el)el.classList.add(err?"err":"on");
+  });
+}
+
+// ---- 파이프라인 트랙 + 이벤트 리플레이 --------------------------------------
+function drawTrack(kind,history){
+  const steps=ORDER_STEPS[kind]||ORDER_STEPS.new;
+  const seen=history.map(e=>e.state);
+  $("#track").innerHTML=steps.map(s=>{
+    const done=seen.includes(s);
+    return `<span class="step" data-s="${s}" data-stage="${s}" data-done="${done?1:0}">${s}</span>`;
+  }).join('<span class="arrow">→</span>')+
+  seen.filter(s=>FAIL_STEPS.includes(s)).map(s=>
+    `<span class="arrow">→</span><span class="step fail" data-s="${s}" data-stage="${s}">${s}</span>`).join("");
+}
+async function replay(order){
+  drawTrack(order.kind,order.history);
+  const evt=$("#evt");evt.innerHTML="";
+  for(const e of order.history){
+    const chip=document.querySelector(`.step[data-s="${e.state}"]`);
+    document.querySelectorAll(".step.now").forEach(c=>{
+      c.classList.remove("now");
+      if(c.dataset.done==="1"&&!c.classList.contains("fail"))c.classList.add("done");
+      if(FAIL_STEPS.includes(c.dataset.s))c.classList.add("fail");
+    });
+    if(chip)chip.classList.add("now");
+    const isFail=FAIL_STEPS.includes(e.state);
+    lightMods(e.state,isFail);
+    evt.innerHTML+=`<div><span class="muted">${e.at.slice(11,19)}</span> `+
+      `<span class="st">${e.state}</span> ${e.detail||""}</div>`;
+    evt.scrollTop=evt.scrollHeight;
+    await new Promise(r=>setTimeout(r,420));
+  }
+  document.querySelectorAll(".mod").forEach(m=>m.classList.remove("on","err"));
+  await refreshPools();
+  await refreshDetail();
+}
+
+// ---- 노드/호스트 그리드 -----------------------------------------------------
+function grid(items,keyRack,keyState,chipsEl,racksEl,states,titleFn){
+  const by={};const cnt={};
+  titleFn=titleFn||(it=>`${it.id||it.host_id} · ${keyState(it)}`);
+  for(const it of items){
+    const rid=keyRack(it)||"(unmapped/ghost)";
+    (by[rid]=by[rid]||[]).push(it);
+    const st=keyState(it);cnt[st]=(cnt[st]||0)+1;
+  }
+  $(chipsEl).innerHTML=states.filter(s=>cnt[s]).map(s=>
+    `<span class="chip"><i class="cell c-${s}" style="display:inline-block;vertical-align:-1px;margin-right:5px"></i>${s} ${cnt[s]}</span>`).join("")||'<span class="muted">—</span>';
+  $(racksEl).innerHTML=Object.keys(by).sort().map(rid=>{
+    const cells=by[rid].sort((a,b)=>(a.id||a.host_id).localeCompare(b.id||b.host_id))
+      .map(it=>`<span class="cell c-${keyState(it)}" title="${titleFn(it)}"></span>`).join("");
+    return `<div class="rackrow"><span class="rid">${rid}</span><span class="cells">${cells}</span></div>`;
+  }).join("");
+}
+async function refreshPools(){
+  const nodes=await call("GET","/api/v1/nodes");
+  grid(nodes,n=>n.rack_id,n=>n.state,"#node-chips","#node-racks",NODE_STATES);
+  const hosts=await call("GET","/fake-nico/hosts");
+  grid(hosts,h=>h.tray_id?h.tray_id.split("-tray-")[0]:null,h=>h.state,
+       "#host-chips","#host-racks",HOST_STATES,
+       h=>`${h.host_id} · ${h.state}`+(h.host_ip?` · ip ${h.host_ip}`:"")
+         +(h.segment_id?` · ${h.segment_id}`:""));
+}
+
+// ---- 시스템 세부 트레이스 / D2 격리 / D4 스토리지 ---------------------------
+// (콘솔 내부 읽기라 API 로그를 어지럽히지 않도록 raw fetch 사용)
+async function qget(path){const r=await fetch(path);return r.json()}
+let TR=[];
+async function refreshTrace(){
+  const q=encodeURIComponent($("#tq").value.trim());
+  const ch=encodeURIComponent($("#tch").value);
+  TR=await qget(`/api/v1/trace?limit=600${q?`&q=${q}`:""}${ch?`&channel=${ch}`:""}`);
+  $("#trace").innerHTML=TR.map((e,i)=>{
+    const cls="ch-"+e.channel.replace(/[^A-Za-z0-9]/g,"-");
+    return `<tr class="logrow" onclick="toggleTrace(${i},this)">
+      <td class="muted">${e.seq}</td><td class="muted">${e.at.slice(11,19)}</td>
+      <td class="tr-actor">${e.src} → ${e.dst}</td>
+      <td><span class="ch ${cls}">${e.channel}</span></td>
+      <td><b>${e.op}</b><span class="muted"> — ${e.detail||""}</span></td></tr>`;
+  }).join("")||'<tr><td colspan="5" class="muted">트레이스 없음 — 주문/수동 동작을 실행하세요</td></tr>';
+  const box=$("#trace-box");box.scrollTop=box.scrollHeight;
+}
+function toggleTrace(i,tr){
+  const nxt=tr.nextElementSibling;
+  if(nxt&&nxt.classList.contains("detail")){nxt.remove();return}
+  $("#trace").querySelectorAll("tr.detail").forEach(e=>e.remove());
+  const e=TR[i];
+  const row=document.createElement("tr");row.className="detail";
+  row.innerHTML=`<td colspan="5">
+    <div class="kv muted">order=${e.order_id||"—"} · host=${e.host_id||"—"}</div>
+    ${e.payload?`<div class="muted">메시지 페이로드</div><pre>${JSON.stringify(e.payload,null,1)}</pre>`
+                :'<div class="muted">페이로드 없음</div>'}</td>`;
+  tr.after(row);
+}
+async function clearTrace(){await fetch("/api/v1/trace",{method:"DELETE"});await refreshTrace()}
+
+async function refreshIso(){
+  const tid=$("#tenant").value;
+  if(!tid){$("#iso").innerHTML='<span class="muted">테넌트 없음</span>';return}
+  const [t,segs,parts]=await Promise.all([
+    qget(`/api/v1/tenants/${tid}`),qget("/fake-nico/segments"),
+    qget(`/api/v1/nvlink-partitions?tenant_id=${tid}`)]);
+  const ni=t.network_isolation||{};
+  const mySegs=segs.filter(s=>s.tenant_ref===tid);
+  let h=`<table><tbody>
+    <tr><th>Ethernet (VPC)</th><td class="kv">VRF <b>${ni.vrf||"—"}</b> · L3VNI ${ni.compute_l3vni||"—"} ·
+      Converged ${ni.converged_vni||"—"} · OOB ${ni.oob_vni||"—"}</td></tr>
+    <tr><th>NICo Segment</th><td class="kv">${mySegs.map(s=>
+      `${s.segment_id} — ${(s.virtualizer||"fnn").toUpperCase()}(L3 EVPN) · vrf ${s.vrf_dataplane||s.vrf} · VNI ${s.l3vni} · host ${s.host_ids.length}대`).join("<br>")||'<span class="muted">없음</span>'}</td></tr>
+    <tr><th>NVLink 파티션</th><td class="kv">${parts.map(p=>
+      `${p.id} (트레이 ${p.tray_ids.length})`).join("<br>")||'<span class="muted">없음</span>'}</td></tr>
+    <tr><th>InfiniBand</th><td class="kv muted">P_Key 바인딩은 ⑧ 트레이스에서 확인 (UFM 채널)</td></tr>
+  </tbody></table>`;
+  $("#iso").innerHTML=h;
+}
+async function refreshStorage(){
+  const views=await qget("/fake-vast/views");
+  $("#vast").innerHTML=views.map(v=>
+    `<tr><td class="kv">${v.path}</td><td>${v.capacity_tb}TB</td>
+     <td>${v.qos_gbps}GB/s · ${v.qos_iops_k}K IOPS</td>
+     <td>${v.tenant_ref}</td><td class="kv">${v.export_subnet}</td></tr>`).join("")
+    ||'<tr><td colspan="5" class="muted">할당된 뷰 없음</td></tr>';
+}
+async function refreshShared(){
+  const tid=$("#tenant").value;
+  if(!tid){$("#shared").innerHTML='<span class="muted">테넌트 없음</span>';return}
+  try{
+    const [realm,secrets,audit]=await Promise.all([
+      qget(`/fake-shared/iam/realms/${tid}`),
+      qget(`/fake-shared/secrets?tenant_ref=${tid}`),
+      qget(`/fake-shared/audit?tenant_ref=${tid}&limit=5`)]);
+    if(realm.detail)throw new Error(realm.detail);
+    const act=realm.clients.filter(c=>c.state==="active");
+    $("#shared").innerHTML=`<table><tbody>
+      <tr><th>IAM Realm</th><td class="kv">${realm.realm} — 롤 ${realm.roles.join("/")}<br>
+        클라이언트: ${act.map(c=>c.client_id+(c.mfa?" (MFA)":"")).join(", ")||"—"}</td></tr>
+      <tr><th>Vault</th><td class="kv">${secrets.map(s=>
+        `${s.path} <span class="muted">(${s.kind} v${s.version})</span>`).join("<br>")
+        ||'<span class="muted">시크릿 없음 — 개통(acceptance) 시 발급</span>'}</td></tr>
+      <tr><th>Audit</th><td class="kv">${audit.map(a=>
+        `<span class="muted">${a.at.slice(11,19)}</span> ${a.action} → ${a.target}`).join("<br>")||"—"}</td></tr>
+    </tbody></table>`;
+  }catch(e){$("#shared").innerHTML='<span class="muted">realm 없음 — 테넌트 생성 시 자동 발급됩니다</span>'}
+}
+async function refreshDetail(){
+  await Promise.all([refreshTrace(),refreshIso(),refreshStorage(),refreshShared()]);
+}
+
+// ---- 컨트롤 액션 -----------------------------------------------------------
+async function createTenant(){
+  const name=$("#t-name").value.trim();if(!name)return;
+  try{await call("POST","/api/v1/tenants",{name,isolation_tier:"bare_metal_dedicated"});
+    $("#t-name").value="";await loadTenants();
+  }catch(e){alert(e.message)}
+}
+async function loadTenants(){
+  const ts=await call("GET","/api/v1/tenants");
+  $("#tenant").innerHTML=ts.map(t=>`<option value="${t.id}">${t.name} (${t.id})</option>`).join("")
+    ||'<option value="">테넌트를 먼저 생성하세요</option>';
+  await loadAllocs();
+}
+async function loadAllocs(){
+  const tid=$("#tenant").value;if(!tid){$("#alloc").innerHTML="";return}
+  const t=await call("GET",`/api/v1/tenants/${tid}`);
+  $("#alloc").innerHTML=t.allocations.map(a=>
+    `<option value="${a.id}">${a.id} — ${a.rack_ids.length} rack(s)</option>`).join("")
+    ||'<option value="">할당 없음</option>';
+}
+$("#tenant")&&document.addEventListener("change",e=>{if(e.target.id==="tenant")loadAllocs()});
+
+async function runOrder(){
+  const tid=$("#tenant").value;if(!tid){alert("테넌트를 먼저 생성/선택하세요");return}
+  $("#o-msg").textContent="실행 중…";
+  try{
+    const order=await call("POST","/api/v1/orders",{tenant_id:tid,kind:"new",
+      blueprint_key:$("#o-bp").value,racks:parseInt($("#o-racks").value||"1")});
+    $("#o-msg").innerHTML=`<span style="color:${order.state==="delivered"?"var(--g)":"var(--red)"}">
+      ${order.id} → ${order.state}${order.error?" · "+order.error:""}</span>`;
+    await replay(order);await loadAllocs();
+  }catch(e){$("#o-msg").innerHTML=`<span style="color:var(--red)">✗ ${e.message}</span>`}
+}
+async function runTerminate(){
+  const tid=$("#tenant").value,aid=$("#alloc").value;
+  if(!aid){alert("회수할 allocation이 없습니다");return}
+  try{
+    const order=await call("POST","/api/v1/orders",{tenant_id:tid,kind:"terminate",allocation_id:aid});
+    await replay(order);await loadAllocs();
+  }catch(e){alert(e.message)}
+}
+async function inject(){
+  try{await call("POST",`/fake-nico/hosts/${$("#i-host").value}/inject`,{op:$("#i-op").value});
+  }catch(e){alert(e.message)}
+}
+
+// ---- 테넌트 장비 장애 스테이징 (장비 헬스 시연) ------------------------------
+async function stageEquipFault(){
+  const tid=$("#tenant").value;
+  if(!tid){alert("테넌트를 먼저 선택하세요");return}
+  try{
+    const nodes=await call("GET",`/api/v1/nodes?tenant_id=${tid}`);
+    if(!nodes.length){
+      $("#eqf-msg").innerHTML='<span style="color:var(--red)">✗ 할당 장비 없음 — 먼저 개통 주문을 실행하세요</span>';return}
+    const [kind,state]=$("#eqf-kind").value.split(":");
+    const n=nodes[Math.floor(Math.random()*nodes.length)];
+    const id=kind==="rack"?n.rack_id:n.tray_id;
+    const r=await call("PATCH","/api/v1/equipment/state",
+      {kind,id,state,note:`시연 — ${tid} 테넌트 장비 장애 스테이징`});
+    $("#eqf-msg").innerHTML=`<span style="color:var(--amber)">⚡ ${kind} <b class="m">${r.id}</b> → ${r.state}</span>
+      — <a href="/ops" target="_blank">운영 포털 🩺 장비 헬스</a>에서 [정비]/[복구] 조치 시연`;
+  }catch(e){$("#eqf-msg").innerHTML=`<span style="color:var(--red)">✗ ${e.message}</span>`}
+}
+async function clearEquipFault(){
+  const tid=$("#tenant").value;if(!tid)return;
+  const h=await call("GET","/api/v1/health/equipment");
+  const mine=h.faulted_equipment.filter(e=>e.tenant_id===tid);
+  for(const e of mine)
+    await call("PATCH","/api/v1/equipment/state",{kind:e.kind,id:e.id,state:"ready"});
+  $("#eqf-msg").innerHTML=mine.length
+    ?`<span style="color:var(--g)">✓ ${mine.length}건 복구 — 할당 장비는 allocated로 복원</span>`
+    :"복구할 비정상 장비 없음 (테넌트 소속 기준)";
+}
+async function setLatency(){
+  await call("PATCH","/fake-nico/config",{job_latency:parseInt($("#lat").value||"0")});
+}
+
+// ---- reconcile 시나리오 ------------------------------------------------------
+let ghostSeq=0;
+async function stageGhost(){
+  ghostSeq++;await call("POST","/fake-nico/hosts/ghost",{host_id:`nh-ghost-${String(ghostSeq).padStart(2,"0")}`});
+  await refreshPools();
+}
+async function stageOrphan(){
+  // 호스트가 아직 NICo에 살아있는 pool_ready 노드만 대상으로 선택
+  const [nodes,hosts]=await Promise.all([
+    call("GET","/api/v1/nodes?state=pool_ready"),call("GET","/fake-nico/hosts")]);
+  const alive=new Set(hosts.map(h=>h.host_id));
+  const victim=nodes.find(n=>alive.has(n.nico_host_id));
+  if(!victim){alert("대상이 될 pool_ready 노드가 없습니다 — 리셋 후 시도하세요");return}
+  await call("DELETE",`/fake-nico/hosts/${victim.nico_host_id}`);
+  await refreshPools();
+}
+async function resetAll(){
+  if(!confirm("전체 상태를 초기화할까요? (테넌트·주문·노드·NICo 재시드)"))return;
+  await call("POST","/api/v1/admin/reseed");
+  ghostSeq=0;lastJob=null;
+  drawTrack("new",[]);
+  $("#evt").innerHTML='<span class="muted">초기화됨 — 주문을 실행하면 이벤트가 재생됩니다.</span>';
+  $("#rec").innerHTML='<span class="muted">—</span>';$("#san").innerHTML="";
+  $("#o-msg").textContent="";$("#m-msg").textContent="";
+  document.querySelectorAll(".mod").forEach(m=>m.classList.remove("on","err"));
+  await loadTenants();await refreshPools();await refreshManual();
+  await refreshDetail();
+}
+async function stageMismatch(){
+  const nodes=await call("GET","/api/v1/nodes?state=in_service");
+  if(!nodes.length){alert("in_service 노드가 없습니다 — 먼저 개통 주문을 실행하세요");return}
+  await call("PATCH",`/fake-nico/hosts/${nodes[0].nico_host_id}/state`,{state:"pool_ready"});
+  await refreshPools();
+}
+async function runReconcile(){
+  const r=await call("POST","/api/v1/reconcile/run");
+  let h=`<div style="margin-bottom:6px;font-weight:700">
+    ${r.ok?'<span style="color:var(--g)">● OK</span>':'<span style="color:var(--red)">● CRITICAL 발견</span>'}
+    <span class="muted"> — 노드 ${r.checked_nodes} / 호스트 ${r.checked_hosts} 검사 ·
+    GHOST ${r.ghosts_registered} · ORPHAN ${r.orphans_cordoned} · MISMATCH ${r.mismatches}</span></div>`;
+  h+=r.findings.map(f=>`<div class="finding f-${f.severity}">
+    <b>[${f.kind}]</b> ${f.message}</div>`).join("")||'<div class="muted">불일치 없음</div>';
+  $("#rec").innerHTML=h;
+  await refreshPools();
+  await refreshDetail();
+}
+
+// ---- 수동 모드 ----------------------------------------------------------------
+let lastJob=null;
+function drawHostSm(state){
+  const chain=["pool_ready","reserved","provisioning","provisioned","allocated",
+               "released","sanitizing","quarantined","rma"];
+  $("#hostsm").innerHTML=chain.map(s=>
+    `<span class="s ${s===state?"here":""}">${s}</span>`).join('<span class="arrow">→</span>');
+}
+async function refreshManual(){
+  try{const h=await call("GET",`/fake-nico/hosts/${$("#mh").value}`);
+    drawHostSm(h.state);
+    $("#m-msg").textContent=`state=${h.state} · ip=${h.host_ip||"—"} · instance=${h.instance_id||"—"} · tenant=${h.tenant_ref||"—"} · attested=${h.attested}`;
+    await refreshPools();
+    refreshTrace();
+  }catch(e){$("#m-msg").textContent="✗ "+e.message}
+}
+async function mStep(op){
+  try{
+    const r=await call("POST",`/fake-nico/hosts/${$("#mh").value}/${op}`,
+      op==="provision"?{image_ref:"ubuntu-24.04-nvidia"}:undefined);
+    if(r&&r.job_id){lastJob=r;
+      $("#m-msg").textContent=`job ${r.job_id} (${r.op}) → ${r.state}${r.state==="running"?" — [job 폴링]을 누르세요":""}`;}
+    await refreshManual();
+  }catch(e){$("#m-msg").textContent="✗ "+e.message}
+}
+async function mPoll(){
+  if(!lastJob){$("#m-msg").textContent="폴링할 job이 없습니다";return}
+  const j=await call("GET",`/fake-nico/jobs/${lastJob.job_id}`);
+  $("#m-msg").textContent=`job ${j.job_id} (${j.op}) → ${j.state}${j.detail?" · "+j.detail:""}`;
+  await refreshManual();
+}
+async function mAllocate(){
+  const tid=$("#tenant").value||"tnt-manual-demo";
+  try{const h=await call("POST","/fake-nico/instances",{host_id:$("#mh").value,tenant_ref:tid});
+    $("#m-msg").textContent=`인스턴스 ${h.instance_id} → ${h.tenant_ref}`;await refreshManual();
+  }catch(e){$("#m-msg").textContent="✗ "+e.message}
+}
+async function mRelease(){
+  try{const h=await call("GET",`/fake-nico/hosts/${$("#mh").value}`);
+    if(!h.instance_id){$("#m-msg").textContent="✗ 이 호스트에 인스턴스가 없습니다";return}
+    const j=await call("DELETE",`/fake-nico/instances/${h.instance_id}`);
+    lastJob=j;await refreshManual();
+  }catch(e){$("#m-msg").textContent="✗ "+e.message}
+}
+async function mReport(){
+  try{const r=await call("GET",`/fake-nico/hosts/${$("#mh").value}/sanitize-report`);
+    $("#san").innerHTML=`<div style="margin-top:8px;font-weight:700">소거 보고서 — ${r.passed?
+      '<span class="ok">PASS</span>':'<span class="no">FAIL → RMA</span>'}</div>`+
+      r.steps.map(s=>`<div>${s.ok?'<span class="ok">✓</span>':'<span class="no">✗</span>'} ${s.step}</div>`).join("");
+  }catch(e){$("#san").innerHTML=`<span class="muted">${e.message}</span>`}
+}
+
+// ---- init ---------------------------------------------------------------------
+(async function(){
+  drawTrack("new",[]);
+  $("#tq").addEventListener("keydown",e=>{if(e.key==="Enter")refreshTrace()});
+  $("#tch").addEventListener("change",()=>refreshTrace());
+  await loadTenants();
+  await refreshPools();
+  await refreshManual();
+  await refreshDetail();
+})();
+</script>
+<script src="/static/nav.js"></script>
+<script src="/static/modinfo.js"></script>
+</body>
+</html>

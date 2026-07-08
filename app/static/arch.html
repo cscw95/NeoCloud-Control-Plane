@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NeoCloud Platform Architecture — Flow</title>
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+  :root{--g:#76b900;--navy:#0b1f3a;--bg:#0f1722;--card:#16202e;--line:#2a3848;--mut:#8aa0b4;
+        --blue:#5aa7e8;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
+       background:var(--bg);color:#e6edf3;font-size:13px;line-height:1.5}
+  .wrap{max-width:1520px;margin:0 auto;padding:20px 26px 30px}
+  h1{font-size:26px;margin:2px 0 2px;font-weight:800;color:#fff}
+  .sub{color:var(--mut);font-style:italic;margin-bottom:14px}
+  .legend{display:flex;gap:20px;font-size:10.5px;letter-spacing:.12em;color:var(--mut);font-weight:700}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+  .headrow{display:flex;align-items:flex-start;gap:20px}
+  .controls{margin-left:auto;display:flex;gap:8px;align-items:center;flex:none;flex-wrap:wrap;justify-content:flex-end}
+  select{background:#0d141d;border:1px solid var(--line);color:#e6edf3;
+         border-radius:6px;padding:6px 10px;font-size:12px;min-width:230px}
+  button{background:var(--g);color:#08210a;border:0;border-radius:6px;padding:7px 12px;
+         font-weight:700;cursor:pointer;font-size:12px}
+  button.ghost{background:transparent;color:var(--g);border:1px solid var(--g)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  /* ---- diagram ------------------------------------------------------- */
+  .diagram{position:relative;padding-left:34px}
+  /* 섹션 밴드 기준 세로 중앙 정렬 — 콘텐츠 높이가 변해도 라벨이 따라간다 */
+  .band{position:relative}
+  .band .sidelabel{position:absolute;left:-17px;top:50%;
+             transform:translate(-50%,-50%) rotate(-90deg);
+             color:#4a5a6c;font-size:10px;letter-spacing:.25em;
+             font-weight:700;white-space:nowrap}
+  .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .row4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .portal{background:#13314f;border:1px solid #2a4868;color:#fff;border-radius:10px;
+          padding:14px 18px;transition:all .25s}
+  .portal .t{font-size:15px;font-weight:800;display:flex;gap:10px;align-items:center}
+  .portal .num{background:var(--navy);border-radius:50%;width:24px;height:24px;flex:none;
+               display:flex;align-items:center;justify-content:center;font-size:12px;color:#9fd0ff}
+  .portal .d{color:#9fb8d0;font-size:12px;margin-top:5px}
+  .arrows{display:grid;gap:18px;margin:2px 0}
+  .ar{text-align:center;color:#3a4a5c;font-size:17px;transition:all .2s}
+  .ar.flow{color:var(--g);text-shadow:0 0 8px rgba(118,185,0,.7);transform:scale(1.3)}
+  .cp{background:var(--card);border:2px solid var(--line);border-radius:12px;
+      padding:16px 20px;transition:all .25s}
+  .cp .t{font-size:18px;font-weight:800;display:flex;gap:10px;align-items:center;color:#fff}
+  .cp .t small{font-weight:400;color:var(--mut);font-style:italic;font-size:12px}
+  .cp .num{background:var(--g);color:#08210a;border-radius:50%;width:26px;height:26px;flex:none;
+           display:flex;align-items:center;justify-content:center;font-size:13px}
+  .sect{color:#5a7a94;font-size:10.5px;letter-spacing:.18em;font-weight:800;margin:13px 0 7px}
+  .row5{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  .blk{background:#0d141d;border:1px solid var(--line);border-radius:8px;padding:10px 8px;
+       text-align:center;font-size:12.5px;font-weight:600;color:#cfd8e3;transition:all .25s}
+  .principle{color:var(--mut);font-style:italic;font-size:11.5px;margin-top:13px}
+  .dom{border-radius:10px;padding:14px 16px;border:1.5px solid var(--line);
+       background:#121b28;transition:all .25s}
+  .dom.nv{background:#151f10;border-color:#4e7a2c}
+  .dom .t{font-weight:800;font-size:14.5px;display:flex;gap:9px;align-items:center;color:#e6edf3}
+  .dom .num{background:#55606c;color:#fff;border-radius:50%;width:22px;height:22px;flex:none;
+            display:flex;align-items:center;justify-content:center;font-size:11px}
+  .dom.nv .t{color:#cfe8a0}.dom.nv .num{background:var(--g);color:#08210a}
+  .pillbar{border-radius:14px;color:#fff;font-size:11px;font-weight:800;letter-spacing:.1em;
+           text-align:center;padding:5px 0;margin:9px 0}
+  .pill-g{background:var(--g);color:#08210a}.pill-x{background:#3a4552;color:#c9d2dc}
+  .dom ul{margin:6px 0 0;padding-left:16px;color:#9fb0c0;font-size:11.5px}
+  .dom li{margin:2px 0}
+  .on{border-color:var(--g)!important;
+      box-shadow:0 0 0 2px rgba(118,185,0,.45),0 0 18px rgba(118,185,0,.35)!important;
+      background:#1d3a26!important}
+  /* ---- flow panel ------------------------------------------------------ */
+  .flowgrid{display:grid;grid-template-columns:360px 1fr;gap:16px;margin-top:22px}
+  @media(max-width:1100px){.flowgrid{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+  h2{font-size:14px;color:var(--g);border-bottom:1px solid var(--line);padding-bottom:7px;margin:0 0 10px}
+  .stage{border:1px solid var(--line);border-radius:8px;padding:8px 11px;margin-bottom:7px;
+         cursor:pointer;transition:all .2s;background:#0d141d}
+  .stage:hover{border-color:#4a5f78}
+  .stage.sel{border-color:var(--g);box-shadow:0 0 0 2px rgba(118,185,0,.3)}
+  .stage.act{background:#1d3a26;border-color:var(--g)}
+  .stage .nm{font-weight:800;font-size:13px;display:flex;align-items:center;gap:8px;color:#fff}
+  .stage .nm .ko{color:var(--mut);font-weight:600;font-size:11.5px}
+  .stage .cnt{margin-left:auto;background:var(--g);color:#08210a;border-radius:11px;
+              padding:1px 9px;font-size:11px;font-weight:700}
+  .stage .cnt.zero{background:#3a4552;color:#c9d2dc}
+  .stage .dt{color:var(--mut);font-size:11px;margin-top:2px}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+  .ch{font-family:Menlo,monospace;font-size:9px;padding:1px 6px;border-radius:4px;font-weight:700;
+      background:#1a2230;color:#8aa0b4}
+  .ch-REST{background:#233043;color:#9fb8d0}.ch-gRPC{background:#153a5a;color:#9fd0ff}
+  .ch-Redfish{background:#3a2a12;color:#e8a55a}.ch-DHCP{background:#123a3a;color:#5ad0c8}
+  .ch-PXE{background:#3a3512;color:#e0d05a}.ch-cloud-init{background:#1c3a20;color:#9fe0a8}
+  .ch-NVUE-HBN{background:#2a1c3a;color:#c8a5e8}.ch-UFM{background:#3a1c2e;color:#e8a5c8}
+  .ch-NMX{background:#3a122a;color:#f0a3d0}.ch-VAST-API{background:#1c3a2e;color:#5ae0a8}
+  .ch-OIDC-IAM{background:#0e2f44;color:#4fd8ff}.ch-Vault{background:#332c14;color:#e8c66a}
+  .ch-PAM{background:#3a2a2a;color:#e8b0a0}
+  .ch-internal{background:#1a2230;color:#8aa0b4}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th,td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:700;text-transform:uppercase;font-size:10px;
+     position:sticky;top:0;background:var(--card)}
+  .m{font-family:Menlo,monospace;font-size:10.5px}
+  #apibox{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+  .muted{color:var(--mut)}
+  a{color:var(--g)}
+</style>
+</head>
+<body>
+<header class="nc-header">
+  <span class="nc-brand">NeoCloud OS</span>
+  <div class="nc-head-txt">
+    <div class="nc-title">플랫폼 아키텍처 플로우</div>
+    <div class="nc-sub">구성도 위 주문 리플레이 · 단계별 하부 호출 API 전체 리스트</div>
+  </div>
+  <nav class="nc-nav">
+    <a href="/customer">👤 고객 포털</a>
+    <a href="/biz">💼 비즈 포털</a>
+    <a href="/ops">🛠 운영 포털</a>
+    <a href="/arch" class="act">🧭 NeoCloud Control-Plane</a>
+    <a href="/nico">⚙️ NICo</a>
+    <a href="/flow">🔬 검증 콘솔</a>
+    <a href="/">📊 VRCM</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="headrow">
+    <div>
+      <h1>NeoCloud Platform Architecture</h1>
+      <div class="sub">BMaaS service architecture for the 30MW NeoCloud environment · <b style="color:#cfe8a0">live order flow</b></div>
+    </div>
+    <div class="controls">
+      <div class="legend"><span><i style="background:#5aa7e8"></i>SKT IN-HOUSE</span>
+        <span><i style="background:var(--g)"></i>NVIDIA</span>
+        <span><i style="background:#8a8f98"></i>PARTNER</span></div>
+      <select id="order"></select>
+      <button id="btn-replay" onclick="replay()">▶ 리플레이</button>
+      <button class="ghost" onclick="loadOrders()">새로고침</button>
+    </div>
+  </div>
+
+  <!-- ================= DIAGRAM ================= -->
+  <div class="diagram">
+    <div class="band"><div class="sidelabel">INTERFACES</div>
+    <div class="row3">
+      <div class="portal" data-b="p-op"><div class="t"><span class="num">1</span>Operator Portal</div>
+        <div class="d">End-to-end infra, tenant, service &amp; lifecycle management for internal ops</div></div>
+      <div class="portal" data-b="p-cust"><div class="t"><span class="num">2</span>Customer Portal · Public APIs</div>
+        <div class="d">Cluster status, inventory, service health &amp; SLA visibility per tenant</div></div>
+      <div class="portal" data-b="p-biz"><div class="t"><span class="num">3</span>Business Portal</div>
+        <div class="d">Contracts, service requests, tickets, usage, billing &amp; settlement (future)</div></div>
+    </div></div>
+    <div class="arrows row3">
+      <div class="ar" data-a="a-p1">⇅</div><div class="ar" data-a="a-p2">⇅</div><div class="ar" data-a="a-p3">⇅</div>
+    </div>
+
+    <div class="band"><div class="sidelabel">CONTROL PLANE</div>
+    <div class="cp" data-b="cp">
+      <div class="t"><span class="num">1</span>NeoCloud OS Control Plane
+        <small>unified service orchestration &amp; management layer — SKT Core Engine</small></div>
+      <div class="sect">TENANT &amp; CLUSTER LIFECYCLE</div>
+      <div class="row5">
+        <div class="blk" data-b="cp-intake">Service-Order Intake</div>
+        <div class="blk" data-b="cp-fulfill">Tenant Fulfillment</div>
+        <div class="blk" data-b="cp-provision">BM Provisioning</div>
+        <div class="blk" data-b="cp-delivery">Delivery · Expansion</div>
+        <div class="blk" data-b="cp-reclaim">Reclamation · Sanitization</div>
+      </div>
+      <div class="sect">UNIFIED MANAGEMENT &amp; EXPOSURE</div>
+      <div class="row5">
+        <div class="blk" data-b="cp-model">Resource &amp; Service Model</div>
+        <div class="blk" data-b="cp-policy">Policy Orchestration</div>
+        <div class="blk" data-b="cp-obs">Observability</div>
+        <div class="blk" data-b="cp-sla">SLA Management</div>
+        <div class="blk" data-b="cp-api">Northbound / Public APIs</div>
+      </div>
+      <div class="principle">Design principle — integrate proven NVIDIA and partner platforms as the
+        infrastructure foundation; never duplicate their native management functions.</div>
+    </div></div>
+    <div class="arrows row4">
+      <div class="ar" data-a="a-d1">⇅</div><div class="ar" data-a="a-d2">⇅</div>
+      <div class="ar" data-a="a-d3">⇅</div><div class="ar" data-a="a-d4">⇅</div>
+    </div>
+
+    <div class="band"><div class="sidelabel">INFRA DOMAINS</div>
+    <div class="row4">
+      <div class="dom nv" data-b="d-compute"><div class="t"><span class="num">4</span>Compute Services</div>
+        <div class="pillbar pill-g">NVIDIA DSX · NICo</div>
+        <ul><li>Node provisioning &amp; tenant bare-metal clusters</li>
+            <li>BMC(Redfish) · DPU-DHCP · PXE · cloud-init</li></ul></div>
+      <div class="dom nv" data-b="d-sdn"><div class="t"><span class="num">5</span>SDN / Network Fabric</div>
+        <div class="pillbar pill-g">NVIDIA BLUEFIELD</div>
+        <ul><li>DPU-based tenant isolation (HBN VXLAN/EVPN)</li>
+            <li>UFM P_Key · NMX NVLink partition</li></ul></div>
+      <div class="dom" data-b="d-storage"><div class="t"><span class="num">6</span>Storage Services</div>
+        <div class="pillbar pill-x">AI STORAGE — VAST VMS</div>
+        <ul><li>View / Quota / QoS provisioning</li>
+            <li>Capacity · perf · health · SLA data</li></ul></div>
+      <div class="dom" data-b="d-shared"><div class="t"><span class="num">7</span>Shared Services</div>
+        <div class="pillbar pill-x">COMMON PLATFORM</div>
+        <ul><li>IAM · Secrets Mgmt · PAM · Audit Logging</li>
+            <li>Repository Caching · Security Systems</li></ul></div>
+    </div></div>
+  </div>
+
+  <!-- ================= FLOW PANEL ================= -->
+  <div class="flowgrid">
+    <div class="panel">
+      <h2>주문 파이프라인 상태머신 — <span id="fo" class="m muted">주문 선택</span></h2>
+      <div id="stages"><span class="muted">주문을 선택하면 단계별 하부 API 호출이 표시됩니다.
+        주문이 없으면 <a href="/flow">검증 콘솔</a>에서 개통을 실행하세요.</span></div>
+    </div>
+    <div class="panel">
+      <h2>단계 하부 호출 API 전체 리스트 — <span id="fs" class="m muted">단계 선택</span>
+        <span id="fcnt" class="muted" style="float:right"></span></h2>
+      <div id="apibox"><table>
+        <thead><tr><th style="width:46px">#</th><th style="width:72px">시간</th>
+          <th style="width:290px">송신 → 수신</th><th style="width:86px">채널</th><th>동작 — 상세</th></tr></thead>
+        <tbody id="apis"></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+async function j(u){const r=await fetch(u);if(!r.ok)throw new Error((await r.json()).detail||r.status);return r.json()}
+
+const KO={received:"주문 접수",validated:"정책 검증",reserved:"자원 예약",
+  provisioning:"BM 프로비저닝",isolating:"격리 구성(3평면)",storage_binding:"스토리지 바인딩",
+  acceptance:"인수 검증",delivered:"인도 완료",reclaiming:"회수·소거",closed:"종결",
+  compensating:"보상(saga)",failed:"실패",rejected:"거절"};
+const BLOCKS={
+  received:["p-cust","p-biz","cp-api","cp-intake"],
+  validated:["cp-policy","cp-model"],
+  rejected:["cp-policy","cp-intake"],
+  reserved:["cp-fulfill","cp-model","d-compute"],
+  provisioning:["cp-provision","d-compute"],
+  isolating:["cp-fulfill","cp-policy","d-sdn"],
+  storage_binding:["cp-fulfill","d-storage"],
+  acceptance:["cp-obs","cp-sla","d-sdn","d-shared"],
+  delivered:["cp-delivery","d-shared","p-cust","p-op"],
+  reclaiming:["cp-reclaim","d-compute","d-sdn","d-storage","d-shared"],
+  closed:["cp-reclaim","p-biz"],
+  compensating:["cp-fulfill","d-compute","d-sdn","d-storage"],
+  failed:["cp-intake","p-op"]};
+const ARROWS={
+  received:["a-p2","a-p3"],validated:[],reserved:["a-d1"],provisioning:["a-d1"],
+  isolating:["a-d2"],storage_binding:["a-d3"],acceptance:["a-d2"],
+  delivered:["a-p1","a-p2"],reclaiming:["a-d1","a-d2","a-d3"],
+  compensating:["a-d1","a-d2","a-d3"],closed:["a-p3"],rejected:["a-p3"],failed:["a-p1"]};
+
+let FLOW=null,selStage=0,playing=false;
+
+async function loadOrders(){
+  const orders=await j("/api/v1/orders");
+  orders.sort((a,b)=>b.id.localeCompare(a.id,undefined,{numeric:true}));
+  const cur=$("#order").value;
+  $("#order").innerHTML=orders.map(o=>
+    `<option value="${o.id}" ${o.id===cur?"selected":""}>${o.id} · ${o.kind} · ${o.state} · ${o.tenant_id}</option>`).join("")
+    ||'<option value="">주문 없음 — /flow에서 개통 실행</option>';
+  if(orders.length&&!cur)$("#order").value=orders[0].id;
+  await loadFlow();
+}
+async function loadFlow(){
+  const oid=$("#order").value;
+  if(!oid){FLOW=null;return}
+  FLOW=await j(`/api/v1/orders/${oid}/flow`);
+  $("#fo").textContent=`${FLOW.order_id} (${FLOW.kind} · ${FLOW.state} · rack ${FLOW.racks||"—"} · node ${FLOW.nodes})`;
+  renderStages();
+  // 기본 선택 = 하부 호출이 가장 많은 단계 (첫 화면부터 유의미한 리스트)
+  const busiest=FLOW.stages.reduce((m,s,i,a)=>s.api_total>a[m].api_total?i:m,0);
+  selectStage(busiest);
+}
+function chipRow(by){
+  return Object.entries(by).map(([c,n])=>
+    `<span class="ch ch-${c.replace(/[^A-Za-z0-9]/g,"-")}">${c} ${n}</span>`).join("");
+}
+function renderStages(){
+  $("#stages").innerHTML=FLOW.stages.map((s,i)=>
+    `<div class="stage ${i===selStage?"sel":""}" id="st-${i}" data-stage="${s.state}" onclick="selectStage(${i})">
+      <div class="nm">${i+1}. ${s.state} <span class="ko">${KO[s.state]||""}</span>
+        <span class="cnt ${s.api_total?"":"zero"}">${s.api_total} API</span></div>
+      <div class="dt">${s.at.slice(11,19)} — ${s.detail||""}</div>
+      <div class="chips">${chipRow(s.by_channel)}</div></div>`).join("");
+}
+function selectStage(i){
+  if(!FLOW||!FLOW.stages[i])return;
+  selStage=i;
+  document.querySelectorAll(".stage").forEach((e,k)=>e.classList.toggle("sel",k===i));
+  const s=FLOW.stages[i];
+  $("#fs").textContent=`${s.state} (${KO[s.state]||""})`;
+  $("#fcnt").textContent=`${s.api_total}건 (전체)`;
+  $("#apis").innerHTML=s.apis.map(a=>
+    `<tr><td class="muted">${a.seq}</td><td class="muted">${a.at.slice(11,19)}</td>
+      <td class="m">${a.src} → ${a.dst}</td>
+      <td><span class="ch ch-${a.channel.replace(/[^A-Za-z0-9]/g,"-")}">${a.channel}</span></td>
+      <td><b>${a.op}</b><span class="muted"> — ${a.detail||""}</span></td></tr>`).join("")
+    ||'<tr><td colspan="5" class="muted">이 단계의 하부 호출 없음 (제어면 내부 전이)</td></tr>';
+  light(s.state);
+}
+function light(state){
+  document.querySelectorAll("[data-b]").forEach(e=>e.classList.remove("on"));
+  document.querySelectorAll("[data-a]").forEach(e=>e.classList.remove("flow"));
+  (BLOCKS[state]||[]).forEach(b=>{
+    const el=document.querySelector(`[data-b="${b}"]`);if(el)el.classList.add("on")});
+  (ARROWS[state]||[]).forEach(a=>{
+    const el=document.querySelector(`[data-a="${a}"]`);if(el)el.classList.add("flow")});
+}
+async function replay(){
+  if(!FLOW||playing)return;
+  playing=true;$("#btn-replay").disabled=true;
+  document.querySelectorAll(".stage").forEach(e=>e.classList.remove("act"));
+  for(let i=0;i<FLOW.stages.length;i++){
+    selectStage(i);
+    const el=$(`#st-${i}`);el.classList.add("act");
+    el.scrollIntoView({block:"nearest",behavior:"smooth"});
+    const dwell=Math.min(2600,900+FLOW.stages[i].api_total*2);
+    await new Promise(r=>setTimeout(r,dwell));
+  }
+  document.querySelectorAll("[data-b]").forEach(e=>e.classList.remove("on"));
+  document.querySelectorAll("[data-a]").forEach(e=>e.classList.remove("flow"));
+  playing=false;$("#btn-replay").disabled=false;
+}
+$("#order").addEventListener("change",loadFlow);
+loadOrders();
+</script>
+<script src="/static/nav.js"></script>
+<script src="/static/modinfo.js"></script>
+</body>
+</html>

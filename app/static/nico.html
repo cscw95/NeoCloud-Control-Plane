@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NICo 운영 대시보드 — Infra Controller Emulator</title>
+<link rel="stylesheet" href="/static/theme.css">
+<script src="/static/charts.js"></script>
+<style>
+  :root{--g:#76b900;--navy:#0b1f3a;--bg:#0f1722;--card:#16202e;--line:#2a3848;--mut:#8aa0b4;
+        --blue:#5aa7e8;--amber:#e8c66a;--red:#f0a3b0;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
+       background:var(--bg);color:#e6edf3;font-size:13px;line-height:1.5}
+  header{background:linear-gradient(90deg,var(--navy),#13314f);padding:14px 22px;
+         border-bottom:3px solid var(--g);display:flex;align-items:center;gap:12px}
+  header h1{font-size:18px;margin:0}
+  header .tag{color:var(--g);font-weight:700}
+  header .nav{margin-left:auto;display:flex;gap:14px;align-items:center}
+  header a{color:var(--mut);font-size:12px;text-decoration:none}
+  header a:hover{color:var(--g)}
+  .wrap{max-width:1460px;margin:0 auto;padding:18px 22px}
+  h2{font-size:14px;color:var(--g);border-bottom:1px solid var(--line);padding-bottom:6px;margin:0 0 10px}
+  h3{font-size:12px;color:var(--mut);margin:10px 0 6px;text-transform:uppercase}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:1.25fr 1fr;gap:16px}
+  @media(max-width:1100px){.grid{grid-template-columns:1fr}}
+  input,select{background:#0d141d;border:1px solid var(--line);color:#e6edf3;
+        border-radius:6px;padding:6px 8px;font-size:12px}
+  button{background:var(--g);color:#08210a;border:0;border-radius:6px;padding:6px 11px;
+         font-weight:700;cursor:pointer;font-size:12px}
+  button.ghost{background:transparent;color:var(--g);border:1px solid var(--g)}
+  .muted{color:var(--mut)}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th,td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600;text-transform:uppercase;font-size:10px}
+  tr.sel,tr.hostrow:hover{background:#1a2635;cursor:pointer}
+  .m{font-family:Menlo,monospace;font-size:10.5px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700}
+  .p-ok{background:#23402a;color:#9fe0a8}.p-warning{background:#3a2f12;color:var(--amber)}
+  .p-standby{background:#233043;color:#9fb8d0}
+  .p-pool_ready{background:#23402a;color:#9fe0a8}.p-allocated{background:#3a2f12;color:var(--amber)}
+  .p-reserved{background:#1c2f4a;color:#9fd0ff}.p-provisioning,.p-provisioned{background:#3a3512;color:#e0d05a}
+  .p-quarantined,.p-rma{background:#43232a;color:var(--red)}
+  .p-released,.p-sanitizing{background:#2a1c3a;color:#c8a5e8}.p-discovered{background:#233043;color:#9fb8d0}
+  .svc{display:flex;flex-wrap:wrap;gap:8px}
+  .svc .s{background:#0d141d;border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:130px}
+  .svc .s b{font-size:11.5px}
+  .svc .s .d{font-size:10px;color:var(--mut)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px}
+  .card{background:#0d141d;border:1px solid var(--line);border-radius:8px;padding:9px 12px}
+  .card .k{color:var(--mut);font-size:10px;text-transform:uppercase}
+  .card .v{font-size:19px;font-weight:700;color:#fff}
+  #hosts-box{max-height:330px;overflow:auto}
+  .scr{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+  .kv{font-family:Menlo,monospace;font-size:10.5px}
+  pre{background:#0d141d;border:1px solid var(--line);border-radius:6px;padding:8px;
+      font-size:10.5px;overflow:auto;max-height:200px;white-space:pre-wrap;margin:4px 0}
+  /* cluster emulation */
+  .cl{border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:12px;background:#121b28}
+  .cl .head{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  .cl .head b{font-size:14px;color:#fff}
+  .stat{background:#0d141d;border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:11px}
+  .stat b{color:#fff;font-size:13px}
+  .bar{height:7px;border-radius:4px;background:#233043;overflow:hidden;width:110px;display:inline-block;vertical-align:middle}
+  .bar i{display:block;height:100%;background:var(--g)}
+  .rackrow{display:flex;align-items:center;gap:6px;padding:2px 0}
+  .rackrow .rid{font-family:Menlo,monospace;font-size:10px;color:var(--mut);width:110px;flex:none}
+  .tcell{width:15px;height:15px;border-radius:3px;background:#233043;cursor:pointer;display:inline-block;margin:1px}
+  .tcell.fault{outline:2px solid var(--red)}
+  .gpubar{height:8px;border-radius:4px;background:#233043;overflow:hidden;width:130px;display:inline-block;vertical-align:middle}
+  .gpubar i{display:block;height:100%}
+  .blink{animation:bl 1.2s infinite}@keyframes bl{50%{opacity:.45}}
+  /* 채널·메서드 칩 — ⑧ Provisioning / ⑨ API 리스트 */
+  .ch{font-family:Menlo,monospace;font-size:9.5px;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap}
+  .ch-REST{background:#233043;color:#9fb8d0}.ch-gRPC{background:#153a5a;color:#9fd0ff}
+  .ch-Redfish{background:#3a2a12;color:#e8a55a}.ch-DHCP{background:#123a3a;color:#5ad0c8}
+  .ch-PXE{background:#3a3512;color:#e0d05a}.ch-cloud-init{background:#1c3a20;color:#9fe0a8}
+  .ch-internal{background:#1a2230;color:#8aa0b4}
+  .ch-rshim{background:#2a1c3a;color:#c8a5e8}
+  .mt{font-family:Menlo,monospace;font-size:9.5px;padding:1px 6px;border-radius:4px;font-weight:700}
+  .mt-GET{background:#153a5a;color:#9fd0ff}.mt-POST{background:#1c3a20;color:#9fe0a8}
+  .mt-DELETE{background:#3a1f25;color:var(--red)}.mt-PATCH{background:#332c14;color:var(--amber)}
+  /* ⑧ Provisioning — 단계 하이라이트 */
+  #provsvg .pv{opacity:.55;transition:opacity .15s}
+  #provsvg .pv.on{opacity:1}
+  #provsvg .pv.on rect{stroke:var(--g);stroke-width:2;filter:drop-shadow(0 0 6px rgba(118,185,0,.7))}
+  #provsvg .pv.on path{stroke:var(--g);stroke-width:2.2}
+  #provsvg:not(:has(.on)) .pv{opacity:1}
+  #provtip{display:none;position:fixed;z-index:1000;max-width:440px;
+    background:#101f14;border:1px solid #3f6a34;border-radius:8px;
+    padding:10px 13px;box-shadow:0 10px 28px rgba(0,0,0,.55);
+    font-size:11px;line-height:1.55;color:#d7e8d0;pointer-events:none}
+  #provtip .pt-h{color:#76b900;font-size:9px;letter-spacing:.5px;text-transform:uppercase;opacity:.85}
+  #provtip .pt-t{color:#e9f5df;font-weight:700;margin:3px 0}
+  #provtip .pt-d{color:#a8c49c}
+  tr.provrow{cursor:pointer}
+  tr.provrow.sel{background:#1d3a26;outline:1px solid var(--g)}
+</style>
+</head>
+<body>
+<header class="nc-header">
+  <span class="nc-brand">NeoCloud OS</span>
+  <div class="nc-head-txt">
+    <div class="nc-title">NICo 운영 대시보드 — NVIDIA Infra Controller (Emulator)</div>
+    <div class="nc-sub">REST API 전체 탐색 · 테넌트 클러스터 에뮬레이션 LIVE</div>
+  </div>
+  <nav class="nc-nav">
+    <a href="/customer">👤 고객 포털</a>
+    <a href="/biz">💼 비즈 포털</a>
+    <a href="/ops">🛠 운영 포털</a>
+    <a href="/arch">🧭 NeoCloud Control-Plane</a>
+    <a href="/nico" class="act">⚙️ NICo</a>
+    <a href="/flow">🔬 검증 콘솔</a>
+    <a href="/">📊 VRCM</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+    <label class="muted" style="font-size:12px">
+      <input type="checkbox" id="auto" checked> 자동 갱신 (3초)</label>
+  </div>
+
+  <!-- ① Site Controller -->
+  <div class="panel">
+    <h2>① Site Controllers — 사이트별 NICo 인스턴스 <small class="muted">
+      (GET /fake-nico/site · STT 가산 / IGIS 안산 — 독립 클러스터, 크로스 연결 없음)</small></h2>
+    <div class="svc" id="svc"></div>
+    <div class="cards" id="counts"></div>
+    <h3 style="margin-top:12px">사이트 텔레메트리 — 컴퓨트 트레이 에뮬레이션 연동 (약식)</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><canvas id="site-util" style="width:100%"></canvas></div>
+      <div><canvas id="site-power" style="width:100%"></canvas></div>
+    </div>
+    <div class="muted" style="font-size:11px" id="site-note">
+      할당 호스트의 GPU 텔레메트리(에뮬레이션)가 NICo Hardware Health(Redfish 폴링) 관점으로 집계됩니다 —
+      호스트 드릴다운 ③의 BMC 센서와 동일 소스.</div>
+  </div>
+
+  <div class="grid">
+    <!-- ② 호스트 인벤토리 + 드릴다운 -->
+    <div>
+      <div class="panel">
+        <h2>② 호스트 인벤토리 <small class="muted">(GET /hosts · 행 클릭 → 드릴다운)</small></h2>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <select id="f-state" onchange="loadHosts()"><option value="">전체 상태</option></select>
+          <input id="f-q" placeholder="검색 (예: su-2-rack-00)" style="flex:1"
+                 onkeydown="if(event.key==='Enter')loadHosts()">
+          <button class="ghost" onclick="loadHosts()">검색</button>
+        </div>
+        <div id="hosts-box"><table>
+          <thead><tr><th>호스트</th><th>상태</th><th>타입</th><th>host IP</th><th>테넌트</th><th>증명</th></tr></thead>
+          <tbody id="hosts"></tbody></table></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:7px">
+          <button class="ghost" onclick="hostPage(-1)">◀ 이전</button>
+          <span id="pageinfo" class="muted"></span>
+          <button class="ghost" onclick="hostPage(1)">다음 ▶</button>
+          <span class="muted" style="margin-left:auto">50대/페이지 — 필터·검색으로 전체 탐색</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>③ 호스트 드릴다운 — <span id="dh" class="m muted">호스트를 선택하세요</span></h2>
+        <div id="hostdetail" class="muted">
+          hardware · health(BMC 센서, 활성 트레이는 에뮬레이션 반영) · attestation(TPM PCR) · sanitize 보고서
+        </div>
+      </div>
+    </div>
+
+    <!-- ④ 카탈로그/세그먼트/잡/리스 -->
+    <div>
+      <div class="panel">
+        <h2>④ 인스턴스 타입 카탈로그 <small class="muted">(GET /instance-types)</small></h2>
+        <table><thead><tr><th>타입</th><th>GPU</th><th>HBM</th><th>CPU</th><th>DPU</th><th>가용/전체</th></tr></thead>
+          <tbody id="itypes"></tbody></table>
+        <h3>인스턴스 (GET /instances) — <span id="instcnt" class="muted"></span></h3>
+        <div class="scr"><table><thead><tr><th>instance</th><th>호스트</th><th>테넌트</th><th>IP</th></tr></thead>
+          <tbody id="insts"></tbody></table></div>
+        <h3>Network Segments — VPC (GET /segments)</h3>
+        <div class="scr"><table><thead><tr><th>segment</th><th>테넌트</th><th>VRF / VNI</th><th>host</th></tr></thead>
+          <tbody id="segs"></tbody></table></div>
+        <h3>Jobs (GET /jobs) — <span id="jobcnt" class="muted"></span></h3>
+        <div class="scr"><table><thead><tr><th>job</th><th>op</th><th>호스트</th><th>상태</th></tr></thead>
+          <tbody id="jobs"></tbody></table></div>
+        <h3>DHCP Leases (GET /dhcp/leases) — <span id="leasecnt" class="muted"></span></h3>
+        <div class="scr"><table><thead><tr><th>IP</th><th>MAC</th><th>호스트</th><th>DHCP 서버(DPU)</th></tr></thead>
+          <tbody id="leases"></tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑤ 클러스터 에뮬레이션 -->
+  <div class="panel">
+    <h2>⑤ 테넌트 클러스터 운영 상태 — 컴퓨트 트레이 에뮬레이션
+      <span class="pill p-ok blink">LIVE</span>
+      <small class="muted"> step <span id="step">0</span> · 2s 틱 · 셀 = 트레이(색=GPU util, 빨간 테두리=fault) · 셀 클릭 → 트레이 상세</small></h2>
+    <div id="clusters"><span class="muted">활성 클러스터 없음 — 검증 콘솔(/flow)에서 개통 주문을 실행하세요.</span></div>
+  </div>
+
+  <!-- ⑥ IB 패브릭 토폴로지 -->
+  <div class="panel">
+    <h2>⑥ IB 패브릭 토폴로지 — 듀얼 네트워크 Fabric-A/B · rail-optimized (Quantum XDR · NCP RD)
+      <select id="fab-tenant" onchange="loadFabric()" style="margin-left:10px">
+        <option value="">전체 (물리 자원)</option></select>
+      <small class="muted"> 테넌트 선택 → 해당 P_Key 파티션의 GPU fabric 하이라이트 · 랙에 마우스오버 = 상세</small></h2>
+    <div id="fab-summary" class="muted" style="margin-bottom:8px">—</div>
+    <div style="overflow-x:auto"><svg id="fabsvg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  </div>
+
+  <!-- ⑦ 트레이 상세 -->
+  <div class="panel">
+    <h2>⑦ 트레이 상세 — <span id="dt" class="m muted">히트맵에서 트레이를 선택하세요</span></h2>
+    <div id="traydetail" class="muted">GPU별 utilization/온도/전력/HBM/ECC/XID · NVLink · CPU · 워크로드</div>
+  </div>
+
+  <!-- ⑧ Provisioning 세부 — Node Anatomy -->
+  <div class="panel">
+    <h2>⑧ Provisioning 세부 — DPU 기반 IP 할당·OS 설치 <small class="muted">
+      (Node Anatomy — DPU가 DHCP·PXE를 종단, 무상태(stateless) 부팅)</small></h2>
+    <div style="display:grid;grid-template-columns:560px 1fr;gap:16px">
+      <div>
+        <svg id="provsvg" width="540" height="512" xmlns="http://www.w3.org/2000/svg" style="font-family:inherit">
+          <defs><marker id="ar" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 z" fill="#8aa0b4"/></marker></defs>
+          <!-- NeoCloud OS D1 / NICo APIService -->
+          <g class="pv" data-st="0 8 9">
+            <rect x="10" y="10" width="160" height="46" rx="9" fill="#13314f" stroke="#2a4868"/>
+            <text x="90" y="29" text-anchor="middle" fill="#9fd0ff" font-size="11" font-weight="800">NeoCloud OS</text>
+            <text x="90" y="44" text-anchor="middle" fill="#7a92a8" font-size="9">D1 ComputeAdapter</text></g>
+          <g class="pv" data-st="0 1 3 4 8 9">
+            <rect x="350" y="10" width="180" height="46" rx="9" fill="#151f10" stroke="#4e7a2c"/>
+            <text x="440" y="29" text-anchor="middle" fill="#cfe8a0" font-size="11" font-weight="800">NICo.APIService</text>
+            <text x="440" y="44" text-anchor="middle" fill="#7fae88" font-size="9">carbide — 상태머신 단일 기록자</text></g>
+          <g class="pv" data-st="0"><path d="M170 24 L348 24" fill="none" stroke="#9fb8d0" stroke-width="1.5" marker-end="url(#ar)"/>
+            <text x="258" y="18" text-anchor="middle" fill="#9fb8d0" font-size="9.5" font-weight="700">⓪ POST /hosts/{id}/provision</text></g>
+          <g class="pv" data-st="8"><path d="M348 44 L170 44" fill="none" stroke="#9fe0a8" stroke-width="1.5" marker-end="url(#ar)"/>
+            <text x="258" y="57" text-anchor="middle" fill="#9fe0a8" font-size="9.5" font-weight="700">⑧ job succeeded (host_ip·UEFI 잠금)</text></g>
+          <g class="pv" data-st="9"><path d="M110 56 C140 82, 340 82, 370 56" fill="none" stroke="#9fd0ff" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar)"/>
+            <text x="258" y="94" text-anchor="middle" fill="#9fd0ff" font-size="9" font-weight="700">⑨ AllocateInstance(gRPC) → FMDS 등록</text></g>
+          <!-- BMC -->
+          <g class="pv" data-st="3 4">
+            <rect x="404" y="104" width="126" height="42" rx="8" fill="#3a2a12" stroke="#6a4a22"/>
+            <text x="467" y="122" text-anchor="middle" fill="#e8a55a" font-size="11" font-weight="700">BMC (Redfish)</text>
+            <text x="467" y="136" text-anchor="middle" fill="#a8824a" font-size="8.5">OOB — 전원·부트오더</text>
+            <path d="M488 56 L482 102" fill="none" stroke="#e8a55a" stroke-width="1.5" marker-end="url(#ar)"/>
+            <text x="530" y="72" text-anchor="end" fill="#e8a55a" font-size="9" font-weight="700">③ PATCH 부트오버라이드</text>
+            <text x="530" y="84" text-anchor="end" fill="#e8a55a" font-size="9" font-weight="700">④ POST Reset(재시작)</text></g>
+          <!-- Node -->
+          <g class="pv" data-st="3 4 5 6 7">
+            <rect x="96" y="112" width="290" height="62" rx="10" fill="#13314f" stroke="#2a4868"/>
+            <text x="241" y="134" text-anchor="middle" fill="#fff" font-size="13" font-weight="800">Node — 컴퓨트 트레이</text>
+            <text x="241" y="152" text-anchor="middle" fill="#9fb8d0" font-size="9.5">무상태 부팅 · 영속 디스크 미의존 · UEFI 잠금 적용 대상</text></g>
+          <path class="pv" data-st="4" d="M404 128 L388 132" fill="none" stroke="#e8a55a" stroke-width="1.4" marker-end="url(#ar)"/>
+          <g class="pv" data-st="5 6 7"><rect x="196" y="164" width="90" height="20" rx="4" fill="#0d141d" stroke="#4a5f78" stroke-dasharray="4 3"/>
+            <text x="241" y="178" text-anchor="middle" fill="#9fd0ff" font-size="9.5">eth0 ↔ pf0hpf</text></g>
+          <!-- DPU -->
+          <rect x="48" y="196" width="440" height="188" rx="12" fill="#151f10" stroke="#4e7a2c" stroke-width="1.5"/>
+          <text x="268" y="216" text-anchor="middle" fill="#cfe8a0" font-size="12" font-weight="800">BlueField DPU — VPC 격리·IP·부트 트래픽 종단 (호스트 대면 pf0hpf)</text>
+          <g class="pv" data-st="2 5">
+            <rect x="66" y="230" width="176" height="44" rx="7" fill="#123a3a" stroke="#1f5a55"/>
+            <text x="154" y="248" text-anchor="middle" fill="#5ad0c8" font-size="11" font-weight="700">DPU-DHCP 서버</text>
+            <text x="154" y="263" text-anchor="middle" fill="#8fb8b0" font-size="8.5">테넌트 /30 임대 — 언더레이 도달 차단</text>
+            <path d="M140 228 C144 208, 180 192, 194 187" fill="none" stroke="#5ad0c8" stroke-width="1.5" marker-end="url(#ar)"/>
+            <text x="52" y="190" fill="#5ad0c8" font-size="9" font-weight="700">⑤ DHCP 4-way (/30 임대)</text></g>
+          <g class="pv" data-st="2 6 7">
+            <rect x="286" y="230" width="184" height="44" rx="7" fill="#1a2230" stroke="#3a4a5c"/>
+            <text x="378" y="248" text-anchor="middle" fill="#c9d2dc" font-size="10.5" font-weight="700">부트 프록시 — iPXE 릴레이</text>
+            <text x="378" y="263" text-anchor="middle" fill="#8a95a4" font-size="8.5">호스트↔NICo.PXE 트래픽 DPU 경유</text></g>
+          <g class="pv" data-st="1 2">
+            <rect x="66" y="290" width="404" height="42" rx="7" fill="#2a1c3a" stroke="#463366"/>
+            <text x="268" y="307" text-anchor="middle" fill="#c8a5e8" font-size="10.5" font-weight="700">DPU Provisioning — ① BFB 푸시(rshim·BMC 경유)·dpu-agent 기동 → ② 부트 서비스 구성</text>
+            <text x="268" y="322" text-anchor="middle" fill="#9a82b8" font-size="8.5">호스트 부트 전제 — DPU OS(DOCA) 멱등 설치 · DPU-DHCP/iPXE 릴레이 활성</text>
+            <path d="M467 146 C470 210, 466 250, 452 288" fill="none" stroke="#c8a5e8" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar)"/></g>
+          <g class="pv" data-st="6 7"><rect x="223" y="352" width="90" height="20" rx="4" fill="#0d141d" stroke="#4a5f78" stroke-dasharray="4 3"/>
+            <text x="268" y="366" text-anchor="middle" fill="#9fd0ff" font-size="9.5">p0 (언더레이)</text></g>
+          <!-- NICo PXE + FMDS -->
+          <g class="pv" data-st="6 7">
+            <rect x="96" y="404" width="280" height="52" rx="10" fill="#3a3512" stroke="#6a5f22"/>
+            <text x="236" y="424" text-anchor="middle" fill="#e0d05a" font-size="11.5" font-weight="700">NICo.PXE — 부트/이미지 서버</text>
+            <text x="236" y="440" text-anchor="middle" fill="#b8ae7a" font-size="8.5">boot.ipxe · kernel/initrd · 테넌트 OS 이미지(로컬 캐시/원격)</text>
+            <path d="M250 350 L250 402" fill="none" stroke="#e0d05a" stroke-width="1.5" marker-end="url(#ar)"/>
+            <text x="242" y="392" text-anchor="end" fill="#e0d05a" font-size="9" font-weight="700">⑥ GET /boot.ipxe → kernel/initrd</text></g>
+          <g class="pv" data-st="7">
+            <path d="M296 402 L296 374" fill="none" stroke="#9fe0a8" stroke-width="1.5" marker-end="url(#ar)"/>
+            <text x="304" y="390" fill="#9fe0a8" font-size="9" font-weight="700">⑦ cloud-init (고정IP·SSH키·UEFI 잠금)</text></g>
+          <g class="pv" data-st="9">
+            <rect x="404" y="404" width="126" height="52" rx="10" fill="#1c3a20" stroke="#2f5d3a"/>
+            <text x="467" y="424" text-anchor="middle" fill="#9fe0a8" font-size="11" font-weight="700">FMDS</text>
+            <text x="467" y="440" text-anchor="middle" fill="#7fae88" font-size="8.5">인스턴스 메타데이터 서비스</text></g>
+          <text x="10" y="490" fill="#8aa0b4" font-size="9.5">절차 행/그림에 마우스를 올리면 단계 점등 + API 메시지 말풍선 · [▶ 재생] 전체 시연</text>
+        </svg>
+        <div id="provtip"></div>
+      </div>
+      <div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+          <input id="prov-host" placeholder="호스트 (비우면 최근 프로비저닝 자동 · ⑤ 히트맵에서 트레이 선택 시 연동)" style="flex:1">
+          <button class="ghost" onclick="loadProvDetail()">절차 조회</button>
+          <button onclick="replayProv()">▶ 재생</button>
+        </div>
+        <div id="prov-sum" class="muted" style="font-size:11px;margin-bottom:6px">—</div>
+        <div class="scr" style="max-height:400px"><table>
+          <thead><tr><th style="width:60px">시간</th><th style="width:230px">송신 → 수신</th>
+            <th style="width:76px">채널</th><th>동작 — 상세</th></tr></thead>
+          <tbody id="prov-steps"></tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑨ NICo REST API 리스트 -->
+  <div class="panel">
+    <h2>⑨ NICo에 호출되는 REST API 리스트 <small class="muted">
+      (OpenAPI 실시간 추출 · <span id="api-cnt">0</span>개 — 실 NICo 연동 시 D1 어댑터가 동일 계약으로 호출)</small></h2>
+    <div id="nico-apis" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px"></div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+async function j(u){const r=await fetch(u);if(!r.ok)throw new Error((await r.json()).detail||r.status);return r.json()}
+async function jp(u,body){const r=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},
+  body:body?JSON.stringify(body):undefined});return r.json()}
+let selHost=null, selTray=null;
+const HOST_STATES=["pool_ready","reserved","provisioning","provisioned","allocated","released","sanitizing","quarantined","rma","discovered"];
+
+// ── ① site ──────────────────────────────────────────────
+async function loadSite(){
+  const s=await j("/fake-nico/site");
+  $("#svc").innerHTML=s.services.map(x=>
+    `<div class="s"><b>${x.name}</b> <span class="pill p-${x.state}">${x.state}</span>
+     <div class="d">${x.proto} — ${x.detail}</div></div>`).join("");
+  const c=s.counts, mk=(k,v)=>`<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const siteCards=(s.sites||[]).map(st=>{
+    const hs=Object.entries(st.hosts_by_state).map(([k,v])=>`${k} ${v}`).join(" · ");
+    return `<div class="card" style="grid-column:span 2;border-left:3px solid #5aa7e8">
+      <div class="k">NICo @ ${st.name} — 독립 클러스터 (${st.site_id} · HA ${st.ha_nodes}노드)</div>
+      <div class="v">${st.hosts.toLocaleString()} <small style="font-size:11px;color:var(--mut)">
+        hosts · ${st.racks} racks · inst ${st.instances}</small></div>
+      <div style="font-size:10.5px;margin-top:3px;color:var(--mut)">${hs}</div></div>`;
+  }).join("");
+  $("#counts").innerHTML=siteCards+
+    mk("Instances",c.instances)+mk("Segments (VPC)",c.segments)+mk("Jobs",c.jobs);
+  loadSiteTelemetry();
+}
+async function loadSiteTelemetry(){
+  const h=await j("/api/v1/emu/history?limit=150");
+  const pick=k=>h.map(x=>x[k]);
+  ncChart($("#site-util"),[
+    {label:"할당 GPU 평균 util",color:"#76b900",data:pick("avg_util_pct")},
+    {label:"할당률",color:"#5aa7e8",data:pick("alloc_pct")}],{unit:"%",min:0,max:100});
+  ncChart($("#site-power"),[
+    {label:"할당 호스트 전력",color:"#e8c66a",data:pick("power_kw")}],{unit:"kW",min:0});
+}
+
+// ── ② hosts (페이지네이션 — 전체 리스트 탐색) ──────────────
+const PAGE=50;let hostPageNo=0,hostRows=[];
+async function loadHosts(reset=true){
+  const hosts=await j("/fake-nico/hosts");
+  const st=$("#f-state").value,q=$("#f-q").value.trim().toLowerCase();
+  hostRows=hosts.filter(h=>(!st||h.state===st)&&(!q||h.host_id.toLowerCase().includes(q)));
+  if(reset)hostPageNo=0;
+  renderHosts();
+}
+function renderHosts(){
+  const pages=Math.max(1,Math.ceil(hostRows.length/PAGE));
+  hostPageNo=Math.max(0,Math.min(hostPageNo,pages-1));
+  const rows=hostRows.slice(hostPageNo*PAGE,(hostPageNo+1)*PAGE);
+  $("#hosts").innerHTML=rows.map(h=>
+    `<tr class="hostrow ${selHost===h.host_id?"sel":""}" onclick="pickHost('${h.host_id}')">
+      <td class="m">${h.host_id}</td><td><span class="pill p-${h.state}">${h.state}</span></td>
+      <td>${h.sku}</td><td class="m">${h.host_ip||"—"}</td>
+      <td class="m">${h.tenant_ref||"—"}</td><td>${h.attested?"✓":"✗"}</td></tr>`).join("")
+    ||'<tr><td colspan="6" class="muted">조건에 맞는 호스트 없음</td></tr>';
+  $("#pageinfo").textContent=`${hostPageNo+1}/${pages} 페이지 · 총 ${hostRows.length}대`;
+}
+function hostPage(d){hostPageNo+=d;renderHosts()}
+async function pickHost(id){
+  selHost=id;$("#dh").textContent=id;renderHosts();
+  const [hw,he,at]=await Promise.all([
+    j(`/fake-nico/hosts/${id}/hardware`).catch(e=>null),
+    j(`/fake-nico/hosts/${id}/health`),
+    j(`/fake-nico/hosts/${id}/attestation`)]);
+  let san=null;try{san=await j(`/fake-nico/hosts/${id}/sanitize-report`)}catch(e){}
+  let h="";
+  if(hw){h+=`<h3>Hardware (GET /hosts/{id}/hardware)</h3>
+    <div class="kv">GPU ${hw.gpus.length}× ${hw.gpus[0]?.arch||""} ${hw.gpus[0]?.hbm_gb||""}GB ${hw.gpus[0]?.hbm_type||""}
+      · CPU ${hw.cpus.length}× ${hw.cpus[0]?.arch||""} ${hw.cpus[0]?.cores||""}c
+      · DPU ${hw.dpu?hw.dpu.sku+" "+hw.dpu.bw_gbps+"G ("+hw.dpu.mode+")":"—"}
+      · SuperNIC ×${hw.connectx_supernics}<br>
+      BMC ${hw.bmc_ip} · DPU ${hw.dpu_ip} · MAC ${hw.mac}<br>
+      FW: ${Object.entries(hw.firmware).map(([k,v])=>k+"="+v).join(" · ")}</div>`}
+  h+=`<h3>Health — BMC 센서 (GET /hosts/{id}/health) <span class="pill p-${he.state}">${he.state}</span></h3>
+    <div class="kv">전력 ${he.power_w}W · GPU 온도 [${he.gpu_temp_c.join(", ")}]°C ·
+    냉각수 공급 ${he.coolant_supply_c}°C / 회수 ${he.coolant_return_c}°C ·
+    누수 ${he.leak_detected?"감지!":"없음"} · 펌프 ${he.pump} · PSU ${he.psu.length}기 ok</div>`;
+  h+=`<h3>Attestation (GET /hosts/{id}/attestation)</h3>
+    <div class="kv">measured_boot=${at.measured_boot} · ${at.policy}<br>
+    ${Object.entries(at.tpm).map(([k,v])=>k+"="+v).join("<br>")}</div>`;
+  if(san){h+=`<h3>최근 Sanitize 보고서</h3><div class="kv">${san.passed?"PASS":"FAIL"} — `
+    +san.steps.map(s=>(s.ok?"✓":"✗")+s.step).join(" · ")+`</div>`}
+  $("#hostdetail").innerHTML=h;
+}
+
+// ── ④ catalog / segments / jobs / leases ────────────────
+async function loadCatalog(){
+  const [it,ins,segs,jobs,ls]=await Promise.all([
+    j("/fake-nico/instance-types"),j("/fake-nico/instances"),
+    j("/fake-nico/segments"),j("/fake-nico/jobs?limit=200"),j("/fake-nico/dhcp/leases")]);
+  $("#itypes").innerHTML=it.map(t=>
+    `<tr><td class="m">${t.key}</td><td>${t.gpus}× ${t.gpu_arch}</td>
+     <td>${t.hbm_gb}GB ${t.hbm_type}</td><td>${t.cpus}× ${t.cpu_arch}</td>
+     <td>${t.dpu} ${t.dpu_bw_gbps}G</td><td>${t.hosts_available}/${t.hosts_total}</td></tr>`).join("");
+  $("#instcnt").textContent=`${ins.length}건 (전체)`;
+  $("#insts").innerHTML=ins.map(i=>
+    `<tr><td class="m">${i.instance_id}</td><td class="m">${i.host_id}</td>
+     <td class="m">${i.tenant_ref}</td><td class="m">${i.host_ip}</td></tr>`).join("")
+    ||'<tr><td colspan="4" class="muted">—</td></tr>';
+  $("#segs").innerHTML=segs.map(sg=>
+    `<tr><td class="m">${sg.segment_id}</td><td class="m">${sg.tenant_ref}</td>
+     <td class="m">${sg.vrf} / ${sg.l3vni}</td><td>${sg.host_ids.length}</td></tr>`).join("")
+    ||'<tr><td colspan="4" class="muted">—</td></tr>';
+  $("#jobcnt").textContent=`최근 ${jobs.length}건`;
+  $("#jobs").innerHTML=jobs.map(jb=>
+    `<tr><td class="m">${jb.job_id}</td><td>${jb.op}</td><td class="m">${jb.host_id}</td>
+     <td>${jb.state}</td></tr>`).join("")||'<tr><td colspan="4" class="muted">—</td></tr>';
+  $("#leasecnt").textContent=`${ls.length}건 (전체)`;
+  $("#leases").innerHTML=ls.map(l=>
+    `<tr><td class="m">${l.ip}</td><td class="m">${l.mac}</td>
+     <td class="m">${l.host_id}</td><td class="m">${l.dhcp_server}</td></tr>`).join("")
+    ||'<tr><td colspan="4" class="muted">—</td></tr>';
+}
+
+// ── ⑧ Provisioning 세부 — DPU 기반 IP 할당·OS 설치 (실 트레이스) ──
+const PROV_CH=new Set(["Redfish","DHCP","PXE","cloud-init"]);
+// 단계별 API에 포함되는 메시지 (말풍선 사전) — DPU 기반 무상태 프로비저닝 문서 기준
+const PROV_GUIDE={
+  0:["⓪ POST /hosts/{id}/provision — 프로비저닝 요청 (REST)",
+    "<b>포함 메시지</b>: 대상 host_id · 설치 OS 이미지(image_ref) · 테넌트/VPC 정보 · 인스턴스 메타데이터 · 초기 접속 정보 · UEFI/PXE 부팅 설정.<br>이 시점부터 NICo가 비동기 <b>Job</b>을 생성해 전체 절차를 관리(D1은 job 폴링)."],
+  1:["① BFB 이미지 푸시 — DPU provisioning (rshim)",
+    "<b>BFB(BlueField Bootstream)</b> = DPU OS(DOCA)+펌웨어 설치 이미지 — rshim(BMC 경유)으로 전달.<br><b>검증 항목</b>: DPU 접근성 · BFB 무결성 · DPU OS 설치 상태 · dpu-agent(systemd) 기동 · OVS/DOCA 네트워크 구성. 버전 일치 시 스킵(멱등)."],
+  2:["② DPU 서비스 구성 — DHCP/PXE Relay (internal)",
+    "<b>DPU-DHCP</b>: 호스트 전용 <b>/30 풀</b> 생성(gateway=pf0hpf 측) — 테넌트별 DHCP 격리 · 외부 DHCP 충돌 방지 · 부트 네트워크 독립.<br><b>PXE Relay</b>: Host→DPU→NICo.PXE 중계 — DPU가 게이트웨이·보안 경계 역할."],
+  3:["③ PATCH /redfish/v1/Systems/Self — 부트소스 오버라이드 (Redfish)",
+    "<b>페이로드</b>: <span class='m'>Boot:{BootSourceOverrideTarget:Pxe, Enabled:<b>Once</b>, Mode:UEFI}</span><br><b>1회성(Once)</b>인 이유: OS 설치 후 재부팅부터는 로컬 디스크 부팅이어야 하므로."],
+  4:["④ POST …/ComputerSystem.Reset — 강제 재시작 (Redfish)",
+    "<b>페이로드</b>: <span class='m'>{ResetType: ForceRestart}</span> — 호스트가 재부팅되며 PXE 부트 개시 (DPU 경유 NIC 우선)."],
+  5:["⑤ DHCP 4-way — DPU에서 임시 IP 획득 (DHCP)",
+    "DISCOVER→OFFER→REQUEST→<b>ACK</b> — DPU가 /30 대역 임대 (예: host .70/30 ↔ DPU .69/30).<br>아직 테넌트 OS 설치 전 — <b>PXE 부팅용 임시 네트워크</b>만 활성."],
+  6:["⑥ GET /boot.ipxe → kernel/initrd — 이미지 스트리밍 (PXE/HTTP)",
+    "<b>boot.ipxe(호스트별 동적 생성)</b>: <span class='m'>kernel …/vmlinuz · initrd …/initrd · append autoinstall ds=nocloud-net;s=…/config/{host-id}/</span><br>경로: NICo.PXE → DPU(릴레이) → Host — kernel→initrd→OS Installer 순차 다운로드."],
+  7:["⑦ cloud-init meta/user-data — 초기 설정 적용 (cloud-init)",
+    "<b>#cloud-config 포함</b>: netplan 고정 IP(임시 /30 → 테넌트 네트워크 전환) · SSH key 주입 · 사용자 생성 · <b>UEFI 잠금</b> · BMC 자격증명 로테이션 · in-band host↔BMC 차단."],
+  8:["⑧ job succeeded — 설치 완료 회신 (REST)",
+    "<b>반환 메시지</b>: job 상태(succeeded) · host_ip(테넌트 네트워크) · UEFI 잠금 적용 — D1 어댑터가 폴링으로 수렴 확인."],
+  9:["⑨ AllocateInstance(gRPC) → FMDS 등록",
+    "<b>등록 메시지</b>: Host/Instance ID · Host IP · Tenant ID · OS 이미지 버전 · 설치 상태 · DPU/VPC 정보 — 인스턴스 메타데이터 서비스(FMDS, 169.254.169.254)로 제공."],
+};
+let PROV_SEQ=[];
+function showProvTip(el,st,idx){
+  if(document.documentElement.dataset.tips==="0")return;   // 말풍선 OFF
+  const g=PROV_GUIDE[st];if(!g)return;
+  const tip=$("#provtip");
+  const ev=(idx!==null&&PROV_SEQ[idx])?PROV_SEQ[idx]:null;
+  tip.innerHTML=`<div class="pt-h">DPU 기반 IP 할당·OS 설치 — API 메시지</div>
+    <div class="pt-t">${g[0]}</div><div class="pt-d">${g[1]}</div>`+
+    (ev&&ev.payload?`<div class="pt-h" style="margin-top:6px">실제 트레이스 페이로드</div>
+     <pre style="margin:2px 0;max-height:120px;font-size:9.5px">${JSON.stringify(ev.payload,null,1).slice(0,600)}</pre>`:"");
+  tip.style.display="block";
+  const r=el.getBoundingClientRect();
+  tip.style.maxWidth=Math.min(440,innerWidth-24)+"px";
+  const x=Math.min(Math.max(8,r.left),innerWidth-tip.offsetWidth-8);
+  let y=r.bottom+8;
+  if(y+tip.offsetHeight>innerHeight-8)y=r.top-tip.offsetHeight-8;
+  tip.style.left=x+"px";tip.style.top=Math.max(4,y)+"px";
+}
+function hideProvTip(){$("#provtip").style.display="none"}
+document.addEventListener("nc-tips-off",hideProvTip);
+// 트레이스 이벤트 → 다이어그램 단계(⓪~⑦) 매핑
+function provStep(e){
+  const op=e.op||"";
+  if(op.includes("/provision")&&e.channel==="REST")return 0;
+  if(e.channel==="rshim")return 1;                 // DPU provisioning — BFB
+  if(op.includes("DPU 서비스 구성"))return 2;       // DPU-DHCP 서버·부트 프록시
+  if(e.channel==="Redfish")return op.includes("Reset")?4:3;
+  if(e.channel==="DHCP")return 5;
+  if(e.channel==="PXE")return 6;
+  if(e.channel==="cloud-init")return 7;
+  if(op.startsWith("job "))return 8;
+  if(op.includes("AllocateInstance")||(e.dst||"").includes("FMDS"))return 9;
+  return null;
+}
+function provHl(n){
+  document.querySelectorAll("#provsvg .pv").forEach(g=>{
+    const on=n!==null&&(g.dataset.st||"").split(" ").includes(String(n));
+    g.classList.toggle("on",on);
+  });
+}
+async function loadProvDetail(){
+  let host=$("#prov-host").value.trim();
+  if(!host){                          // 최근 프로비저닝된 호스트 자동 선택
+    const tr=await j("/api/v1/trace?limit=2000");
+    for(let i=tr.length-1;i>=0;i--){
+      const e=tr[i];
+      if((e.op||"").includes("/provision")&&e.host_id){host=e.host_id;break}
+    }
+    if(host)$("#prov-host").value=host;   // 실제 호스트명 자동 기입
+  }
+  if(!host){
+    $("#prov-sum").textContent="프로비저닝 이력 없음 — 개통 주문을 실행하면 절차가 표시됩니다";
+    $("#prov-steps").innerHTML="";return;
+  }
+  // 서버측 q 필터 — 오래된 호스트도 트레이스 버퍼(25k) 전체에서 검색
+  const key=host.replace(/^nh-/,"");
+  const tr=await j(`/api/v1/trace?q=${encodeURIComponent(key)}&limit=400`);
+  const seq=tr.filter(e=>provStep(e)!==null&&
+    (e.host_id===host||((e.src||"")+(e.dst||"")+(e.op||"")).includes(key)));
+  PROV_SEQ=seq;
+  $("#prov-sum").innerHTML=`<b class="m">${host}</b> — ${seq.length}스텝
+    <span class="muted">(행 hover = 그림 점등)</span>:
+    ⓪ provision 요청 → ①② <b>DPU provisioning</b>(BFB·DHCP 서버 구성)
+    → ③④ BMC 부트제어 → ⑤ DHCP → ⑥ iPXE → ⑦ cloud-init → ⑧ job 완료 → ⑨ 인스턴스·FMDS`;
+  $("#prov-steps").innerHTML=seq.map((e,i)=>{
+    const st=provStep(e);
+    const cls="ch-"+e.channel.replace(/[^A-Za-z0-9]/g,"-");
+    return `<tr class="provrow" data-st="${st}"
+      onmouseenter="provHl(${st});showProvTip(this,${st},${i})"
+      onmouseleave="provHl(null);hideProvTip()">
+      <td class="muted">${e.at.slice(11,19)}</td>
+      <td class="kv" style="font-size:10px">${e.src} → ${e.dst}</td>
+      <td><span class="ch ${cls}">${e.channel}</span> <span class="muted" style="font-size:9px">${["⓪","①","②","③","④","⑤","⑥","⑦","⑧","⑨"][st]}</span></td>
+      <td style="font-size:11px"><b>${e.op}</b><span class="muted"> — ${(e.detail||"").slice(0,110)}</span></td></tr>`;
+  }).join("")||'<tr><td colspan="4" class="muted">해당 호스트의 프로비저닝 트레이스 없음</td></tr>';
+}
+async function replayProv(){                    // 절차 재생 — 행·그림 동시 점등
+  const rows=[...document.querySelectorAll("#prov-steps tr.provrow")];
+  for(const r of rows){
+    rows.forEach(x=>x.classList.remove("sel"));
+    r.classList.add("sel");
+    r.scrollIntoView({block:"nearest"});
+    provHl(parseInt(r.dataset.st));
+    await new Promise(res=>setTimeout(res,650));
+  }
+  provHl(null);rows.forEach(x=>x.classList.remove("sel"));
+}
+$("#prov-host").addEventListener("keydown",e=>{if(e.key==="Enter")loadProvDetail()});
+
+// ── ⑨ NICo REST API 리스트 (OpenAPI 실시간 추출) ─────────────
+async function loadNicoApis(){
+  const spec=await j("/openapi.json");
+  const rows=[];
+  for(const [p,ops] of Object.entries(spec.paths)){
+    if(!p.startsWith("/fake-nico"))continue;
+    for(const [m,op] of Object.entries(ops)){
+      if(!["get","post","patch","delete"].includes(m))continue;
+      rows.push({m:m.toUpperCase(),p,
+        d:(op.summary||"")+((op.description||"").split("\n")[0]?` — ${(op.description||"").split("\n")[0]}`:"")});
+    }
+  }
+  rows.sort((a,b)=>a.p.localeCompare(b.p));
+  $("#api-cnt").textContent=rows.length;
+  const isDemo=r=>/inject|\/ghost|\/state$|\/config$/.test(r.p)
+    ||(r.m==="DELETE"&&/hosts\/\{host_id\}$/.test(r.p));
+  const groups={"읽기 — 실 NICo 리소스 대응":r=>r.m==="GET",
+    "Day 0/1/2 액션 — D1 어댑터 경유":r=>r.m!=="GET"&&!isDemo(r),
+    "데모 전용 (실배치 제거 대상)":r=>r.m!=="GET"&&isDemo(r)};
+  $("#nico-apis").innerHTML=Object.entries(groups).map(([title,f])=>{
+    const g=rows.filter(f);
+    return `<div><h3 style="margin-top:0">${title} (${g.length})</h3>
+      <table><tbody>${g.map(r=>
+        `<tr><td style="width:56px"><span class="mt mt-${r.m}">${r.m}</span></td>
+         <td><span class="m" style="font-size:10px">${r.p.replace("/fake-nico","")}</span>
+           <div class="muted" style="font-size:9.5px">${r.d.slice(0,70)}</div></td></tr>`).join("")}
+      </tbody></table></div>`;
+  }).join("");
+}
+
+// ── ⑥ IB fabric topology ─────────────────────────────────
+const PALETTE=["#76b900","#5aa7e8","#e8c66a","#b48ce8","#f0a3b0","#5ad0c8","#e88a5a","#9fd05a"];
+async function loadFabric(){
+  let sel=$("#fab-tenant").value;
+  if(!sel&&!loadFabric._init){                     // 딥링크: /nico#tenant=tnt-x
+    const m=location.hash.match(/tenant=([^&]+)/);
+    if(m)sel=decodeURIComponent(m[1]);
+    loadFabric._init=true;
+  }
+  const f=await j("/api/v1/fabric/ib"+(sel?`?tenant_id=${encodeURIComponent(sel)}`:""));
+  $("#fab-tenant").innerHTML='<option value="">전체 (물리 자원)</option>'
+    +f.tenants.map(t=>`<option value="${t.tenant_id}" ${t.tenant_id===sel?"selected":""}>${t.tenant_id} (${t.racks}랙/${t.gpus}GPU · ${t.site||""})</option>`).join("");
+  const color={};f.tenants.forEach((t,i)=>color[t.tenant_id]=PALETTE[i%PALETTE.length]);
+  if(sel&&f.selected){
+    const t=f.selected;
+    $("#fab-summary").innerHTML=`<b style="color:${color[sel]||"#fff"}">■ ${sel}</b>
+      — 사이트 <b>${t.site||"?"}</b> · IB P_Key <b>${t.pkey||"미부여"}</b> · 랙 ${t.racks}개 (${t.sus.join(", ")})
+      · GPU <b>${t.gpus.toLocaleString()}</b> · 트레이 SuperNIC → rail leaf → core 스파인 4경로
+      — 파티션 외 노드와 IB 통신 차단 · 클러스터는 단일 사이트 내 구성(M4)`;
+  }else{
+    $("#fab-summary").innerHTML=f.tenants.length
+      ? "테넌트 범례:  "+f.tenants.map(t=>`<span style="color:${color[t.tenant_id]}">■ ${t.tenant_id}${t.pkey?" ("+t.pkey+")":""}</span>`).join("  ·  ")
+        +'  ·  <span style="color:#5a6b80">■ 미할당 풀</span>'
+      : "할당된 테넌트 없음 — 전체가 미할당 풀(회색)";
+  }
+  drawFabric(f,sel,color);
+}
+function drawFabric(f,sel,color){
+  // 사이트별 독립 패브릭 (세로 스택) × 듀얼 네트워크 Fabric-A/B (스파인 2열)
+  const COLW=118,X0=26,BLOCK=436,GAP=32,TOP=28;
+  const NET_STYLE={"Fabric-A":{fill:"#13314f",stroke:"#2a4868",text:"#9fd0ff"},
+                   "Fabric-B":{fill:"#241b3a",stroke:"#463366",text:"#c8a5e8"}};
+  const maxSus=Math.max(1,...f.sites.map(s=>s.sus.length));
+  const W=Math.max(1380,X0*2+maxSus*COLW);
+  let all="";
+  f.sites.forEach((site,si)=>{
+    const y0=si*(BLOCK+GAP)+TOP;
+    const netY=[y0+6,y0+42],leafY=y0+150,rackY=y0+200;
+    const width=X0*2+site.sus.length*COLW;
+    // 스파인 행이 SU 폭보다 넓으면 잘리지 않게 중심을 오른쪽으로 클램프
+    const nSp=(site.networks[0]||{spines:[]}).spines.length;
+    const cx=Math.max(width,nSp*180+190)/2+40;
+    let lines="",boxes="";
+    site.sus.forEach((su,i)=>{
+      const lx=X0+i*COLW,lcx=lx+48;
+      const hasSel=sel&&su.racks.some(r=>r.tenant_id===sel);
+      const hasAny=su.racks.some(r=>r.tenant_id);
+      site.networks.forEach((net,ni)=>{
+        const st=NET_STYLE[net.name]||NET_STYLE["Fabric-A"];
+        const upCol=hasSel?(color[sel]||"#76b900"):(sel?"#22303f":hasAny?"#4a5f78":st.stroke);
+        const sxs=net.spines.map((sp,k)=>cx+(k-(net.spines.length-1)/2)*180);
+        sxs.forEach(sx=>{lines+=`<line x1="${sx}" y1="${netY[ni]+24}" x2="${lcx}" y2="${leafY}"
+          stroke="${upCol}" stroke-width="${hasSel?1.6:0.7}" opacity="${hasSel?0.9:(ni?0.35:0.5)}"/>`});
+      });
+      boxes+=`<rect x="${lx}" y="${leafY}" width="96" height="26" rx="4" fill="#0d141d"
+        stroke="${hasSel?(color[sel]||"#76b900"):"#2a3848"}">
+        <title>${su.su_id} 리프 — 네트워크당 ${su.leaves_per_network}개(레일당 4) × 2망 · ${su.links_800g.toLocaleString()}×800G 노드 링크</title></rect>
+        <text x="${lcx}" y="${leafY+11}" text-anchor="middle" fill="#9fb8d0" font-size="8.5">leaf ${su.leaves_per_network}×2net</text>
+        <text x="${lcx}" y="${leafY+21}" text-anchor="middle" fill="#5a6b80" font-size="8">rail ${su.rails_per_network}/net · ${su.links_800g.toLocaleString()}L</text>`;
+      su.racks.forEach((r,k)=>{
+        const col=k%2,row=Math.floor(k/2);
+        const rx=lx+col*50,ry=rackY+row*22;
+        let fill="#233043",op=1;
+        if(r.tenant_id){fill=color[r.tenant_id]||"#4a5f78";
+          if(sel&&r.tenant_id!==sel){fill="#1a2330";op=0.9}}
+        else if(sel){op=0.55}
+        lines+=`<line x1="${lcx}" y1="${leafY+26}" x2="${rx+23}" y2="${ry}"
+          stroke="${(sel&&r.tenant_id===sel)?(color[sel]||"#76b900"):"#2a3848"}"
+          stroke-width="${(sel&&r.tenant_id===sel)?1.6:0.6}"/>`;
+        boxes+=`<rect x="${rx}" y="${ry}" width="46" height="17" rx="3" fill="${fill}"
+          opacity="${op}" stroke="#1d2836"><title>${r.rack_id} · ${r.gpus} GPU · ${r.tenant_id||"미할당"}</title></rect>
+          <text x="${rx+23}" y="${ry+12}" text-anchor="middle" fill="#0b1420" font-size="8"
+            style="pointer-events:none">${r.rack_id.split("rack-")[1]}</text>`;
+      });
+      boxes+=`<text x="${lcx}" y="${y0+BLOCK-24}" text-anchor="middle" fill="#8aa0b4" font-size="10">${su.su_id} (${su.racks.length}랙)</text>
+        <text x="${lcx}" y="${y0+BLOCK-13}" text-anchor="middle" fill="#5a6b80" font-size="8.5">${su.blueprint_key}</text>`;
+    });
+    let spines="";
+    site.networks.forEach((net,ni)=>{
+      const st=NET_STYLE[net.name]||NET_STYLE["Fabric-A"];
+      const sxs=net.spines.map((sp,k)=>cx+(k-(net.spines.length-1)/2)*180);
+      net.spines.forEach((sp,k)=>{const sx=sxs[k];
+        spines+=`<rect x="${sx-62}" y="${netY[ni]}" width="124" height="24" rx="5" fill="${st.fill}" stroke="${st.stroke}"/>
+          <text x="${sx}" y="${netY[ni]+16}" text-anchor="middle" fill="${st.text}" font-size="10">${sp.id} · ${sp.model}</text>`});
+      spines+=`<text x="${Math.max(66,cx-(net.spines.length-1)/2*180-130)}" y="${netY[ni]+16}"
+        text-anchor="end" fill="${st.text}" font-size="10" font-weight="700">${net.name}</text>`;
+    });
+    all+=`<text x="${X0}" y="${y0-8}" fill="#9fd0ff" font-size="12" font-weight="700">▣ ${site.name}${site.site?` (${site.site})`:""} — 독립 IB 듀얼 패브릭 A/B · ${site.ib_tier} (SU ${site.sus.length}) · UFM(HA)×${site.ufm_ha_sets} · Converged ${site.converged_tier}</text>`;
+    if(si>0)all+=`<line x1="0" y1="${y0-TOP+8}" x2="${W}" y2="${y0-TOP+8}" stroke="#2a3848" stroke-dasharray="5 5"/>`;
+    all+=lines+spines+boxes;
+  });
+  const svg=$("#fabsvg");
+  svg.setAttribute("width",W);
+  svg.setAttribute("height",TOP+f.sites.length*(BLOCK+GAP));
+  svg.innerHTML=all;
+}
+
+// ── ⑤ cluster emulation ─────────────────────────────────
+function heat(u){          // util 0..100 → green→yellow→red
+  const hue=Math.max(0,110-u*1.1);
+  return `hsl(${hue},70%,${28+u*0.18}%)`;
+}
+async function loadClusters(){
+  const [st,cls]=await Promise.all([j("/api/v1/emu/status"),j("/api/v1/emu/clusters")]);
+  $("#step").textContent=st.step;
+  if(!cls.length){$("#clusters").innerHTML=
+    '<span class="muted">활성 클러스터 없음 — 검증 콘솔(/flow)에서 개통 주문을 실행하세요.</span>';return}
+  let html="";
+  for(const c of cls){
+    const trays=await j(`/api/v1/emu/trays?tenant_id=${c.tenant_id}`);
+    const byRack={};
+    for(const t of trays)(byRack[t.rack_id]=byRack[t.rack_id]||[]).push(t);
+    const heatmap=Object.keys(byRack).sort().map(rid=>{
+      const cells=byRack[rid].sort((a,b)=>a.tray_id.localeCompare(b.tray_id)).map(t=>{
+        const u=t.gpus.reduce((a,g)=>a+g.util_pct,0)/t.gpus.length;
+        const fault=t.gpus.some(g=>g.state==="fault");
+        return `<span class="tcell ${fault?"fault":""}" style="background:${heat(u)}"
+          title="${t.tray_id} · util ${u.toFixed(0)}% · ${t.power_w}W · ${t.workload}"
+          onclick="pickTray('${t.tray_id}')"></span>`;
+      }).join("");
+      return `<div class="rackrow"><span class="rid">${rid}</span><span>${cells}</span></div>`;
+    }).join("");
+    html+=`<div class="cl">
+      <div class="head"><b>${c.tenant_id}</b>
+        <span class="stat">워크로드
+          <select onchange="setProfile('${c.tenant_id}',this.value)">
+            ${["training","inference","idle"].map(p=>
+              `<option ${p===c.profile?"selected":""}>${p}</option>`).join("")}
+          </select></span>
+        <span class="stat">GPU <b>${c.gpus}</b> (트레이 ${c.trays})</span>
+        <span class="stat">평균 util <b>${c.avg_util_pct}%</b>
+          <span class="bar"><i style="width:${c.avg_util_pct}%"></i></span></span>
+        <span class="stat">전력 <b>${c.power_kw}</b>/${c.power_cap_kw} kW</span>
+        <span class="stat">최고 GPU 온도 <b>${c.max_gpu_temp_c}°C</b></span>
+        <span class="stat">NVLink <b>${c.nvlink_tbps}</b> TB/s</span>
+        <span class="stat">≈<b>${c.tokens_ks}</b>K tok/s</span>
+        <span class="stat">ECC <b>${c.ecc_corrected_total}</b></span>
+        <span class="stat" ${c.fault_gpus?'style="border-color:var(--red)"':""}>fault GPU <b>${c.fault_gpus}</b></span>
+      </div>${heatmap}</div>`;
+  }
+  $("#clusters").innerHTML=html;
+}
+async function setProfile(tid,p){
+  await jp(`/api/v1/emu/clusters/${tid}/workload`,{profile:p});
+}
+async function pickTray(tid){
+  selTray=tid;$("#dt").textContent=tid;
+  await loadTray();
+  // ⑧ Provisioning 세부 연동 — 선택 트레이의 절차를 즉시 표시
+  $("#prov-host").value=`nh-${tid}`;
+  await loadProvDetail();
+}
+async function loadTray(){
+  if(!selTray)return;
+  const t=await j(`/api/v1/emu/trays/${selTray}`);
+  const rows=t.gpus.map(g=>{
+    const col=g.state==="fault"?"var(--red)":g.state==="throttled"?"var(--amber)":"var(--g)";
+    return `<tr><td>GPU${g.index}</td>
+      <td><span class="gpubar"><i style="width:${g.util_pct}%;background:${col}"></i></span> ${g.util_pct}%</td>
+      <td>${g.temp_c}°C</td><td>${g.power_w}W</td>
+      <td>${g.hbm_used_gb}/${g.hbm_total_gb}GB</td>
+      <td>${g.ecc_corrected}</td>
+      <td class="m">${g.xid_events.slice(-3).join(",")||"—"}</td>
+      <td><span class="pill p-${g.state==="fault"?"rma":g.state==="throttled"?"allocated":"ok"}">${g.state}</span></td></tr>`;
+  }).join("");
+  $("#traydetail").innerHTML=`
+    <div class="kv" style="margin-bottom:8px">
+      테넌트 ${t.tenant_id||"—"} · 워크로드 <b>${t.workload}</b> · job ${t.job_name||"—"} ·
+      CPU ${t.cpu_util_pct}% · NVLink TX ${t.nvlink_tx_tbps} / RX ${t.nvlink_rx_tbps} TB/s ·
+      트레이 전력 <b>${t.power_w}W</b> (GPU max ${t.gpu_max_w}W/ea) · step ${t.step}</div>
+    <table><thead><tr><th>GPU</th><th>Utilization</th><th>온도</th><th>전력</th>
+      <th>HBM</th><th>ECC(corr)</th><th>XID</th><th>상태</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+}
+
+// ── init / auto refresh ─────────────────────────────────
+async function refreshAll(){
+  await Promise.all([loadSite(),loadHosts(),loadCatalog(),loadClusters(),loadFabric(),
+                     loadProvDetail(),loadNicoApis()]);
+  // ⑧ 다이어그램 hover → 단계 하이라이트 + API 메시지 말풍선
+  document.querySelectorAll("#provsvg .pv").forEach(g=>{
+    const st=parseInt((g.dataset.st||"").split(" ")[0]);
+    if(isNaN(st))return;
+    g.style.cursor="help";
+    g.addEventListener("mouseenter",()=>{provHl(st);showProvTip(g,st,
+      PROV_SEQ.findIndex(e=>provStep(e)===st))});
+    g.addEventListener("mouseleave",()=>{provHl(null);hideProvTip()});
+  });
+  // 시연: #provstep:N 해시로 해당 단계 말풍선 고정
+  const pm=location.hash.match(/^#provstep:(\d)$/);
+  if(pm){
+    const st=parseInt(pm[1]);
+    const g=[...document.querySelectorAll("#provsvg .pv")].find(
+      x=>(x.dataset.st||"").split(" ")[0]===String(st));
+    if(g){g.scrollIntoView({block:"center"});
+      setTimeout(()=>{provHl(st);showProvTip(g,st,
+        PROV_SEQ.findIndex(e=>provStep(e)===st))},500);}
+  }
+  if(selHost)pickHost(selHost);
+  if(selTray)loadTray();
+}
+(function(){
+  $("#f-state").innerHTML='<option value="">전체 상태</option>'
+    +HOST_STATES.map(s=>`<option>${s}</option>`).join("");
+  refreshAll();
+  setInterval(()=>{if($("#auto").checked){loadSite();loadClusters();loadTray();
+    if(selHost)pickHost(selHost);}},3000);
+})();
+</script>
+<script src="/static/nav.js"></script>
+</body>
+</html>

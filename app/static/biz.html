@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>비즈 포털 — NeoCloud OS</title>
+<link rel="stylesheet" href="/static/theme.css">
+<script src="/static/charts.js"></script>
+<style>
+  :root{--g:#76b900;--bg:#0f1722;--card:#16202e;--line:#2a3848;--mut:#8aa0b4;
+        --amber:#e8c66a;--red:#f0a3b0;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
+       background:var(--bg);color:#e6edf3;font-size:13px;line-height:1.5}
+  .wrap{max-width:1460px;margin:0 auto;padding:18px 22px}
+  h2{font-size:14px;color:var(--g);border-bottom:1px solid var(--line);padding-bottom:6px;margin:0 0 10px}
+  h3{font-size:12px;color:var(--mut);margin:10px 0 6px;text-transform:uppercase}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:1100px){.grid{grid-template-columns:1fr}}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:11px 14px}
+  .card .k{color:var(--mut);font-size:10.5px;text-transform:uppercase}
+  .card .v{font-size:20px;font-weight:800;color:#fff;margin-top:2px}
+  .card .v small{font-size:11px;color:var(--g);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th,td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600;text-transform:uppercase;font-size:10px}
+  .m{font-family:Menlo,monospace;font-size:10.5px}
+  .muted{color:var(--mut)}
+  .pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700}
+  .p-delivered,.p-closed,.p-resolved,.p-active{background:#23402a;color:#9fe0a8}
+  .p-failed,.p-rejected,.p-critical{background:#43232a;color:var(--red)}
+  .p-open,.p-high{background:#3a2f12;color:var(--amber)}
+  .p-in_progress,.p-medium,.p-low{background:#1c2f4a;color:#9fd0ff}
+  input,select{background:#0d141d;border:1px solid var(--line);color:#e6edf3;
+        border-radius:6px;padding:6px 8px;font-size:12px}
+  button{background:var(--g);color:#08210a;border:0;border-radius:6px;padding:6px 11px;
+         font-weight:700;cursor:pointer;font-size:12px}
+  button.ghost{background:transparent;color:var(--g);border:1px solid var(--g)}
+  .scr{max-height:250px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+  .sum{background:#0d141d;border:1px solid var(--line);border-radius:8px;padding:9px 12px;
+       display:flex;gap:22px;margin-top:8px;font-size:12px}
+  .sum b{color:#fff;font-size:15px}
+  .bar{height:7px;border-radius:4px;background:#233043;overflow:hidden;width:110px;display:inline-block;vertical-align:middle}
+  .bar i{display:block;height:100%;background:var(--g)}
+  tr.trow{cursor:pointer}tr.trow:hover{background:#1a2635}
+  tr.trow.sel{background:#1d3a26}
+</style>
+</head>
+<body>
+<header class="nc-header">
+  <span class="nc-brand">NeoCloud OS</span>
+  <div class="nc-head-txt">
+    <div class="nc-title">비즈 포털 — Business Portal</div>
+    <div class="nc-sub">고객·계약 관리 · 서비스 요청 · 티켓 · 사용량/과금 프리뷰</div>
+  </div>
+  <nav class="nc-nav">
+    <a href="/customer">👤 고객 포털</a>
+    <a href="/biz" class="act">💼 비즈 포털</a>
+    <a href="/ops">🛠 운영 포털</a>
+    <a href="/arch">🧭 NeoCloud Control-Plane</a>
+    <a href="/nico">⚙️ NICo</a>
+    <a href="/flow">🔬 검증 콘솔</a>
+    <a href="/">📊 VRCM</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="cards" id="cards"></div>
+
+  <!-- 고객·계약 — 최우선 업무 영역 (상단 고정) -->
+    <div class="panel" style="border:1.5px solid var(--g);box-shadow:0 0 14px rgba(118,185,0,.12)">
+      <h2 style="font-size:15px">🤝 고객 · 계약 — Contract Management
+        <span class="pill p-active" style="margin-left:6px" id="t-cnt"></span>
+        <span class="nvreq">BMaaS Minimum · CNP07</span></h2>
+      <div class="scr"><table>
+        <thead><tr><th>고객</th><th>격리 티어</th><th>랙</th><th>GPU</th><th>CPU노드</th><th>월 환산(예상)</th><th>티켓</th></tr></thead>
+        <tbody id="tenants"></tbody></table></div>
+      <h3>신규 계약(테넌트) 생성 + 개통 요청 — 운영 승인 대기</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="t-name" placeholder="고객명 (예: gamma-corp)" style="flex:2;min-width:150px">
+        <select id="t-tier"><option value="bare_metal_dedicated">bare_metal_dedicated</option>
+          <option value="vm_multitenant">vm_multitenant</option></select>
+        <select id="t-bp"><option value="vr-nvl72">vr-nvl72</option>
+          <option value="gb200-nvl72">gb200-nvl72</option></select>
+        <input id="t-racks" type="number" value="2" min="1" max="140" style="width:76px" title="랙 수">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center">
+        <span class="muted" style="font-size:11px">스토리지</span>
+        <select id="t-smode" onchange="$('#t-stb').disabled=$('#t-sgbps').disabled=this.value!=='manual'">
+          <option value="auto">자동 (랙당 500TB·40GB/s)</option>
+          <option value="manual">수동 지정</option></select>
+        <input id="t-stb" type="number" placeholder="용량 TB" style="width:100px" disabled>
+        <input id="t-sgbps" type="number" placeholder="QoS GB/s" style="width:100px" disabled>
+        <span class="muted" style="font-size:11px">· 기본 CPU 노드 5대(DPU) 자동 포함</span>
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <button onclick="mkTenant(true)">+ 계약 + 개통 요청</button>
+          <button class="ghost" onclick="mkTenant(false)">계약만</button></span>
+      </div>
+      <div id="t-msg" class="muted" style="margin-top:5px"></div>
+    </div>
+
+  <!-- 판매 가능 자원 — 사이트별 (계약은 단일 사이트 내 구성) -->
+  <div class="panel">
+    <h2>판매 가능 자원 — 사이트별 <small class="muted">
+      계약(클러스터)은 단일 사이트 내에서만 구성 — 사이트 추가 시 자동 확장</small>
+      <span class="nvreq">CAP01</span></h2>
+    <table><thead><tr><th>사이트</th><th>가동</th><th style="width:190px">점유율</th>
+      <th>판매가능(유효)</th><th>최대 단일 계약</th><th>잔여 캐파 월 매출 잠재</th></tr></thead>
+      <tbody id="bizsites"></tbody></table>
+  </div>
+
+  <!-- 전체 GPU 사용 현황 -->
+  <div class="panel">
+    <h2>전체 GPU 사용 현황 (LIVE · 에뮬레이션 연동)</h2>
+    <div class="cards" id="gcards" style="margin-bottom:10px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><canvas id="g-util" style="width:100%"></canvas></div>
+      <div><canvas id="g-power" style="width:100%"></canvas></div>
+    </div>
+  </div>
+
+  <!-- 테넌트별 세부 현황 -->
+  <div class="panel">
+    <h2>테넌트별 세부 현황 <small class="muted">— 행 클릭 시 해당 고객 추이 그래프</small></h2>
+    <table><thead><tr><th>고객</th><th>랙 / GPU</th><th style="width:170px">Utilization</th>
+      <th>전력</th><th>최고온도</th><th>tok/s</th><th>fault</th>
+      <th>스토리지</th><th>월 환산</th><th>티켓</th></tr></thead>
+      <tbody id="tdetail"></tbody></table>
+    <div id="texpand" style="display:none;margin-top:12px">
+      <div id="t-meta" class="muted" style="margin-bottom:6px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><canvas id="t-util" style="width:100%"></canvas></div>
+        <div><canvas id="t-power" style="width:100%"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <h2>서비스 요청 현황 (전체 주문)</h2>
+        <div class="scr"><table>
+          <thead><tr><th>주문</th><th>유형</th><th>고객</th><th>규모</th><th>상태</th></tr></thead>
+          <tbody id="orders"></tbody></table></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h2>사용량 · 과금 프리뷰 <small class="muted">(GET /billing/usage — 데모 단가)</small>
+          <span class="nvreq">CAP01·CAP02</span></h2>
+        <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+          <select id="b-tenant" onchange="loadBilling()"><option value="">전체 고객</option></select>
+          <span class="muted" id="rates"></span>
+        </div>
+        <div class="scr"><table>
+          <thead><tr><th>주문</th><th>고객</th><th>랙</th><th>상태</th><th>rack-hours</th><th>누적(USD)</th><th>월 환산(USD)</th></tr></thead>
+          <tbody id="usage"></tbody></table></div>
+        <div class="sum" id="totals"></div>
+      </div>
+
+      <div class="panel">
+        <h2>티켓 큐 (전체)</h2>
+        <div class="scr"><table>
+          <thead><tr><th>티켓</th><th>고객</th><th>심각도</th><th>상태</th><th>제목</th></tr></thead>
+          <tbody id="tickets"></tbody></table></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+async function j(u){const r=await fetch(u);if(!r.ok)throw new Error((await r.json()).detail||r.status);return r.json()}
+async function jp(u,b){const r=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify(b)});if(!r.ok)throw new Error((await r.json()).detail||r.status);return r.json()}
+const fmt=n=>n.toLocaleString(undefined,{maximumFractionDigits:0});
+
+let selT=null;
+async function loadLive(ts,tcks,fab,usage){
+  const [cls,ghist,status,views]=await Promise.all([
+    j("/api/v1/emu/clusters"),j("/api/v1/emu/history?limit=150"),
+    j("/api/v1/emu/status"),j("/fake-vast/views")]);
+  const last=ghist[ghist.length-1]||{};
+  const mk=(k,v)=>`<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  $("#gcards").innerHTML=
+    mk("전체 GPU",(last.total_gpus||status.trays_total*4).toLocaleString())+
+    mk("할당 GPU",`${(last.active_gpus||0).toLocaleString()} <small>${last.alloc_pct||0}%</small>`)+
+    mk("평균 Utilization",`${last.avg_util_pct||0}<small>%</small>`)+
+    mk("전체 사용 전력",`${(last.power_kw||0).toLocaleString()} <small>kW</small>`)+
+    mk("총 처리량",`${(last.tokens_ks||0).toLocaleString()} <small>K tok/s</small>`)+
+    mk("fault GPU",last.fault_gpus||0);
+  const pick=k=>ghist.map(x=>x[k]);
+  ncChart($("#g-util"),[
+    {label:"평균 Utilization",color:"#76b900",data:pick("avg_util_pct")},
+    {label:"GPU 할당률",color:"#5aa7e8",data:pick("alloc_pct")}],
+    {unit:"%",min:0,max:100});
+  ncChart($("#g-power"),[
+    {label:"전체 전력",color:"#e8c66a",data:pick("power_kw")}],
+    {unit:"kW",min:0});
+
+  // 테넌트별 세부
+  const byC=Object.fromEntries(cls.map(c=>[c.tenant_id,c]));
+  const byF=Object.fromEntries(fab.tenants.map(t=>[t.tenant_id,t]));
+  const proj={};usage.lines.forEach(l=>{proj[l.tenant_id]=(proj[l.tenant_id]||0)+l.projected_monthly_usd});
+  $("#tdetail").innerHTML=ts.map(t=>{
+    const c=byC[t.id],f=byF[t.id];
+    const stor=views.filter(v=>v.tenant_ref===t.id).reduce((a,v)=>a+v.capacity_tb,0);
+    const open=tcks.filter(x=>x.tenant_id===t.id&&x.status!=="resolved").length;
+    return `<tr class="trow ${selT===t.id?"sel":""}" onclick="pickTenant('${t.id}')">
+      <td><b>${t.name}</b> <span class="muted m">${t.id}</span></td>
+      <td>${f?`${f.racks} / ${f.gpus.toLocaleString()}`:"—"}</td>
+      <td>${c?`<span class="bar"><i style="width:${c.avg_util_pct}%"></i></span> ${c.avg_util_pct}%`:"—"}</td>
+      <td>${c?`${c.power_kw}/${c.power_cap_kw}kW`:"—"}</td>
+      <td>${c?c.max_gpu_temp_c+"°C":"—"}</td>
+      <td>${c?c.tokens_ks.toLocaleString()+"K":"—"}</td>
+      <td style="color:${c&&c.fault_gpus?"var(--red)":"inherit"}">${c?c.fault_gpus:0}</td>
+      <td>${stor?stor.toLocaleString()+"TB":"—"}</td>
+      <td>$${fmt(proj[t.id]||0)}</td><td>${open}</td></tr>`}).join("")
+    ||'<tr><td colspan="10" class="muted">계약 없음</td></tr>';
+  if(selT)drawTenant();
+}
+async function pickTenant(id){
+  selT=(selT===id)?null:id;
+  $("#texpand").style.display=selT?"block":"none";
+  document.querySelectorAll("tr.trow").forEach(e=>e.classList.remove("sel"));
+  if(selT)await drawTenant();
+  else return;
+}
+async function drawTenant(){
+  const [h,f]=await Promise.all([
+    j(`/api/v1/emu/history?tenant_id=${selT}&limit=150`),
+    j(`/api/v1/fabric/ib?tenant_id=${selT}`)]);
+  const sel=f.selected;
+  $("#t-meta").innerHTML=`<b style="color:#fff">${selT}</b> — `+
+    (sel?`랙 ${sel.racks} (${sel.sus.join(", ")}) · GPU ${sel.gpus.toLocaleString()} · P_Key ${sel.pkey||"—"}`
+        :"활성 자원 없음");
+  const pick=k=>h.map(x=>x[k]);
+  ncChart($("#t-util"),[{label:"Utilization",color:"#76b900",data:pick("avg_util_pct")}],
+    {unit:"%",min:0,max:100});
+  ncChart($("#t-power"),[{label:"전력",color:"#5aa7e8",data:pick("power_kw")}],
+    {unit:"kW",min:0,capLine:h.length?h[h.length-1].power_cap_kw:undefined});
+}
+async function loadSiteCapacity(rates){
+  const d=await j("/api/v1/inventory/sites");
+  const rate=(rates.rates||{})["vr-nvl72"]||980;
+  $("#bizsites").innerHTML=d.sites.map(s=>{
+    const occ=s.racks_total?Math.round(s.racks_allocated/s.racks_total*100):0;
+    const rev=s.racks_sellable*rate*720;
+    return `<tr><td><b>${s.name}</b> <span class="muted" style="font-size:10px">${s.site}</span></td>
+      <td style="font-size:10px" class="muted">${s.floors.map(f=>`${f.name} (${f.ready})`).join("<br>")}</td>
+      <td><div class="bar" style="width:170px"><i style="width:${occ}%"></i></div>
+        <span class="muted" style="font-size:10px">${s.racks_allocated}/${s.racks_total}랙 · ${occ}%</span></td>
+      <td><b>${s.racks_contractable}랙</b> <span class="muted">· ${(s.racks_contractable*72).toLocaleString()} GPU</span>
+        ${s.racks_locked_by_isolation?`<span class="muted" style="font-size:10px"> (유휴 ${s.racks_sellable}랙 중 격리 잠김 ${s.racks_locked_by_isolation}랙 · ${(s.racks_locked_by_isolation*72).toLocaleString()} GPU)</span>`:""}
+        ${s.racks_unhealthy?`<span style="color:var(--red);font-size:10px"> (비정상 ${s.racks_unhealthy})</span>`:""}</td>
+      <td>${s.max_single_cluster_racks}랙 <span class="muted" style="font-size:10px">(${(s.max_single_cluster_racks*72).toLocaleString()} GPU)</span></td>
+      <td class="m">$${rev.toLocaleString()}/월</td></tr>`;
+  }).join("");
+}
+async function loadAll(){
+  const [ts,orders,tcks,fab,usage,rates,cpus]=await Promise.all([
+    j("/api/v1/tenants"),j("/api/v1/orders"),j("/api/v1/tickets"),
+    j("/api/v1/fabric/ib"),j("/api/v1/billing/usage"),j("/api/v1/billing/rates"),
+    j("/api/v1/cpu-nodes")]);
+  await loadSiteCapacity(rates);
+  window._cpuByTenant={};
+  cpus.forEach(c=>{if(c.tenant_id)window._cpuByTenant[c.tenant_id]=(window._cpuByTenant[c.tenant_id]||0)+1});
+  $("#t-cnt").textContent=`${ts.length}개 계약`;
+  await loadLive(ts,tcks,fab,usage);
+
+  const byT=Object.fromEntries(fab.tenants.map(t=>[t.tenant_id,t]));
+  const openT=tcks.filter(t=>t.status!=="resolved");
+  const activeRacks=fab.tenants.reduce((a,t)=>a+t.racks,0);
+  const mk=(k,v)=>`<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  $("#cards").innerHTML=
+    mk("고객(계약)",ts.length)+
+    mk("활성 랙",`${activeRacks} <small>/ ${fab.sites.reduce((a,st)=>a+st.sus.reduce((x,su)=>x+su.racks.length,0),0)}</small>`)+
+    mk("서비스 요청",orders.length)+
+    mk("미해결 티켓",openT.length)+
+    mk("월 환산 매출(예상)",`$${fmt(usage.totals.projected_monthly_usd)}`);
+
+  // 고객·계약
+  const projByTenant={};
+  usage.lines.forEach(l=>{projByTenant[l.tenant_id]=(projByTenant[l.tenant_id]||0)+l.projected_monthly_usd});
+  $("#tenants").innerHTML=ts.map(t=>{
+    const f=byT[t.id];
+    return `<tr><td><b>${t.name}</b> <span class="muted m">${t.id}</span></td>
+      <td class="m">${t.isolation_tier}</td>
+      <td>${f?f.racks:0}</td><td>${f?f.gpus.toLocaleString():0}</td>
+      <td>${(window._cpuByTenant||{})[t.id]||0} <span class="muted">/5</span></td>
+      <td>$${fmt(projByTenant[t.id]||0)}</td>
+      <td>${tcks.filter(x=>x.tenant_id===t.id&&x.status!=="resolved").length}</td></tr>`}).join("")
+    ||'<tr><td colspan="7" class="muted">계약 없음</td></tr>';
+  $("#b-tenant").innerHTML='<option value="">전체 고객</option>'
+    +ts.map(t=>`<option value="${t.id}">${t.name}</option>`).join("");
+
+  // 주문 (승인 대기 표시 포함)
+  orders.sort((a,b)=>b.id.localeCompare(a.id,undefined,{numeric:true}));
+  $("#orders").innerHTML=orders.map(o=>
+    `<tr><td class="m">${o.id}</td><td>${o.kind}</td><td class="m">${o.tenant_id}</td>
+     <td>${o.kind==="new"?o.racks+" rack":o.allocation_id||"—"}</td>
+     <td><span class="pill p-${o.state}">${o.state}</span>
+       ${o.pending_stage?`<span class="pill p-open">운영 승인 대기: ${o.pending_stage}</span>`:""}</td></tr>`).join("")
+    ||'<tr><td colspan="5" class="muted">—</td></tr>';
+
+  // 티켓
+  $("#tickets").innerHTML=tcks.map(t=>
+    `<tr><td class="m">${t.id}</td><td class="m">${t.tenant_id}</td>
+     <td><span class="pill p-${t.severity}">${t.severity}</span></td>
+     <td><span class="pill p-${t.status}">${t.status}</span></td><td>${t.subject}</td></tr>`).join("")
+    ||'<tr><td colspan="5" class="muted">—</td></tr>';
+
+  $("#rates").textContent="단가: "+Object.entries(rates.rates)
+    .map(([k,v])=>`${k} $${v}/rack-h`).join(" · ");
+  renderUsage(usage);
+}
+function renderUsage(u){
+  $("#usage").innerHTML=u.lines.map(l=>
+    `<tr><td class="m">${l.order_id}</td><td class="m">${l.tenant_id}</td>
+     <td>${l.racks} (${l.blueprint_key})</td>
+     <td><span class="pill p-${l.active?"active":"closed"}">${l.active?"active":"ended"}</span></td>
+     <td>${l.rack_hours.toFixed(3)}</td><td>$${l.amount_usd.toLocaleString()}</td>
+     <td>$${fmt(l.projected_monthly_usd)}</td></tr>`).join("")
+    ||'<tr><td colspan="7" class="muted">과금 대상 없음</td></tr>';
+  $("#totals").innerHTML=
+    `<span>누적 rack-hours <b>${u.totals.rack_hours.toFixed(3)}</b></span>
+     <span>누적 금액 <b>$${u.totals.amount_usd.toLocaleString()}</b></span>
+     <span>월 환산(활성) <b>$${fmt(u.totals.projected_monthly_usd)}</b></span>`;
+}
+async function loadBilling(){
+  const t=$("#b-tenant").value;
+  renderUsage(await j("/api/v1/billing/usage"+(t?`?tenant_id=${t}`:"")));
+}
+async function mkTenant(withOrder){
+  const name=$("#t-name").value.trim();if(!name)return;
+  try{
+    const t=await jp("/api/v1/tenants",{name,isolation_tier:$("#t-tier").value});
+    let msg=`✓ ${t.id} 계약 생성 — VNI/VRF 자동 바인딩`;
+    if(withOrder){
+      const body={tenant_id:t.id,kind:"new",
+        blueprint_key:$("#t-bp").value,racks:parseInt($("#t-racks").value||"1"),
+        approval_mode:true,storage_mode:$("#t-smode").value};
+      if(body.storage_mode==="manual"){
+        body.storage_tb=parseFloat($("#t-stb").value||"0");
+        body.storage_gbps=parseFloat($("#t-sgbps").value||"0");
+      }
+      const o=await jp("/api/v1/orders",body);
+      msg+=` · 개통 요청 ${o.id} → <b>운영 포털 승인 대기</b> (${o.blueprint_key} × ${o.racks} rack`
+          +(body.storage_mode==="manual"?` · 스토리지 수동 ${body.storage_tb}TB`:" · 스토리지 자동")+")";
+    }
+    $("#t-msg").innerHTML=`<span style="color:var(--g)">${msg}</span>`;
+    $("#t-name").value="";await loadAll();
+  }catch(e){$("#t-msg").innerHTML=`<span style="color:var(--red)">✗ ${e.message}</span>`}
+}
+loadAll();setInterval(loadAll,6000);
+</script>
+<script src="/static/nvreq.js"></script>
+<script src="/static/nav.js"></script>
+</body>
+</html>
