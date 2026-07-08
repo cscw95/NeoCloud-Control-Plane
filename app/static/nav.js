@@ -49,8 +49,10 @@
   if (nav) {
     const sw = document.createElement("label");
     sw.className = "nc-tipsw";
-    sw.title = "말풍선(기능 설명 툴팁) 표시 On/Off";
-    sw.innerHTML = `💬 <input type="checkbox" ${saved !== "0" ? "checked" : ""}>`;
+    sw.title = "기능 설명 말풍선 On/Off — NVIDIA Req 요구사항·Control-Plane 모듈 역할·"
+      + "주문 파이프라인 단계·Provisioning 절차 안내를 항목 위에 올리면 표시합니다. "
+      + "끄면 모든 화면에서 숨겨지며 설정은 유지됩니다.";
+    sw.innerHTML = `💬 말풍선 <input type="checkbox" ${saved !== "0" ? "checked" : ""}>`;
     sw.querySelector("input").addEventListener("change",
       e => applyTips(e.target.checked));
     nav.appendChild(sw);
