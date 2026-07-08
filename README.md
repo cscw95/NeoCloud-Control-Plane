@@ -1,4 +1,4 @@
-# VRCM — Vera Rubin Cluster Manager
+# NICo-Emulator
 
 NeoCloud(GPUaaS) **컨트롤 플레인 MVP**. NVIDIA **NVL72** 시스템(**GB200 / GB300 / Vera
 Rubin**)으로 구성된 멀티 세대 GPU 클러스터(DSX AI Factory)를 관리한다. 두 NVIDIA 레퍼런스
