@@ -129,6 +129,7 @@ def test_tooltip_onoff_switch_in_header(client):
     nav = client.get("/static/nav.js").text
     assert "nc-tipsw" in nav and 'localStorage.getItem("nc-tips")' in nav
     assert "dataset.tips" in nav
+    assert "💬 말풍선" in nav and "기능 설명 말풍선 On/Off" in nav   # 라벨·설명
     # 각 말풍선 시스템이 스위치 상태를 존중
     for path in ["/static/nvreq.js", "/static/modinfo.js"]:
         assert 'dataset.tips === "0"' in client.get(path).text, f"{path} 게이트 누락"
