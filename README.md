@@ -49,18 +49,7 @@ cd ~/vrcm
 - **DPU Isolation 동작 상세** (실 NICo infra-controller 코드 분석 + vrcm 매핑): [docs/DPU_ISOLATION.md](docs/DPU_ISOLATION.md)
 - 헬스체크: http://127.0.0.1:8000/health
 
-기본 시드는 **Phase 1 실배치 구성 (전량 Vera Rubin)** — 2개 사이트 × 각 2개 층:
-
-| 사이트 | 층 | 가동 | GPU (랙) |
-|---|---|---|---|
-| STT 가산 | 1층 6MW | '27.3월 | 1,728 (24랙) |
-| STT 가산 | 2층 3MW | '27.9월 | 864 (12랙) |
-| IGIS 안산 | 1층 12.9MW | '27.11월 | 3,888 (54랙) |
-| IGIS 안산 | 2층 10.4MW | '28.1월 | 3,600 (50랙) |
-
-합계 **10,080 GPU / 140랙 / IT MaxQ 26.2MW (MaxP 31.8MW)** + CPU 노드 풀 60대. 테스트는 2-SU 축소 시드 사용.
-포털 기능에는 **NVIDIA BMaaS Requirements Guide v2.2** 매핑 배지(`NVIDIA Req · <ID>`)가
-표시되며, 운영 포털에 전체 준수 현황 패널이 있다.
+기본 시드는 **Phase 1 실배치 구성 (전량 Vera Rubin)** — 2개 사이트 × 각 2개 층
 
 세대 추가 프로비저닝:
 ```bash
