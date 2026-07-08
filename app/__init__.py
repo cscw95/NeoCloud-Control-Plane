@@ -6,4 +6,4 @@ NVIDIA Vera Rubin NVL72 systems (DSX AI Factory building blocks).
 Scope of this MVP: Inventory & Topology + Multi-tenancy & Isolation.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.1"
