@@ -63,7 +63,8 @@ def test_nav_icons_and_navjs_on_every_page(client):
     for page in PAGES:
         html = client.get(page).text
         assert "/static/nav.js" in html, f"{page}: nav.js 미포함"
-        assert "👤 고객 포털" in html and "🛠 운영 포털" in html, f"{page}: 아이콘"
+        # 리디자인 1b: 이모지 아이콘 제거 — 플랫 탭 텍스트만
+        assert ">고객 포털</a>" in html or ">고객</a>" in html, f"{page}: 고객 탭"
 
 
 def test_flow_console_matches_control_plane_module_names(client):
@@ -129,7 +130,7 @@ def test_tooltip_onoff_switch_in_header(client):
     nav = client.get("/static/nav.js").text
     assert "nc-tipsw" in nav and 'localStorage.getItem("nc-tips")' in nav
     assert "dataset.tips" in nav
-    assert "💬 말풍선" in nav and "기능 설명 말풍선 On/Off" in nav   # 라벨·설명
+    assert "말풍선 <input" in nav and "기능 설명 말풍선 On/Off" in nav   # 라벨·설명
     # 각 말풍선 시스템이 스위치 상태를 존중
     for path in ["/static/nvreq.js", "/static/modinfo.js"]:
         assert 'dataset.tips === "0"' in client.get(path).text, f"{path} 게이트 누락"

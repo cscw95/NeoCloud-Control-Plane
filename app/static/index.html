@@ -6,101 +6,113 @@
 <title>VRCM — Vera Rubin Cluster Manager</title>
 <link rel="stylesheet" href="/static/theme.css">
 <style>
-  :root{--g:#76b900;--navy:#0b1f3a;--bg:#0f1722;--card:#16202e;--line:#2a3848;--mut:#8aa0b4;}
+  /* 페이지 전용 스타일 — 공용 토큰/컴포넌트는 theme.css */
   *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
-       background:var(--bg);color:#e6edf3;font-size:13px;line-height:1.5}
-  header{background:linear-gradient(90deg,var(--navy),#13314f);padding:14px 22px;
-         border-bottom:3px solid var(--g);display:flex;align-items:center;gap:12px}
-  header h1{font-size:18px;margin:0}
-  header .tag{color:var(--g);font-weight:700}
-  header small{color:var(--mut)}
-  .wrap{max-width:1280px;margin:0 auto;padding:18px 22px}
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
-  .card .k{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
-  .card .v{font-size:22px;font-weight:700;color:#fff;margin-top:3px}
-  .card .v small{font-size:12px;color:var(--g);font-weight:600}
-  .grid{display:grid;grid-template-columns:1.15fr 1fr;gap:18px}
-  @media(max-width:980px){.grid{grid-template-columns:1fr}}
-  h2{font-size:14px;color:var(--g);border-bottom:1px solid var(--line);padding-bottom:6px;margin:0 0 10px}
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:18px}
-  .tree{font-family:"SF Mono",Menlo,monospace;font-size:11.5px}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:13px/1.5 -apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif}
+  .wrap{max-width:1460px;margin:0 auto;padding:20px 26px}
+  .panel{margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:18px}
+  .kpi-band{margin-bottom:18px}
+  .kpi .v small{color:var(--green)}
+  /* 사이트 카드 — 좌측 3px blue 보더 유지 (README 명시) */
+  .site-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+  .site-card{background:var(--card-sub);border:1px solid var(--line);
+             border-left:3px solid var(--blue);border-radius:8px;padding:12px 16px}
+  .site-card .k{color:var(--muted);font-size:10.5px}
+  .site-card .v{font-size:20px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums}
+  .site-card .v small{font-size:11px;color:var(--muted);font-weight:600}
+  /* SVG 트랙 (HAC 연결도 · 사이트 네트워크 뷰) — 고정폭은 가로 스크롤 */
+  .svgbox{background:var(--card-sub);border:1px solid var(--line);border-radius:8px;
+          padding:8px;overflow-x:auto}
+  /* 토폴로지 트리 (Menlo · 상태 필 유지) */
+  .tree{font-family:Menlo,monospace;font-size:11.5px}
   .node{padding:2px 0}
   .su{color:#cfe8a0;font-weight:700;cursor:pointer}
-  .gen{background:#13314f;color:#9fd0ff;font-size:10px;padding:1px 7px;border-radius:10px;font-weight:700;margin-left:4px}
+  .gen{background:#13314f;color:var(--blue-text);font-size:10px;padding:1px 7px;
+       border-radius:10px;font-weight:700;margin-left:4px}
   .rack{margin-left:18px;display:flex;gap:8px;align-items:center;padding:1px 0}
   .rack .id{color:#bcd}
   .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700}
-  .ready{background:#23402a;color:#9fe0a8}
-  .allocated{background:#3a2f12;color:#e8c66a}
-  .faulted{background:#43232a;color:#e89aa6}
-  table{width:100%;border-collapse:collapse;font-size:11.5px}
-  th,td{text-align:left;padding:5px 7px;border-bottom:1px solid var(--line)}
-  th{color:var(--mut);font-weight:600;text-transform:uppercase;font-size:10px}
-  input,select{background:#0d141d;border:1px solid var(--line);color:#e6edf3;
-        border-radius:6px;padding:6px 8px;font-size:12px;width:100%}
-  label{display:block;color:var(--mut);font-size:11px;margin:8px 0 3px}
-  button{background:var(--g);color:#08210a;border:0;border-radius:6px;padding:7px 12px;
-         font-weight:700;cursor:pointer;font-size:12px}
-  button.ghost{background:transparent;color:var(--g);border:1px solid var(--g)}
-  .row{display:flex;gap:8px}.row>*{flex:1}
-  .finding{padding:5px 8px;border-radius:6px;margin:4px 0;font-size:11.5px}
-  .f-pass{background:#1c2e20;color:#9fe0a8}
-  .f-warn{background:#332c14;color:#e8c66a}
-  .f-fail{background:#3a1f25;color:#f0a3b0}
-  .muted{color:var(--mut)}
+  .ready{background:#23402a;color:var(--green-text)}
+  .allocated{background:var(--amber-bg);color:var(--amber)}
+  .faulted{background:#43232a;color:var(--red)}
+  /* 폼 */
+  input,select{background:var(--card-sub);border:1px solid var(--line);color:var(--text-soft);
+        border-radius:7px;padding:7px 10px;font-size:12px;width:100%;font-family:inherit}
+  input::placeholder{color:var(--muted-2)}
+  .sec-h select{width:auto}
+  label{display:block;color:var(--muted);font-size:11px;margin:0 0 4px}
+  .row{display:flex;gap:10px}.row>*{flex:1}
+  .row+.row{margin-top:8px}
+  .divider{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}
+  /* Tenants 목록 */
+  .ten-row{display:flex;align-items:center;gap:10px;padding:7px 0;
+           border-bottom:1px solid var(--line-soft)}
+  .ten-row:last-child{border-bottom:none}
   .tname{font-weight:700;color:#fff}
-  .tier{font-size:10px;color:var(--g)}
+  .tier{font-size:10px;color:var(--green)}
+  .tid{color:var(--muted);font-family:Menlo,monospace;font-size:10.5px}
+  /* Isolation report — finding 색 블록 유지 */
+  .finding{padding:5px 10px;border-radius:6px;margin:4px 0;font-size:11.5px}
+  .f-pass{background:#1c2e20;color:var(--green-text)}
+  .f-warn{background:#332c14;color:var(--amber)}
+  .f-fail{background:#3a1f25;color:var(--red)}
+  .muted{color:var(--muted)}
+  #vni tbody td{font-family:Menlo,monospace;font-size:10.5px}
 </style>
 </head>
 <body>
 <header class="nc-header">
-  <span class="nc-brand">NeoCloud OS</span>
-  <div class="nc-head-txt">
-    <div class="nc-title">VRCM — Vera Rubin Cluster Manager</div>
-    <div class="nc-sub">인벤토리 · 토폴로지 · 멀티테넌시 (30MW AI Factory)</div>
+  <div class="nc-topbar">
+    <span class="nc-brand">NeoCloud OS</span>
+    <nav class="nc-nav">
+      <a href="/customer">고객</a><a href="/biz">비즈</a><a href="/ops">운영</a><a href="/arch">Control-Plane</a><a href="/nico">NICo</a><a href="/flow">검증 콘솔</a><a href="/" class="act">VRCM</a>
+    </nav>
+    <div class="nc-right">
+      <span class="nc-live"><span class="dot"></span>LIVE · 4s</span>
+      <span class="nc-user">infra-admin</span>
+    </div>
   </div>
-  <nav class="nc-nav">
-    <a href="/customer">👤 고객 포털</a>
-    <a href="/biz">💼 비즈 포털</a>
-    <a href="/ops">🛠 운영 포털</a>
-    <a href="/arch">🧭 NeoCloud Control-Plane</a>
-    <a href="/nico">⚙️ NICo</a>
-    <a href="/flow">🔬 검증 콘솔</a>
-    <a href="/" class="act">📊 VRCM</a>
-  </nav>
+  <div class="nc-titlebar">
+    <span class="nc-title">VRCM — Vera Rubin Cluster Manager</span>
+    <span class="nc-sub">AI Factory 토폴로지 · 테넌트 할당 · 격리 검증 (물리 SoT)</span>
+  </div>
 </header>
 
 <div class="wrap">
-  <div class="cards" id="cards"></div>
+  <!-- KPI 밴드 -->
+  <div class="kpi-band" id="cards"></div>
 
   <!-- 사이트 구성 — 독립 클러스터 2식 (가산·안산 간 IB/NVLink 크로스 없음) -->
   <div class="panel">
-    <h2>사이트 구성 — 독립 클러스터 <small class="muted">
-      각 사이트가 별개 NICo 인스턴스·IB 패브릭 — 사이트 간 클러스터 스팬 불가 (M4 배치가 강제)</small></h2>
-    <div class="cards" id="sitecards" style="margin-bottom:0"></div>
+    <div class="sec-h"><span class="tick"></span>
+      <span class="t">사이트 구성 — 독립 클러스터 2식</span>
+      <span class="c">각 사이트가 별개 NICo 인스턴스·IB 패브릭 — 사이트 간 클러스터 스팬 불가 (M4 배치가 강제)</span></div>
+    <div class="site-grid" id="sitecards"></div>
   </div>
 
   <!-- 시스템 토폴로지 — SU(HAC) 단위 구성 (NCP RA) -->
   <div class="panel">
-    <h2>시스템 토폴로지 — SU(HAC) 단위 구성 <small class="muted">
-      NCP RA 기준 — 컴퓨트 랙 · CMX · IB 듀얼 패브릭 · Converged 네트워크 · CDU(DLC) · CPU 노드 풀</small>
-      <select id="sc-su" onchange="loadSuComp()" style="margin-left:10px;min-width:170px;background:#0d141d;border:1px solid var(--line);color:#e6edf3;border-radius:6px;padding:4px 8px"></select></h2>
-    <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:16px">
+    <div class="sec-h"><span class="tick"></span>
+      <span class="t">시스템 토폴로지 — SU(HAC) 단위 구성</span>
+      <span class="c">NCP RA 기준 — 컴퓨트 랙 · CMX · IB 듀얼 패브릭 · Converged 네트워크 · CDU(DLC) · CPU 노드 풀</span>
+      <select id="sc-su" onchange="loadSuComp()" style="min-width:190px"></select></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px">
       <div>
-        <div id="sc-hac" style="background:#0d141d;border:1px solid var(--line);border-radius:8px;padding:8px;overflow-x:auto"></div>
-        <div class="muted" style="font-size:10.5px;margin-top:5px">
+        <div id="sc-hac" class="svgbox"></div>
+      </div>
+      <div>
+        <table class="tbl"><thead><tr><th>구성 요소</th><th>수량</th><th>비고</th></tr></thead>
+          <tbody id="sc-table"></tbody></table>
+        <div class="callout" style="margin-top:12px">
           1 SU = 1 HAC(2열×8랙) · 각 랙은 IB Fabric-A/B 리프(GPU fabric)와 Converged 리프에
           동시 연결 · in-row CDU(2N)가 FWS↔TCS 루프 공급</div>
       </div>
-      <div>
-        <table style="font-size:11.5px"><thead><tr><th>구성 요소</th><th>수량</th><th>비고</th></tr></thead>
-          <tbody id="sc-table"></tbody></table>
-      </div>
     </div>
-    <h2 style="margin-top:14px">사이트 전체 네트워크 뷰 <small class="muted">
-      — SU(HAC) ↔ IB 스파인(Fabric-A/B, GPU fabric) · Converged 스파인 연결 · 점유 테넌트 색상</small></h2>
+    <div class="sec-h" style="margin-top:16px"><span class="tick"></span>
+      <span class="t">사이트 전체 네트워크 뷰</span>
+      <span class="c">— SU(HAC) ↔ IB 스파인(Fabric-A/B, GPU fabric) · Converged 스파인 연결 · 점유 테넌트 색상</span></div>
     <div id="sc-sites" style="overflow-x:auto"></div>
   </div>
 
@@ -108,32 +120,36 @@
     <!-- LEFT: topology -->
     <div>
       <div class="panel">
-        <h2>Topology — AI Factory ▸ SU ▸ Rack (NVL72)</h2>
+        <div class="sec-h"><span class="tick"></span>
+          <span class="t">Topology — AI Factory ▸ SU ▸ Rack (NVL72)</span></div>
         <div class="tree" id="tree">loading…</div>
-        <div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
+        <div class="divider">
           <div class="row">
             <div><label>Provision new SU — generation</label>
               <select id="p-bp"></select></div>
             <div style="flex:0 0 auto;display:flex;align-items:flex-end">
-              <button onclick="provision()">+ Provision SU</button></div>
+              <button class="btn" onclick="provision()">+ Provision SU</button></div>
           </div>
           <div id="prov-msg" class="muted" style="margin-top:6px"></div>
         </div>
       </div>
 
       <div class="panel">
-        <h2>GPU 노드(NVL72 랙) 사양 카탈로그</h2>
-        <table><thead><tr><th>모델</th><th>GPU (랙당)</th><th>HBM/GPU</th><th>CPU</th>
+        <div class="sec-h"><span class="tick"></span>
+          <span class="t">GPU 노드(NVL72 랙) 사양 카탈로그</span></div>
+        <table class="tbl"><thead><tr><th>모델</th><th>GPU (랙당)</th><th>HBM/GPU</th><th>CPU</th>
           <th>NVLink</th><th>DPU</th><th>전력 (랙)</th><th>냉각</th></tr></thead>
           <tbody id="gpuspec"></tbody></table>
-        <div class="muted" style="font-size:11px;margin-top:5px">
+        <div class="muted" style="font-size:11px;margin-top:6px">
           트레이당 GPU 4 · CPU 2 · DPU 1 · SuperNIC — 랙(NVL72) = 컴퓨트 트레이 18 + NVLink 스위치 트레이 9</div>
       </div>
 
       <div class="panel">
-        <h2>CPU 노드 풀 — 범용 노드 (DPU 장착 · 테넌트당 기본 5대)</h2>
-        <div id="cpu-sum" class="muted">—</div>
-        <table style="margin-top:6px"><thead><tr><th>테넌트</th><th>노드</th><th>IP 대역</th><th>VPC</th></tr></thead>
+        <div class="sec-h"><span class="tick"></span>
+          <span class="t">CPU 노드 풀 — 범용 노드</span>
+          <span class="c">DPU 장착 · 테넌트당 기본 5대</span></div>
+        <div id="cpu-sum" class="muted" style="font-size:12px">—</div>
+        <table class="tbl" style="margin-top:8px"><thead><tr><th>테넌트</th><th class="num">노드</th><th>IP 대역</th><th>VPC</th></tr></thead>
           <tbody id="cpu-ten"></tbody></table>
       </div>
     </div>
@@ -141,9 +157,10 @@
     <!-- RIGHT: tenancy -->
     <div>
       <div class="panel">
-        <h2>Tenants</h2>
+        <div class="sec-h"><span class="tick"></span>
+          <span class="t">Tenants</span></div>
         <div id="tenants"></div>
-        <div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
+        <div class="divider">
           <div class="row">
             <div><label>Tenant name</label><input id="t-name" placeholder="acme-ai"></div>
             <div><label>Isolation tier</label>
@@ -153,12 +170,14 @@
                 <option value="k8s_namespace">k8s_namespace</option>
               </select></div>
           </div>
-          <div style="margin-top:8px"><button onclick="createTenant()">+ Create tenant</button></div>
+          <div style="margin-top:10px"><button class="btn" onclick="createTenant()">+ Create tenant</button></div>
         </div>
       </div>
 
       <div class="panel">
-        <h2>Allocate capacity</h2>
+        <div class="sec-h"><span class="tick"></span>
+          <span class="t">Allocate capacity</span>
+          <span class="c">티어에서 DPU 모드 자동 도출</span></div>
         <div class="row">
           <div><label>Tenant</label><select id="a-tenant"></select></div>
           <div><label>Scalable Unit</label><select id="a-su"></select></div>
@@ -172,23 +191,23 @@
             </select></div>
           <div><label>rack_set ids (comma)</label><input id="a-racks" placeholder="su-1-rack-00,su-1-rack-01"></div>
         </div>
-        <div style="margin-top:8px"><button onclick="allocate()">▸ Allocate</button></div>
+        <div style="margin-top:10px"><button class="btn" onclick="allocate()">▸ Allocate</button></div>
         <div id="alloc-msg" class="muted" style="margin-top:6px"></div>
       </div>
 
       <div class="panel">
-        <h2>Isolation report</h2>
-        <div class="row">
-          <div><select id="r-tenant"></select></div>
-          <div><button class="ghost" onclick="report()">Verify isolation</button></div>
-        </div>
+        <div class="sec-h"><span class="tick"></span>
+          <span class="t">Isolation report</span>
+          <select id="r-tenant" style="min-width:130px"></select>
+          <button class="btn-ghost" style="margin-left:auto" onclick="report()">Verify isolation</button></div>
         <div id="report"></div>
       </div>
 
       <div class="panel">
-        <h2>Network VNI / VRF map</h2>
-        <table id="vni"><thead><tr><th>Tenant</th><th>Compute L3VNI</th>
-          <th>Converged</th><th>OOB</th><th>VRF</th></tr></thead><tbody></tbody></table>
+        <div class="sec-h"><span class="tick"></span>
+          <span class="t">Network VNI / VRF map</span></div>
+        <table class="tbl" id="vni"><thead><tr><th>Tenant</th><th class="num">Compute L3VNI</th>
+          <th class="num">Converged</th><th class="num">OOB</th><th>VRF</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
   </div>
@@ -202,28 +221,28 @@ async function j(u,o){const r=await fetch(u,o);if(!r.ok){throw new Error((await 
 async function loadSummary(){
   const s=await j(`${API}/inventory/summary`);
   const c=$("#cards");
-  const mk=(k,v,sub="")=>`<div class="card"><div class="k">${k}</div><div class="v">${v}${sub}</div></div>`;
+  const mk=(k,v,sub="")=>`<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="s">${sub}</div>`:``}</div>`;
   const gens=Object.entries(s.racks_by_generation).map(([m,n])=>`${m.replace(' NVL72','')}×${n}`).join("  ");
   const cpus=await j(`${API}/cpu-nodes`);
   const cAlloc=cpus.filter(x=>x.state==="allocated").length;
   c.innerHTML=
-    mk("Scalable Units",s.scalable_units)+
-    mk("NVL72 Racks",s.racks)+
+    mk("Scalable Units",s.scalable_units,"HAC 단위")+
+    mk("NVL72 Racks",s.racks,`트레이 ${(s.racks*18).toLocaleString()}`)+
     mk("GPUs",s.gpus.toLocaleString())+
-    mk("HBM total",s.hbm_total_tb,` <small>TB</small>`)+
-    mk("Capped Power",s.capped_power_mw,` <small>MW</small>`)+
-    mk("CPU Nodes",`${cpus.length} <small>할당 ${cAlloc}</small>`)+
-    mk("Generations",`<span style="font-size:12px">${gens||'—'}</span>`);
+    mk("HBM total",`${s.hbm_total_tb}<small> TB</small>`)+
+    mk("Capped Power",`${s.capped_power_mw}<small> MW</small>`,"MaxQ 기준")+
+    mk("CPU Nodes",cpus.length,`할당 ${cAlloc} · 가용 ${cpus.length-cAlloc}`)+
+    mk("Generations",`<span style="font-size:16px">${gens||'—'}</span>`);
   // CPU 노드 풀 패널
   $("#cpu-sum").innerHTML=`총 <b style="color:#fff">${cpus.length}</b>대 ·
-    할당 <b style="color:#e8c66a">${cAlloc}</b> · 가용 <b style="color:#9fe0a8">${cpus.length-cAlloc}</b>
+    할당 <b style="color:var(--amber)">${cAlloc}</b> · 가용 <b style="color:var(--green-text)">${cpus.length-cAlloc}</b>
     — ${cpus[0]?cpus[0].cpu_arch+" "+cpus[0].cores+"c · "+cpus[0].mem_tb+"TB · DPU "+cpus[0].dpu_sku:""}`;
   const byT={};
   cpus.filter(x=>x.tenant_id).forEach(x=>(byT[x.tenant_id]=byT[x.tenant_id]||[]).push(x));
   $("#cpu-ten").innerHTML=Object.entries(byT).map(([t,ns])=>
-    `<tr><td class="tname">${t}</td><td>${ns.length}대</td>
-     <td style="font-family:Menlo,monospace;font-size:10.5px">${ns[0].host_ip} ~</td>
-     <td style="font-family:Menlo,monospace;font-size:10.5px">${ns[0].segment_id||"—"}</td></tr>`).join("")
+    `<tr><td class="tname">${t}</td><td class="num">${ns.length}대</td>
+     <td class="id">${ns[0].host_ip} ~</td>
+     <td class="id">${ns[0].segment_id||"—"}</td></tr>`).join("")
     ||'<tr><td colspan="4" class="muted">할당된 CPU 노드 없음 — 전량 풀 대기</td></tr>';
 }
 
@@ -287,9 +306,9 @@ async function loadSuComp(){
     <text x="628" y="208" text-anchor="middle" fill="#7a92a8" font-size="7.5">${c.ib.spine_rack_kw}kW · A/B</text>
     <text x="8" y="252" fill="#8aa0b4" font-size="8.5">랙당 SuperNIC 8포트 = Fabric-A 4 + Fabric-B 4 (rail-optimized) · DPU 800G → Converged — SU 합계 ${c.ib.node_links_800g.toLocaleString()}×800G</text>
   </svg>`;
-  $("#sc-hac").innerHTML=`<div style="font-weight:700;margin-bottom:4px">${c.su_id} ·
+  $("#sc-hac").innerHTML=`<div style="font-weight:700;font-size:12px;margin-bottom:4px">${c.su_id} ·
     <span class="muted" style="font-weight:400">${c.site} — ${c.model} · HAC ${c.hac_id}</span></div>${svg}`;
-  const row=(k,v,n)=>`<tr><td>${k}</td><td><b>${v}</b></td><td class="muted" style="font-size:10px">${n||""}</td></tr>`;
+  const row=(k,v,n)=>`<tr><td>${k}</td><td><b>${v}</b></td><td class="muted" style="font-size:10.5px">${n||""}</td></tr>`;
   $("#sc-table").innerHTML=
     row("컴퓨트 랙 (NVL72)",`${c.compute.racks}랙 · ${c.compute.gpus.toLocaleString()} GPU`,
         `트레이 ${c.compute.trays} · MaxQ ${c.compute.rack_kw_maxq}/MaxP ${c.compute.rack_kw_maxp}kW/랙`)+
@@ -311,7 +330,7 @@ async function loadSuSelect(){
 }
 
 // ── 사이트 전체 네트워크 뷰 — SU(HAC) ↔ IB A/B·Converged 스파인 ──
-const SC_PALETTE=["#76b900","#5aa7e8","#e8c66a","#b48ce8","#f0a3b0","#5ad0c8","#e88a5a"];
+const SC_PALETTE=["#76b900","#5aa7e8","#e8c66a","#c8a5e8","#f0a3b0","#5ad0c8","#9fd0ff"];
 async function loadSiteNet(){
   const f=await j(`${API}/fabric/ib`);
   const color={};f.tenants.forEach((t,i)=>color[t.tenant_id]=SC_PALETTE[i%SC_PALETTE.length]);
@@ -343,7 +362,7 @@ async function loadSiteNet(){
         <text x="${x+38}" y="${y+53}" text-anchor="middle" fill="#5ad0c8" font-size="7.5">CDU×2 · HAC</text>`;
     });
     svg+=`</svg>`;
-    return `<div style="background:#0d141d;border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:10px;overflow-x:auto">${svg}</div>`;
+    return `<div class="svgbox" style="margin-bottom:10px">${svg}</div>`;
   }).join("");
 }
 
@@ -354,19 +373,19 @@ async function loadSiteCards(){
     const gpus=s.floors.reduce((a,f)=>a+f.gpus,0);
     const mw=s.floors.reduce((a,f)=>a+f.power_mw,0);
     const floors=s.floors.map(f=>`${f.name} (가동 ${f.ready})`).join("  ·  ");
-    return `<div class="card" style="border-left:3px solid #5aa7e8">
-      <div class="k">${s.name} <span class="muted">· ${s.site} · 독립 IB 패브릭/NICo</span></div>
+    return `<div class="site-card">
+      <div class="k">${s.name} · ${s.site} · 독립 IB 패브릭/NICo</div>
       <div class="v">${gpus.toLocaleString()} <small>GPU · ${racks}랙 · ${mw.toFixed(1)}MW</small></div>
-      <div class="muted" style="font-size:10.5px;margin-top:3px">${floors}</div></div>`;
+      <div class="k" style="margin-top:3px">${floors}</div></div>`;
   }).join("");
 }
 async function loadTree(){
   const t=await j(`${API}/topology/tree`);
   let h="";
   for(const f of t.factories){
-    h+=`<div class="node" style="margin-top:6px"><b style="font-size:13px">${f.name}</b> <span class="muted">· ${f.site} · ${f.design_power_mw} MW</span></div>`;
+    h+=`<div class="node" style="margin-top:6px"><b style="font-size:12.5px">${f.name}</b> <span class="muted">· ${f.site} · ${f.design_power_mw} MW</span></div>`;
     for(const b of f.compute_blocks){
-    if(b.name)h+=`<div class="node" style="margin-left:8px;color:#9fd0ff;font-weight:700">■ ${b.name} <span class="muted" style="font-weight:400">· 가동 ${b.ready}</span></div>`;
+    if(b.name)h+=`<div class="node" style="margin-left:8px;color:var(--blue-text);font-weight:700">■ ${b.name} <span class="muted" style="font-weight:400">· 가동 ${b.ready}</span></div>`;
     for(const d of b.deployment_units)for(const su of d.scalable_units){
       h+=`<div class="node su">▸ ${su.id} <span class="gen">${su.model}</span> <span class="muted">(${su.gpu_count} GPU · HAC ${su.hac_id})</span></div>`;
       for(const r of su.racks){
@@ -385,9 +404,9 @@ async function loadTree(){
 async function loadTenants(){
   const ts=await j(`${API}/tenants`);
   $("#tenants").innerHTML = ts.length? ts.map(t=>
-    `<div style="padding:5px 0;border-bottom:1px solid var(--line)">
+    `<div class="ten-row">
        <span class="tname">${t.name}</span> <span class="tier">${t.isolation_tier}</span>
-       <span class="muted">· ${t.id}</span></div>`).join("")
+       <span class="tid">${t.id}</span></div>`).join("")
     : `<span class="muted">No tenants yet.</span>`;
   const opts=ts.map(t=>`<option value="${t.id}">${t.name}</option>`).join("");
   $("#a-tenant").innerHTML=opts; $("#r-tenant").innerHTML=opts;
@@ -399,8 +418,8 @@ async function loadTenants(){
 async function loadVni(){
   const m=await j(`${API}/network/vni-map`);
   $("#vni tbody").innerHTML=m.map(x=>
-    `<tr><td>${x.tenant_id}</td><td>${x.compute_l3vni}</td><td>${x.converged_vni}</td>
-     <td>${x.oob_vni}</td><td>${x.vrf}</td></tr>`).join("")
+    `<tr><td>${x.tenant_id}</td><td class="num">${x.compute_l3vni}</td><td class="num">${x.converged_vni}</td>
+     <td class="num">${x.oob_vni}</td><td>${x.vrf}</td></tr>`).join("")
     ||`<tr><td colspan=5 class="muted">—</td></tr>`;
 }
 
@@ -413,9 +432,9 @@ async function loadBlueprints(){
 async function provision(){
   const bp=$("#p-bp").value;
   try{const r=await j(`${API}/scalable-units?blueprint_key=${bp}`,{method:"POST"});
-    $("#prov-msg").innerHTML=`<span style="color:var(--g)">✓ ${r.provisioned} · ${r.model} · ${r.gpu_count} GPU</span>`;
+    $("#prov-msg").innerHTML=`<span style="color:var(--green-text)">✓ ${r.provisioned} · ${r.model} · ${r.gpu_count} GPU</span>`;
     await Promise.all([loadTree(),loadSummary(),loadTenants()]);
-  }catch(e){$("#prov-msg").innerHTML=`<span style="color:#f0a3b0">✗ ${e.message}</span>`}
+  }catch(e){$("#prov-msg").innerHTML=`<span style="color:var(--red)">✗ ${e.message}</span>`}
 }
 
 async function createTenant(){
@@ -431,18 +450,20 @@ async function allocate(){
   if(body.scope==="rack_set"){body.rack_ids=$("#a-racks").value.split(",").map(s=>s.trim()).filter(Boolean)}
   try{const a=await j(`${API}/allocations`,{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify(body)});
-    $("#alloc-msg").innerHTML=`<span style="color:var(--g)">✓ ${a.id} → ${a.rack_ids.length} rack(s), DPU=${a.dpu_mode}</span>`;
+    $("#alloc-msg").innerHTML=`<span style="color:var(--green-text)">✓ ${a.id} → ${a.rack_ids.length} rack(s), DPU=${a.dpu_mode}</span>`;
     await Promise.all([loadTree(),loadSummary()]);
-  }catch(e){$("#alloc-msg").innerHTML=`<span style="color:#f0a3b0">✗ ${e.message}</span>`}
+  }catch(e){$("#alloc-msg").innerHTML=`<span style="color:var(--red)">✗ ${e.message}</span>`}
 }
 
 async function report(){
   const tid=$("#r-tenant").value; if(!tid)return;
   try{const r=await j(`${API}/tenants/${tid}/isolation`);
-    let h=`<div style="margin:8px 0;font-weight:700">${r.ok?'<span style="color:var(--g)">● ISOLATION OK</span>':'<span style="color:#f0a3b0">● ISOLATION FAIL</span>'}</div>`;
+    let h=`<div style="display:flex;align-items:center;gap:8px;font-weight:700;margin:8px 0 8px">`+
+      (r.ok?`<span class="dot green"></span><span style="color:var(--green-text)">ISOLATION OK</span>`
+           :`<span class="dot red"></span><span style="color:var(--red)">ISOLATION FAIL</span>`)+`</div>`;
     h+=r.findings.map(f=>`<div class="finding f-${f.severity}"><b>[${f.layer}]</b> ${f.message}</div>`).join("");
     $("#report").innerHTML=h;
-  }catch(e){$("#report").innerHTML=`<span style="color:#f0a3b0">${e.message}</span>`}
+  }catch(e){$("#report").innerHTML=`<span style="color:var(--red)">${e.message}</span>`}
 }
 
 (async function init(){

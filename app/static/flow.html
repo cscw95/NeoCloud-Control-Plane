@@ -6,65 +6,73 @@
 <title>NeoCloud OS × NICo Emulator — 동작 검증 콘솔</title>
 <link rel="stylesheet" href="/static/theme.css">
 <style>
-  :root{--g:#76b900;--navy:#0b1f3a;--bg:#0f1722;--card:#16202e;--line:#2a3848;--mut:#8aa0b4;
-        --blue:#5aa7e8;--amber:#e8c66a;--red:#f0a3b0;--purple:#b48ce8;}
+  :root{--g:var(--green)} /* JS 인라인 색 참조 호환 */
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
-       background:var(--bg);color:#e6edf3;font-size:13px;line-height:1.5}
-  header{background:linear-gradient(90deg,var(--navy),#13314f);padding:14px 22px;
-         border-bottom:3px solid var(--g);display:flex;align-items:center;gap:12px}
-  header h1{font-size:18px;margin:0}
-  header .tag{color:var(--g);font-weight:700}
-  header a{color:var(--mut);margin-left:auto;font-size:12px;text-decoration:none}
-  header a:hover{color:var(--g)}
-  .wrap{max-width:1440px;margin:0 auto;padding:18px 22px}
-  h2{font-size:14px;color:var(--g);border-bottom:1px solid var(--line);padding-bottom:6px;margin:0 0 10px}
-  h3{font-size:12px;color:var(--mut);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.04em}
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:16px}
-  .grid{display:grid;grid-template-columns:330px 1fr;gap:16px}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-  @media(max-width:1100px){.grid,.grid2{grid-template-columns:1fr}}
-  input,select{background:#0d141d;border:1px solid var(--line);color:#e6edf3;
-        border-radius:6px;padding:6px 8px;font-size:12px;width:100%}
-  label{display:block;color:var(--mut);font-size:11px;margin:8px 0 3px}
-  button{background:var(--g);color:#08210a;border:0;border-radius:6px;padding:7px 12px;
-         font-weight:700;cursor:pointer;font-size:12px}
-  button.ghost{background:transparent;color:var(--g);border:1px solid var(--g)}
-  button.warn{background:transparent;color:var(--amber);border:1px solid var(--amber)}
-  button.danger{background:transparent;color:var(--red);border:1px solid var(--red)}
+       background:var(--bg);color:var(--text);font-size:13px;line-height:1.5}
+  .wrap{max-width:1440px;margin:0 auto;padding:20px 26px}
+  .panel{margin-bottom:18px}
+  h3{font-size:11px;color:var(--muted);margin:14px 0 6px;font-weight:700;letter-spacing:.04em}
+  input,select{background:var(--card-sub);border:1px solid var(--line);color:var(--text);
+        border-radius:7px;padding:7px 10px;font-size:12px;width:100%;font-family:inherit}
+  label{display:block;color:var(--muted);font-size:11px;margin:8px 0 3px}
+  button{background:var(--green);color:var(--on-green);border:0;border-radius:7px;
+         padding:7px 12px;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit}
+  button:hover{background:#8ad00a}
+  button.ghost{background:none;color:var(--green);border:1px solid var(--green-line)}
+  button.ghost:hover{background:none;border-color:var(--green)}
+  button.warn{background:none;color:var(--amber);border:1px solid var(--amber-line)}
+  button.warn:hover{background:none;border-color:var(--amber)}
+  button.danger{background:none;color:var(--red);border:1px solid var(--red-line)}
+  button.danger:hover{background:none;border-color:var(--red)}
   button:disabled{opacity:.35;cursor:not-allowed}
   .row{display:flex;gap:8px}.row>*{flex:1}
-  .muted{color:var(--mut)}
+  .muted{color:var(--muted)}
+  .num{text-align:right}
+  /* -- layout: 좌 컨트롤(max 420px) + 우 파이프라인 ---------------------- */
+  .layout{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start}
+  .ctrl{flex:1 1 280px;max-width:420px;min-width:260px}
+  .ctrl .panel{margin-bottom:0}
+  .main{flex:3 1 560px;min-width:0}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:18px;
+         margin-bottom:18px}
+  .grid2>.panel{margin-bottom:0}
   /* -- architecture flow ------------------------------------------------ */
-  .arch{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:4px 0}
-  .mod{flex:1;min-width:84px;background:#0d141d;border:1px solid var(--line);border-radius:8px;
-       padding:8px 5px;text-align:center;position:relative;transition:all .25s}
+  .arch{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:2px 0}
+  .mod{flex:1;min-width:84px;background:var(--card-sub);border:1px solid var(--line);
+       border-radius:8px;padding:8px 5px;text-align:center;position:relative;
+       transition:background .2s,border-color .2s}
   .mod .nm{font-weight:700;font-size:11px;line-height:1.3}
-  .mod .rl{font-size:9.5px;color:var(--mut);margin-top:2px}
-  .mod.skt{border-top:3px solid #5aa7e8}
-  .mod.oss{border-top:3px solid var(--g)}
+  .mod .rl{font-size:9.5px;color:var(--muted);margin-top:2px}
+  .mod.on{background:#1d3a26;border-color:var(--green)}
+  .mod.on .nm{color:#e9f5df}.mod.on .rl{color:#9fc0a8}
+  .mod.err{background:#3a1f25;border-color:var(--red)}
+  .mod.skt{border-top:3px solid var(--blue)}
+  .mod.oss{border-top:3px solid var(--green)}
   .mod.ptr{border-top:3px solid #8a8f98}
-  .mod.on{background:#1d3a26;border-color:var(--g);box-shadow:0 0 12px rgba(118,185,0,.35)}
-  .mod.err{background:#3a1f25;border-color:var(--red);box-shadow:0 0 12px rgba(240,163,176,.3)}
-  .arrow{align-self:center;color:var(--mut);padding:0 2px;font-size:13px}
-  .legend{display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--mut)}
-  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
-  /* -- pipeline track ---------------------------------------------------- */
+  .arrow{align-self:center;color:var(--muted);padding:0 2px;font-size:12px}
+  .legend{display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--muted);flex-wrap:wrap}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  /* -- pipeline pill track ------------------------------------------------ */
   .track{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .step{padding:5px 10px;border-radius:14px;font-size:11px;font-weight:700;
-        background:#0d141d;border:1px solid var(--line);color:var(--mut);transition:all .25s}
-  .step.done{background:#1c2e20;border-color:#3a5a40;color:#9fe0a8}
-  .step.now{background:var(--g);color:#08210a;box-shadow:0 0 10px rgba(118,185,0,.5)}
+  .step{padding:5px 12px;border-radius:14px;font-size:11px;font-weight:700;
+        background:var(--card-sub);border:1px solid var(--line);color:var(--muted-2);
+        transition:background .2s,border-color .2s,color .2s}
+  .step.done{background:#1c2e20;border-color:#3a5a40;color:var(--green-text)}
+  .step.now{background:var(--green);border-color:var(--green);color:var(--on-green)}
   .step.fail{background:#3a1f25;border-color:var(--red);color:var(--red)}
-  .evt{font-family:"SF Mono",Menlo,monospace;font-size:11px;max-height:170px;overflow:auto;
-       background:#0d141d;border:1px solid var(--line);border-radius:6px;padding:8px;margin-top:10px}
+  .evt{font-family:Menlo,monospace;font-size:11px;max-height:180px;overflow:auto;
+       background:var(--card-sub);border:1px solid var(--line);border-radius:7px;
+       padding:9px 12px;margin-top:10px;line-height:1.9;color:var(--muted)}
   .evt div{padding:1px 0;border-bottom:1px dashed #1d2836}
-  .evt .st{color:var(--g);font-weight:700}
+  .evt div:last-child{border-bottom:0}
+  .evt .st{color:var(--green);font-weight:700}
   /* -- node grids -------------------------------------------------------- */
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-  .chip{padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;background:#0d141d;border:1px solid var(--line)}
+  .chip{padding:3px 9px;border-radius:12px;font-size:10.5px;font-weight:700;
+        background:var(--card-sub);border:1px solid var(--line)}
   .rackrow{display:flex;align-items:center;gap:6px;padding:1.5px 0}
-  .rackrow .rid{font-family:Menlo,monospace;font-size:10px;color:var(--mut);width:110px;flex:none}
+  .rackrow .rid{font-family:Menlo,monospace;font-size:10px;color:var(--muted);width:110px;flex:none}
   .cells{display:flex;gap:2px;flex-wrap:wrap}
   .cell{width:11px;height:11px;border-radius:2px;background:#233043;cursor:default}
   .racks{max-height:300px;overflow:auto}
@@ -80,29 +88,33 @@
   .c-discovered{background:#3a4a5a}.c-released{background:#4a6a8a}
   /* -- manual stepper ----------------------------------------------------- */
   .sm{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}
-  .sm .s{padding:3px 8px;border-radius:10px;font-size:10.5px;background:#0d141d;
-         border:1px solid var(--line);color:var(--mut)}
-  .sm .s.here{background:var(--g);color:#08210a;font-weight:700}
+  .sm .s{padding:3px 9px;border-radius:10px;font-size:10.5px;background:var(--card-sub);
+         border:1px solid var(--line);color:var(--muted)}
+  .sm .s.here{background:var(--green);border-color:var(--green);color:var(--on-green);font-weight:700}
   .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-  .btns button{padding:5px 9px;font-size:11px}
+  .btns button{padding:6px 11px;font-size:11px}
+  .seg{display:flex;gap:5px;margin-top:6px}
+  .seg button{flex:1;padding:4px 0;font-size:10.5px}
   /* -- findings / api log -------------------------------------------------- */
-  .finding{padding:5px 8px;border-radius:6px;margin:4px 0;font-size:11.5px}
-  .f-info{background:#1c2e20;color:#9fe0a8}
+  .finding{padding:5px 10px;border-radius:6px;margin:4px 0;font-size:11.5px}
+  .f-info{background:#1c2e20;color:var(--green-text)}
   .f-major{background:#332c14;color:var(--amber)}
   .f-critical{background:#3a1f25;color:var(--red)}
-  table{width:100%;border-collapse:collapse;font-size:11.5px}
-  th,td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--line)}
-  th{color:var(--mut);font-weight:600;text-transform:uppercase;font-size:10px}
-  .m{font-family:Menlo,monospace;font-size:10.5px;padding:1px 6px;border-radius:4px;font-weight:700}
+  table{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}
+  th,td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--line-soft)}
+  thead th{color:var(--muted);font-weight:600;font-size:10px;border-bottom:1px solid var(--line)}
+  tbody th{color:var(--muted);font-weight:400;white-space:nowrap;width:120px}
+  th.num,td.num{text-align:right}
+  .m{font-family:Menlo,monospace;font-size:9.5px;padding:1px 6px;border-radius:4px;font-weight:700}
   .m-GET{background:#153a5a;color:#9fd0ff}.m-POST{background:#1c3a20;color:#9fe0a8}
   .m-DELETE{background:#3a1f25;color:var(--red)}.m-PATCH{background:#332c14;color:var(--amber)}
-  .code-ok{color:#9fe0a8}.code-err{color:var(--red)}
+  .code-ok{color:var(--green-text)}.code-err{color:var(--red)}
   tr.logrow{cursor:pointer}tr.logrow:hover{background:#1a2635}
-  pre{background:#0d141d;border:1px solid var(--line);border-radius:6px;padding:8px;
+  pre{background:var(--card-sub);border:1px solid var(--line);border-radius:7px;padding:8px 10px;
       font-size:10.5px;overflow:auto;max-height:220px;margin:4px 0;white-space:pre-wrap}
   #apilog-box{max-height:340px;overflow:auto}
   .san{font-family:Menlo,monospace;font-size:11px}
-  .san .ok{color:#9fe0a8}.san .no{color:var(--red)}
+  .san .ok{color:var(--green-text)}.san .no{color:var(--red)}
   /* -- system detail trace ------------------------------------------------- */
   .ch{font-family:Menlo,monospace;font-size:9.5px;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap}
   .ch-REST{background:#233043;color:#9fb8d0}.ch-gRPC{background:#153a5a;color:#9fd0ff}
@@ -120,28 +132,31 @@
 </head>
 <body>
 <header class="nc-header">
-  <span class="nc-brand">NeoCloud OS</span>
-  <div class="nc-head-txt">
-    <div class="nc-title">동작 검증 콘솔</div>
-    <div class="nc-sub">주문 파이프라인 · NICo Day 0/1/2 · reconcile — 모듈별 API 흐름 시각화</div>
+  <div class="nc-topbar">
+    <span class="nc-brand">NeoCloud OS</span>
+    <nav class="nc-nav">
+      <a href="/customer">고객</a><a href="/biz">비즈</a><a href="/ops">운영</a><a href="/arch">Control-Plane</a><a href="/nico">NICo</a><a href="/flow" class="act">검증 콘솔</a><a href="/">VRCM</a>
+    </nav>
+    <div class="nc-right">
+      <span class="nc-live"><span class="dot"></span>LIVE · 4s</span>
+      <span class="nc-user">qa-lab</span>
+    </div>
   </div>
-  <nav class="nc-nav">
-    <a href="/customer">👤 고객 포털</a>
-    <a href="/biz">💼 비즈 포털</a>
-    <a href="/ops">🛠 운영 포털</a>
-    <a href="/arch">🧭 NeoCloud Control-Plane</a>
-    <a href="/nico">⚙️ NICo</a>
-    <a href="/flow" class="act">🔬 검증 콘솔</a>
-    <a href="/">📊 VRCM</a>
-  </nav>
+  <div class="nc-titlebar">
+    <span class="nc-title">동작 검증 콘솔</span>
+    <span class="nc-sub">주문 파이프라인 · NICo Day 0/1/2 · reconcile — 모듈별 API 흐름 시각화</span>
+  </div>
 </header>
 
 <div class="wrap">
 
   <!-- 모듈 아키텍처 — NeoCloud Control-Plane(/arch)과 동일 명명 -->
   <div class="panel">
-    <h2>모듈 아키텍처 — 요청이 지나가는 경로 <small class="muted">
-      (NeoCloud Control-Plane 모듈명 기준 · 괄호는 코드 모듈 · 실행 시 점등)</small></h2>
+    <div class="sec-h">
+      <span class="tick"></span>
+      <span class="t">모듈 아키텍처 — 요청이 지나가는 경로</span>
+      <span class="c">NeoCloud Control-Plane 모듈명 기준 · 괄호는 코드 모듈 · 실행 시 점등</span>
+    </div>
     <div class="arch" id="arch">
       <div class="mod skt" data-m="portal"><div class="nm">Portals · Public APIs</div><div class="rl">①~③ · cp-api</div></div>
       <div class="arrow">→</div>
@@ -166,17 +181,17 @@
       <div class="mod skt" data-m="delivery"><div class="nm">Delivery · Reclamation</div><div class="rl">cp-delivery · cp-reclaim</div></div>
     </div>
     <div class="legend">
-      <span><i style="background:#5aa7e8"></i>SKT IN-HOUSE (NeoCloud OS)</span>
-      <span><i style="background:var(--g)"></i>NVIDIA (Emulator)</span>
+      <span><i style="background:var(--blue)"></i>SKT IN-HOUSE (NeoCloud OS)</span>
+      <span><i style="background:var(--green)"></i>NVIDIA (Emulator)</span>
       <span><i style="background:#8a8f98"></i>PARTNER / COMMON PLATFORM</span>
     </div>
   </div>
 
-  <div class="grid">
+  <div class="layout">
     <!-- ② 컨트롤 -->
-    <div>
+    <div class="ctrl">
       <div class="panel">
-        <h2>시나리오 컨트롤</h2>
+        <div class="sec-h"><span class="tick"></span><span class="t">시나리오 컨트롤</span></div>
         <button class="danger" style="width:100%" onclick="resetAll()">⟲ 전체 리셋 (재시드 — 테넌트·주문·NICo 초기화)</button>
 
         <h3>테넌트</h3>
@@ -195,7 +210,7 @@
           <div><label>랙 수 <span class="muted">(1 SU = 16 · NCP RD)</span></label>
             <input id="o-racks" type="number" value="1" min="1" max="140"></div>
         </div>
-        <div class="btns" style="margin-top:6px">
+        <div class="seg">
           <button class="ghost" onclick="$('#o-racks').value=1">1랙</button>
           <button class="ghost" onclick="$('#o-racks').value=16">1 SU</button>
           <button class="ghost" onclick="$('#o-racks').value=32">2 SU</button>
@@ -226,7 +241,7 @@
             <button class="ghost" onclick="clearEquipFault()">전체 복구</button></div>
         </div>
         <div id="eqf-msg" class="muted" style="margin-top:4px">
-          선택 테넌트의 할당 장비 중 무작위 1대를 비정상 처리 — 운영 포털 🩺 장비 헬스에서 조치</div>
+          선택 테넌트의 할당 장비 중 무작위 1대를 비정상 처리 — 운영 포털 장비 헬스에서 조치</div>
 
         <h3>F4 — 회수(terminate)</h3>
         <label>대상 allocation</label>
@@ -234,7 +249,7 @@
         <div style="margin-top:8px"><button class="danger" onclick="runTerminate()">▸ 회수 실행</button></div>
 
         <h3>Reconcile 시나리오 스테이징</h3>
-        <div class="btns">
+        <div class="seg" style="margin-top:0">
           <button class="ghost" onclick="stageGhost()">GHOST 생성</button>
           <button class="ghost" onclick="stageOrphan()">ORPHAN 생성</button>
           <button class="ghost" onclick="stageMismatch()">MISMATCH 생성</button>
@@ -251,21 +266,27 @@
     </div>
 
     <!-- ③ 파이프라인 + 결과 -->
-    <div>
+    <div class="main">
       <div class="panel">
-        <h2>주문 파이프라인 상태머신 — Tenant Fulfillment <small class="muted">(cp-fulfill · 이벤트 리플레이)</small></h2>
+        <div class="sec-h"><span class="tick"></span>
+          <span class="t">주문 파이프라인 상태머신 — Tenant Fulfillment</span>
+          <span class="c">cp-fulfill · 이벤트 리플레이</span></div>
         <div class="track" id="track"></div>
         <div class="evt" id="evt"><span class="muted">주문을 실행하면 상태 전이 이벤트가 시간순으로 재생됩니다.</span></div>
       </div>
 
       <div class="grid2">
         <div class="panel">
-          <h2>Resource &amp; Service Model — NodeInstance 미러 <small class="muted">(cp-model · M3)</small></h2>
+          <div class="sec-h"><span class="tick"></span>
+            <span class="t">Resource &amp; Service Model — NodeInstance 미러</span>
+            <span class="c">cp-model · M3</span></div>
           <div class="chips" id="node-chips"></div>
           <div class="racks" id="node-racks"></div>
         </div>
         <div class="panel">
-          <h2>④ Compute Services — NICo Emulator 호스트 <small class="muted">(외부 SoT)</small></h2>
+          <div class="sec-h"><span class="tick"></span>
+            <span class="t">④ Compute Services — NICo Emulator 호스트</span>
+            <span class="c">외부 SoT</span></div>
           <div class="chips" id="host-chips"></div>
           <div class="racks" id="host-racks"></div>
         </div>
@@ -273,18 +294,24 @@
 
       <div class="grid2">
         <div class="panel">
-          <h2>⑤ SDN / Network Fabric — 테넌트 격리 <small class="muted">(D2 · VPC · IB P_Key · NVLink)</small></h2>
+          <div class="sec-h"><span class="tick"></span>
+            <span class="t">⑤ SDN / Network Fabric — 테넌트 격리</span>
+            <span class="c">D2 · VPC · IB P_Key · NVLink</span></div>
           <div id="iso"><span class="muted">테넌트를 선택하고 개통을 실행하면 격리 구성이 표시됩니다.</span></div>
         </div>
         <div class="panel">
-          <h2>⑥ Storage Services — VAST VMS <small class="muted">(D4 · View · Quota · QoS)</small></h2>
-          <table><thead><tr><th>View 경로</th><th>용량</th><th>QoS</th><th>테넌트</th><th>Export 제한</th></tr></thead>
+          <div class="sec-h"><span class="tick"></span>
+            <span class="t">⑥ Storage Services — VAST VMS</span>
+            <span class="c">D4 · View · Quota · QoS</span></div>
+          <table><thead><tr><th>View 경로</th><th class="num">용량</th><th class="num">QoS</th><th>테넌트</th><th>Export 제한</th></tr></thead>
             <tbody id="vast"></tbody></table>
         </div>
       </div>
 
       <div class="panel">
-        <h2>④ Compute Services — NICo Day 0/1/2 API 수동 실행 <small class="muted">(D1 어댑터 경계 검증)</small></h2>
+        <div class="sec-h"><span class="tick"></span>
+          <span class="t">④ Compute Services — NICo Day 0/1/2 API 수동 실행</span>
+          <span class="c">D1 어댑터 경계 검증</span></div>
         <div class="row">
           <div><label>호스트</label><input id="mh" value="nh-su-1-rack-13-tray-17"></div>
           <div style="flex:0 0 auto;display:flex;align-items:flex-end">
@@ -306,11 +333,15 @@
 
       <div class="grid2">
         <div class="panel">
-          <h2>Resource &amp; Service Model — Reconcile <small class="muted">(GHOST / ORPHAN / STATE_MISMATCH)</small></h2>
+          <div class="sec-h"><span class="tick"></span>
+            <span class="t">Resource &amp; Service Model — Reconcile</span>
+            <span class="c">GHOST / ORPHAN / STATE_MISMATCH</span></div>
           <div id="rec"><span class="muted">Reconcile을 실행하면 정합성 감사 결과가 표시됩니다.</span></div>
         </div>
         <div class="panel">
-          <h2>⑦ Shared Services — 테넌트 자격증명 <small class="muted">(IAM · Vault · Audit)</small></h2>
+          <div class="sec-h"><span class="tick"></span>
+            <span class="t">⑦ Shared Services — 테넌트 자격증명</span>
+            <span class="c">IAM · Vault · Audit</span></div>
           <div id="shared"><span class="muted">테넌트 생성·개통 시 IAM realm·시크릿·감사 트레일이 표시됩니다.</span></div>
         </div>
       </div>
@@ -319,7 +350,9 @@
 
   <!-- 시스템 세부 동작 트레이스 -->
   <div class="panel">
-    <h2>시스템 세부 동작 트레이스 <small class="muted">— NeoCloud OS ↔ NICo ↔ BMC(Redfish)/DHCP/PXE/DPU(HBN) ↔ UFM/NMX ↔ VAST ↔ IAM/Vault(⑦) · 행 클릭 시 메시지 페이로드</small></h2>
+    <div class="sec-h"><span class="tick"></span>
+      <span class="t">시스템 세부 동작 트레이스</span>
+      <span class="c">NeoCloud OS ↔ NICo ↔ BMC(Redfish)/DHCP/PXE/DPU(HBN) ↔ UFM/NMX ↔ VAST ↔ IAM/Vault(⑦) · 행 클릭 시 메시지 페이로드</span></div>
     <div class="row" style="margin-bottom:8px">
       <input id="tq" placeholder="필터 — 호스트/키워드 (예: nh-su-2-rack-00, VRF, P_Key)">
       <select id="tch" style="flex:0 0 170px">
@@ -342,11 +375,13 @@
 
   <!-- API 로그 -->
   <div class="panel">
-    <h2>API 콜 로그 <small class="muted">— 콘솔이 호출한 Northbound API(cp-api) · 행 클릭 시 요청/응답 JSON</small>
-      <button class="ghost" style="float:right;padding:3px 8px" onclick="clearLog()">지우기</button></h2>
+    <div class="sec-h"><span class="tick"></span>
+      <span class="t">API 콜 로그</span>
+      <span class="c">콘솔이 호출한 Northbound API(cp-api) · 행 클릭 시 요청/응답 JSON</span>
+      <button class="ghost" style="margin-left:auto;padding:4px 12px;font-size:11px" onclick="clearLog()">지우기</button></div>
     <div id="apilog-box">
       <table><thead><tr><th style="width:80px">시간</th><th style="width:64px">METHOD</th>
-        <th>경로</th><th style="width:60px">상태</th><th style="width:56px">ms</th></tr></thead>
+        <th>경로</th><th class="num" style="width:60px">상태</th><th class="num" style="width:56px">ms</th></tr></thead>
         <tbody id="apilog"></tbody></table>
     </div>
   </div>
@@ -392,7 +427,7 @@ function renderLog(){
     return `<tr class="logrow" onclick="toggleLog(${i},this)">
       <td class="muted">${l.t}</td><td><span class="m m-${l.method}">${l.method}</span></td>
       <td style="font-family:Menlo,monospace;font-size:10.5px">${l.path}</td>
-      <td class="${cls}">${l.status}</td><td class="muted">${l.ms}</td></tr>`;}).join("");
+      <td class="${cls} num">${l.status}</td><td class="muted num">${l.ms}</td></tr>`;}).join("");
 }
 function toggleLog(i,tr){
   const nxt=tr.nextElementSibling;
@@ -531,8 +566,8 @@ async function refreshIso(){
 async function refreshStorage(){
   const views=await qget("/fake-vast/views");
   $("#vast").innerHTML=views.map(v=>
-    `<tr><td class="kv">${v.path}</td><td>${v.capacity_tb}TB</td>
-     <td>${v.qos_gbps}GB/s · ${v.qos_iops_k}K IOPS</td>
+    `<tr><td class="kv">${v.path}</td><td class="num">${v.capacity_tb}TB</td>
+     <td class="num">${v.qos_gbps}GB/s · ${v.qos_iops_k}K IOPS</td>
      <td>${v.tenant_ref}</td><td class="kv">${v.export_subnet}</td></tr>`).join("")
     ||'<tr><td colspan="5" class="muted">할당된 뷰 없음</td></tr>';
 }
@@ -621,7 +656,7 @@ async function stageEquipFault(){
     const r=await call("PATCH","/api/v1/equipment/state",
       {kind,id,state,note:`시연 — ${tid} 테넌트 장비 장애 스테이징`});
     $("#eqf-msg").innerHTML=`<span style="color:var(--amber)">⚡ ${kind} <b class="m">${r.id}</b> → ${r.state}</span>
-      — <a href="/ops" target="_blank">운영 포털 🩺 장비 헬스</a>에서 [정비]/[복구] 조치 시연`;
+      — <a href="/ops" target="_blank">운영 포털 장비 헬스</a>에서 [정비]/[복구] 조치 시연`;
   }catch(e){$("#eqf-msg").innerHTML=`<span style="color:var(--red)">✗ ${e.message}</span>`}
 }
 async function clearEquipFault(){
@@ -750,5 +785,6 @@ async function mReport(){
 </script>
 <script src="/static/nav.js"></script>
 <script src="/static/modinfo.js"></script>
+<script src="/static/nvreq.js"></script>
 </body>
 </html>
