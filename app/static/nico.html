@@ -101,11 +101,17 @@
   .pstep.hl{background:#1d3a26;border-color:var(--green)}
   .pstep.hl .d{color:#e9f5df;font-weight:700}
   /* ⑧ Provisioning — 다이어그램 단계 하이라이트 (글로우 없음) */
+  /* 점등: 글로우 없이 — 대상 rect stroke를 해당 단계(박스) 색으로만 강조 */
   #provsvg .pv{opacity:.55;transition:opacity .15s}
   #provsvg .pv.on{opacity:1}
-  #provsvg .pv.on rect{stroke:var(--g);stroke-width:2}
-  #provsvg .pv.on path{stroke:var(--g);stroke-width:2.2}
+  #provsvg .pv.on rect{stroke:var(--hl,var(--green));stroke-width:1.75}
+  #provsvg .pv.on path{stroke-width:2}
   #provsvg:not(:has(.on)) .pv{opacity:1}
+  .anat{background:#0d141d;border:1px solid #223142;border-radius:8px;
+        padding:12px;overflow-x:auto;margin-top:12px}
+  .anat .al{color:#8aa0b4;font-size:11px;font-weight:700;letter-spacing:.04em;
+        margin-bottom:6px}
+  .anat .ac{color:#5a6b80;font-size:10.5px;margin-top:6px}
   #provtip{display:none;position:fixed;z-index:1000;max-width:440px;
     background:#101f14;border:1px solid #3f6a34;border-radius:8px;
     padding:10px 13px;box-shadow:0 10px 28px rgba(0,0,0,.55);
@@ -276,77 +282,85 @@
         <div class="callout" style="margin-top:8px">
           단계 행에 마우스를 올리면 우측 트레이스의 해당 스텝이 점등됩니다 —
           트레이스 행 hover 시 다이어그램·단계 리스트도 함께 점등.</div>
-        <div style="overflow-x:auto;margin-top:12px">
-        <svg id="provsvg" width="540" height="512" xmlns="http://www.w3.org/2000/svg" style="font-family:inherit">
-          <defs><marker id="ar" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
-            <path d="M0,0 L7,3 L0,6 z" fill="#8aa0b4"/></marker></defs>
+        <div class="anat">
+        <div class="al">NODE ANATOMY — 모듈별 플로우</div>
+        <svg id="provsvg" width="560" height="512" xmlns="http://www.w3.org/2000/svg" style="font-family:inherit">
+          <defs>
+            <marker id="ar-b" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#9fb8d0"/></marker>
+            <marker id="ar-g" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#9fe0a8"/></marker>
+            <marker id="ar-s" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#9fd0ff"/></marker>
+            <marker id="ar-a" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#e8a55a"/></marker>
+            <marker id="ar-t" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#5ad0c8"/></marker>
+            <marker id="ar-p" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#c8a5e8"/></marker>
+            <marker id="ar-y" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#e0d05a"/></marker>
+          </defs>
           <!-- NeoCloud OS D1 / NICo APIService -->
-          <g class="pv" data-st="0 8 9">
-            <rect x="10" y="10" width="160" height="46" rx="9" fill="#13314f" stroke="#2a4868"/>
-            <text x="90" y="29" text-anchor="middle" fill="#9fd0ff" font-size="11" font-weight="800">NeoCloud OS</text>
-            <text x="90" y="44" text-anchor="middle" fill="#7a92a8" font-size="9">D1 ComputeAdapter</text></g>
-          <g class="pv" data-st="0 1 3 4 8 9">
-            <rect x="350" y="10" width="180" height="46" rx="9" fill="#151f10" stroke="#4e7a2c"/>
-            <text x="440" y="29" text-anchor="middle" fill="#cfe8a0" font-size="11" font-weight="800">NICo.APIService</text>
-            <text x="440" y="44" text-anchor="middle" fill="#7fae88" font-size="9">carbide — 상태머신 단일 기록자</text></g>
-          <g class="pv" data-st="0"><path d="M170 24 L348 24" fill="none" stroke="#9fb8d0" stroke-width="1.5" marker-end="url(#ar)"/>
-            <text x="258" y="18" text-anchor="middle" fill="#9fb8d0" font-size="9.5" font-weight="700">⓪ POST /hosts/{id}/provision</text></g>
-          <g class="pv" data-st="8"><path d="M348 44 L170 44" fill="none" stroke="#9fe0a8" stroke-width="1.5" marker-end="url(#ar)"/>
-            <text x="258" y="57" text-anchor="middle" fill="#9fe0a8" font-size="9.5" font-weight="700">⑧ job succeeded (host_ip·UEFI 잠금)</text></g>
-          <g class="pv" data-st="9"><path d="M110 56 C140 82, 340 82, 370 56" fill="none" stroke="#9fd0ff" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar)"/>
-            <text x="258" y="94" text-anchor="middle" fill="#9fd0ff" font-size="9" font-weight="700">⑨ AllocateInstance(gRPC) → FMDS 등록</text></g>
+          <g class="pv" data-st="0 8 9" style="--hl:#9fd0ff">
+            <rect x="10" y="12" width="170" height="48" rx="9" fill="#13314f" stroke="#2a4868"/>
+            <text x="95" y="32" text-anchor="middle" fill="#9fd0ff" font-size="11" font-weight="800">NeoCloud OS</text>
+            <text x="95" y="47" text-anchor="middle" fill="#7a92a8" font-size="9">D1 ComputeAdapter</text></g>
+          <g class="pv" data-st="0 1 3 4 8 9" style="--hl:#cfe8a0">
+            <rect x="372" y="12" width="178" height="48" rx="9" fill="#151f10" stroke="#4e7a2c"/>
+            <text x="461" y="32" text-anchor="middle" fill="#cfe8a0" font-size="11" font-weight="800">NICo.APIService</text>
+            <text x="461" y="47" text-anchor="middle" fill="#7fae88" font-size="9">carbide — 상태머신 단일 기록자</text></g>
+          <g class="pv" data-st="0"><path d="M182 26 L369 26" fill="none" stroke="#9fb8d0" stroke-width="1.5" marker-end="url(#ar-b)"/>
+            <text x="275" y="19" text-anchor="middle" fill="#9fb8d0" font-size="9" font-weight="700">⓪ POST /hosts/{id}/provision</text></g>
+          <g class="pv" data-st="8"><path d="M369 48 L182 48" fill="none" stroke="#9fe0a8" stroke-width="1.5" marker-end="url(#ar-g)"/>
+            <text x="275" y="61" text-anchor="middle" fill="#9fe0a8" font-size="9" font-weight="700">⑧ job succeeded (host_ip·UEFI 잠금)</text></g>
+          <g class="pv" data-st="9"><path d="M110 62 C160 96, 380 96, 430 62" fill="none" stroke="#9fd0ff" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar-s)"/>
+            <text x="270" y="112" text-anchor="middle" fill="#9fd0ff" font-size="9" font-weight="700">⑨ AllocateInstance(gRPC) → FMDS 등록</text></g>
           <!-- BMC -->
-          <g class="pv" data-st="3 4">
-            <rect x="404" y="104" width="126" height="42" rx="8" fill="#3a2a12" stroke="#6a4a22"/>
-            <text x="467" y="122" text-anchor="middle" fill="#e8a55a" font-size="11" font-weight="700">BMC (Redfish)</text>
-            <text x="467" y="136" text-anchor="middle" fill="#a8824a" font-size="8.5">OOB — 전원·부트오더</text>
-            <path d="M488 56 L482 102" fill="none" stroke="#e8a55a" stroke-width="1.5" marker-end="url(#ar)"/>
-            <text x="530" y="72" text-anchor="end" fill="#e8a55a" font-size="9" font-weight="700">③ PATCH 부트오버라이드</text>
-            <text x="530" y="84" text-anchor="end" fill="#e8a55a" font-size="9" font-weight="700">④ POST Reset(재시작)</text></g>
+          <g class="pv" data-st="3 4" style="--hl:#e8a55a">
+            <rect x="424" y="126" width="126" height="44" rx="8" fill="#3a2a12" stroke="#6a4a22"/>
+            <text x="487" y="145" text-anchor="middle" fill="#e8a55a" font-size="11" font-weight="700">BMC (Redfish)</text>
+            <text x="487" y="160" text-anchor="middle" fill="#a8824a" font-size="8.5">OOB — 전원·부트오더</text>
+            <path d="M500 60 L492 124" fill="none" stroke="#e8a55a" stroke-width="1.5" marker-end="url(#ar-a)"/>
+            <text x="552" y="82" text-anchor="end" fill="#e8a55a" font-size="9" font-weight="700">③ PATCH 부트오버라이드</text>
+            <text x="552" y="94" text-anchor="end" fill="#e8a55a" font-size="9" font-weight="700">④ POST Reset(재시작)</text></g>
           <!-- Node -->
-          <g class="pv" data-st="3 4 5 6 7">
-            <rect x="96" y="112" width="290" height="62" rx="10" fill="#13314f" stroke="#2a4868"/>
-            <text x="241" y="134" text-anchor="middle" fill="#fff" font-size="13" font-weight="800">Node — 컴퓨트 트레이</text>
-            <text x="241" y="152" text-anchor="middle" fill="#9fb8d0" font-size="9.5">무상태 부팅 · 영속 디스크 미의존 · UEFI 잠금 적용 대상</text></g>
-          <path class="pv" data-st="4" d="M404 128 L388 132" fill="none" stroke="#e8a55a" stroke-width="1.4" marker-end="url(#ar)"/>
-          <g class="pv" data-st="5 6 7"><rect x="196" y="164" width="90" height="20" rx="4" fill="#0d141d" stroke="#4a5f78" stroke-dasharray="4 3"/>
-            <text x="241" y="178" text-anchor="middle" fill="#9fd0ff" font-size="9.5">eth0 ↔ pf0hpf</text></g>
-          <!-- DPU -->
-          <rect x="48" y="196" width="440" height="188" rx="12" fill="#151f10" stroke="#4e7a2c" stroke-width="1.5"/>
-          <text x="268" y="216" text-anchor="middle" fill="#cfe8a0" font-size="12" font-weight="800">BlueField DPU — VPC 격리·IP·부트 트래픽 종단 (호스트 대면 pf0hpf)</text>
-          <g class="pv" data-st="2 5">
-            <rect x="66" y="230" width="176" height="44" rx="7" fill="#123a3a" stroke="#1f5a55"/>
-            <text x="154" y="248" text-anchor="middle" fill="#5ad0c8" font-size="11" font-weight="700">DPU-DHCP 서버</text>
-            <text x="154" y="263" text-anchor="middle" fill="#8fb8b0" font-size="8.5">테넌트 /30 임대 — 언더레이 도달 차단</text>
-            <path d="M140 228 C144 208, 180 192, 194 187" fill="none" stroke="#5ad0c8" stroke-width="1.5" marker-end="url(#ar)"/>
-            <text x="52" y="190" fill="#5ad0c8" font-size="9" font-weight="700">⑤ DHCP 4-way (/30 임대)</text></g>
-          <g class="pv" data-st="2 6 7">
-            <rect x="286" y="230" width="184" height="44" rx="7" fill="#1a2230" stroke="#3a4a5c"/>
-            <text x="378" y="248" text-anchor="middle" fill="#c9d2dc" font-size="10.5" font-weight="700">부트 프록시 — iPXE 릴레이</text>
-            <text x="378" y="263" text-anchor="middle" fill="#8a95a4" font-size="8.5">호스트↔NICo.PXE 트래픽 DPU 경유</text></g>
-          <g class="pv" data-st="1 2">
-            <rect x="66" y="290" width="404" height="42" rx="7" fill="#2a1c3a" stroke="#463366"/>
-            <text x="268" y="307" text-anchor="middle" fill="#c8a5e8" font-size="10.5" font-weight="700">DPU Provisioning — ① BFB 푸시(rshim·BMC 경유)·dpu-agent 기동 → ② 부트 서비스 구성</text>
-            <text x="268" y="322" text-anchor="middle" fill="#9a82b8" font-size="8.5">호스트 부트 전제 — DPU OS(DOCA) 멱등 설치 · DPU-DHCP/iPXE 릴레이 활성</text>
-            <path d="M467 146 C470 210, 466 250, 452 288" fill="none" stroke="#c8a5e8" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar)"/></g>
-          <g class="pv" data-st="6 7"><rect x="223" y="352" width="90" height="20" rx="4" fill="#0d141d" stroke="#4a5f78" stroke-dasharray="4 3"/>
-            <text x="268" y="366" text-anchor="middle" fill="#9fd0ff" font-size="9.5">p0 (언더레이)</text></g>
+          <g class="pv" data-st="3 4 5 6 7" style="--hl:#5aa7e8">
+            <rect x="100" y="126" width="300" height="62" rx="10" fill="#13314f" stroke="#2a4868"/>
+            <text x="250" y="149" text-anchor="middle" fill="#fff" font-size="12.5" font-weight="800">Node — 컴퓨트 트레이</text>
+            <text x="250" y="166" text-anchor="middle" fill="#9fb8d0" font-size="9">무상태 부팅 · 영속 디스크 미의존 · UEFI 잠금 적용 대상</text></g>
+          <path class="pv" data-st="4" d="M424 148 L404 150" fill="none" stroke="#e8a55a" stroke-width="1.4" marker-end="url(#ar-a)"/>
+          <g class="pv" data-st="5 6 7" style="--hl:#9fd0ff"><rect x="200" y="178" width="100" height="20" rx="4" fill="#0d141d" stroke="#4a5f78" stroke-dasharray="4 3"/>
+            <text x="250" y="192" text-anchor="middle" fill="#9fd0ff" font-size="9.5">eth0 ↔ pf0hpf</text></g>
+          <!-- DPU 프레임 -->
+          <rect x="52" y="216" width="456" height="198" rx="12" fill="#151f10" stroke="#4e7a2c" stroke-width="1.5"/>
+          <text x="280" y="236" text-anchor="middle" fill="#cfe8a0" font-size="12" font-weight="800">BlueField DPU — VPC 격리·IP·부트 트래픽 종단 (호스트 대면 pf0hpf)</text>
+          <g class="pv" data-st="2 5" style="--hl:#5ad0c8">
+            <rect x="72" y="252" width="186" height="46" rx="7" fill="#123a3a" stroke="#1f5a55"/>
+            <text x="165" y="271" text-anchor="middle" fill="#5ad0c8" font-size="11" font-weight="700">DPU-DHCP 서버</text>
+            <text x="165" y="286" text-anchor="middle" fill="#8fb8b0" font-size="8.5">테넌트 /30 임대 — 언더레이 도달 차단</text>
+            <path d="M150 250 C154 226, 186 208, 198 198" fill="none" stroke="#5ad0c8" stroke-width="1.6" marker-end="url(#ar-t)"/>
+            <text x="14" y="212" fill="#5ad0c8" font-size="9" font-weight="700">⑤ DHCP 4-way (/30 임대)</text></g>
+          <g class="pv" data-st="2 6 7" style="--hl:#c9d2dc">
+            <rect x="300" y="252" width="188" height="46" rx="7" fill="#1a2230" stroke="#3a4a5c"/>
+            <text x="394" y="271" text-anchor="middle" fill="#c9d2dc" font-size="10.5" font-weight="700">부트 프록시 — iPXE 릴레이</text>
+            <text x="394" y="286" text-anchor="middle" fill="#8a95a4" font-size="8.5">호스트↔NICo.PXE 트래픽 DPU 경유</text></g>
+          <g class="pv" data-st="1 2" style="--hl:#c8a5e8">
+            <rect x="72" y="314" width="416" height="44" rx="7" fill="#2a1c3a" stroke="#463366"/>
+            <text x="280" y="332" text-anchor="middle" fill="#c8a5e8" font-size="10.5" font-weight="700">DPU Provisioning — ① BFB 푸시(rshim·BMC 경유)·dpu-agent 기동 → ② 부트 서비스 구성</text>
+            <text x="280" y="347" text-anchor="middle" fill="#9a82b8" font-size="8.5">호스트 부트 전제 — DPU OS(DOCA) 멱등 설치 · DPU-DHCP/iPXE 릴레이 활성</text>
+            <path d="M487 170 C492 240, 486 282, 472 312" fill="none" stroke="#c8a5e8" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar-p)"/></g>
+          <g class="pv" data-st="6 7" style="--hl:#9fd0ff"><rect x="228" y="374" width="104" height="20" rx="4" fill="#0d141d" stroke="#4a5f78" stroke-dasharray="4 3"/>
+            <text x="280" y="388" text-anchor="middle" fill="#9fd0ff" font-size="9.5">p0 (언더레이)</text></g>
           <!-- NICo PXE + FMDS -->
-          <g class="pv" data-st="6 7">
-            <rect x="96" y="404" width="280" height="52" rx="10" fill="#3a3512" stroke="#6a5f22"/>
-            <text x="236" y="424" text-anchor="middle" fill="#e0d05a" font-size="11.5" font-weight="700">NICo.PXE — 부트/이미지 서버</text>
-            <text x="236" y="440" text-anchor="middle" fill="#b8ae7a" font-size="8.5">boot.ipxe · kernel/initrd · 테넌트 OS 이미지(로컬 캐시/원격)</text>
-            <path d="M250 350 L250 402" fill="none" stroke="#e0d05a" stroke-width="1.5" marker-end="url(#ar)"/>
-            <text x="242" y="392" text-anchor="end" fill="#e0d05a" font-size="9" font-weight="700">⑥ GET /boot.ipxe → kernel/initrd</text></g>
+          <g class="pv" data-st="6 7" style="--hl:#e0d05a">
+            <rect x="100" y="446" width="300" height="54" rx="10" fill="#3a3512" stroke="#6a5f22"/>
+            <text x="250" y="467" text-anchor="middle" fill="#e0d05a" font-size="11.5" font-weight="700">NICo.PXE — 부트/이미지 서버</text>
+            <text x="250" y="483" text-anchor="middle" fill="#b8ae7a" font-size="8.5">boot.ipxe · kernel/initrd · 테넌트 OS 이미지(로컬 캐시/원격)</text>
+            <path d="M258 396 L258 444" fill="none" stroke="#e0d05a" stroke-width="1.5" marker-end="url(#ar-y)"/>
+            <text x="250" y="432" text-anchor="end" fill="#e0d05a" font-size="9" font-weight="700">⑥ GET /boot.ipxe → kernel/initrd</text></g>
           <g class="pv" data-st="7">
-            <path d="M296 402 L296 374" fill="none" stroke="#9fe0a8" stroke-width="1.5" marker-end="url(#ar)"/>
-            <text x="304" y="390" fill="#9fe0a8" font-size="9" font-weight="700">⑦ cloud-init (고정IP·SSH키·UEFI 잠금)</text></g>
-          <g class="pv" data-st="9">
-            <rect x="404" y="404" width="126" height="52" rx="10" fill="#1c3a20" stroke="#2f5d3a"/>
-            <text x="467" y="424" text-anchor="middle" fill="#9fe0a8" font-size="11" font-weight="700">FMDS</text>
-            <text x="467" y="440" text-anchor="middle" fill="#7fae88" font-size="8.5">인스턴스 메타데이터 서비스</text></g>
-          <text x="10" y="490" fill="#8aa0b4" font-size="9.5">절차 행/그림에 마우스를 올리면 단계 점등 + API 메시지 말풍선 · [▶ 재생] 전체 시연</text>
+            <path d="M300 444 L300 398" fill="none" stroke="#9fe0a8" stroke-width="1.5" marker-end="url(#ar-g)"/>
+            <text x="308" y="432" fill="#9fe0a8" font-size="9" font-weight="700">⑦ cloud-init (고정IP·SSH키·UEFI 잠금)</text></g>
+          <g class="pv" data-st="9" style="--hl:#9fe0a8">
+            <rect x="424" y="446" width="126" height="54" rx="10" fill="#1c3a20" stroke="#2f5d3a"/>
+            <text x="487" y="467" text-anchor="middle" fill="#9fe0a8" font-size="11" font-weight="700">FMDS</text>
+            <text x="487" y="483" text-anchor="middle" fill="#7fae88" font-size="8.5">인스턴스 메타데이터 서비스</text></g>
         </svg>
+        <div class="ac">절차 행/그림에 마우스를 올리면 단계 점등 + API 메시지 말풍선 · [▶ 재생] 전체 시연</div>
         </div>
         <div id="provtip"></div>
       </div>
