@@ -1,0 +1,103 @@
+/* NeoCloud OS — 공용 테마: 헤더·네비게이션 (전 페이지 통일)
+   페이지별 스타일과 충돌하지 않도록 nc- 네임스페이스만 사용한다. */
+:root{
+  --nc-g:#76b900; --nc-navy:#0b1f3a; --nc-bg:#0f1722; --nc-card:#16202e;
+  --nc-line:#2a3848; --nc-mut:#8aa0b4;
+}
+.nc-header{
+  background:linear-gradient(90deg,var(--nc-navy),#13314f);
+  border-bottom:3px solid var(--nc-g);
+  padding:11px 22px; display:flex; align-items:center; gap:14px;
+  font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
+}
+.nc-brand{color:var(--nc-g); font-weight:800; font-size:15px; flex:none}
+.nc-head-txt .nc-title{color:#fff; font-size:16px; font-weight:700; line-height:1.25}
+.nc-head-txt .nc-sub{color:var(--nc-mut); font-size:11.5px; line-height:1.3}
+.nc-nav{margin-left:auto; display:flex; gap:6px; flex:none}
+.nc-nav a{
+  color:var(--nc-mut); text-decoration:none; font-size:12px; font-weight:700;
+  padding:5px 13px; border-radius:16px; border:1px solid var(--nc-line);
+  transition:all .15s; white-space:nowrap;
+}
+.nc-nav a:hover{color:#fff; border-color:var(--nc-g)}
+.nc-nav a.act{background:var(--nc-g); color:#08210a; border-color:var(--nc-g)}
+
+/* 포털별 호버 하이라이트 — 메뉴 빠른 스캔용 (아이콘과 함께) */
+.nc-nav a[href="/customer"]:hover{border-color:#6fd08c; color:#9fe0a8}
+.nc-nav a[href="/biz"]:hover{border-color:#e8c66a; color:#f0d896}
+.nc-nav a[href="/ops"]:hover{border-color:#f0a3b0; color:#f5c2cb}
+.nc-nav a[href="/arch"]:hover{border-color:#4fd8ff; color:#8fe4ff}
+.nc-nav a[href="/nico"]:hover{border-color:var(--nc-g); color:#cfe8a0}
+.nc-nav a[href="/flow"]:hover{border-color:#c8a5e8; color:#ddc2f2}
+
+/* 라이브 배지 (nav.js) — 미해결 티켓 🎫 · 승인 대기 ⏳ */
+.nc-badge{
+  display:inline-block; margin-left:5px; padding:0 7px; border-radius:9px;
+  font-size:10px; font-weight:800; vertical-align:1px;
+  animation:ncBlink 1.5s infinite;
+}
+.nc-b-tkt{background:#43232a; color:#f5c2cb; border:1px solid #7a3a48}
+.nc-b-appr{background:#3a2f12; color:#f0d896; border:1px solid #8a6f2c}
+.nc-nav a.act .nc-badge{background:#08210a; color:#d7f5b0; border-color:#08210a}
+@keyframes ncBlink{50%{opacity:.55}}
+
+/* NVIDIA BMaaS Requirements Guide 매핑 배지 — 전 포털 공용 (시안 블루로 구분) */
+.nvreq{
+  display:inline-block; padding:1px 8px; border-radius:4px;
+  font-family:Menlo, monospace; font-size:9.5px; font-weight:700;
+  background:#0e2f44; color:#4fd8ff; border:1px solid #1f6a95;
+  vertical-align:2px; white-space:nowrap;
+}
+.nvreq::before{content:"NVIDIA Req · "}
+.nvreq{cursor:help}
+
+/* NVIDIA Req 말풍선 — nvreq.js가 생성/제어 (Req ID별 요구사항 원문 요약) */
+#nvtip{
+  display:none; position:fixed; z-index:1000; max-width:420px;
+  background:#0b2436; border:1px solid #1f6a95; border-radius:8px;
+  padding:10px 13px 11px; box-shadow:0 10px 28px rgba(0,0,0,.55);
+  font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
+  font-size:11.5px; line-height:1.5; color:#cfe8f5; pointer-events:none;
+}
+#nvtip::before{
+  content:""; position:absolute; left:var(--ax,24px); top:-6px;
+  width:10px; height:10px; background:#0b2436; transform:rotate(45deg);
+  border-left:1px solid #1f6a95; border-top:1px solid #1f6a95;
+}
+#nvtip.up::before{top:auto; bottom:-6px; transform:rotate(225deg)}
+#nvtip .nvtip-h{color:#4fd8ff; font-size:9.5px; letter-spacing:.5px;
+  text-transform:uppercase; opacity:.85; margin-bottom:2px}
+#nvtip .nvtip-row{margin-top:7px}
+#nvtip .nvtip-row b{color:#4fd8ff; font-family:Menlo,monospace; font-size:10.5px;
+  margin-right:7px}
+#nvtip .nvtip-t{color:#e8f4fb; font-weight:700}
+#nvtip .nvtip-d{color:#9fc0d4; margin-top:2px}
+
+/* Control-Plane 모듈 역할 말풍선 — modinfo.js가 생성/제어 (그린 계열) */
+#modtip{
+  display:none; position:fixed; z-index:1000; max-width:430px;
+  background:#101f14; border:1px solid #3f6a34; border-radius:8px;
+  padding:10px 13px 11px; box-shadow:0 10px 28px rgba(0,0,0,.55);
+  font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
+  font-size:11.5px; line-height:1.55; color:#d7e8d0; pointer-events:none;
+}
+#modtip::before{
+  content:""; position:absolute; left:var(--ax,24px); top:-6px;
+  width:10px; height:10px; background:#101f14; transform:rotate(45deg);
+  border-left:1px solid #3f6a34; border-top:1px solid #3f6a34;
+}
+#modtip.up::before{top:auto; bottom:-6px; transform:rotate(225deg)}
+#modtip .modtip-h{color:#76b900; font-size:9.5px; letter-spacing:.5px;
+  text-transform:uppercase; opacity:.85; margin-bottom:3px}
+#modtip .modtip-t{color:#e9f5df; font-weight:700; margin-bottom:3px}
+#modtip .modtip-d{color:#a8c49c}
+[data-b],[data-m],[data-stage]{cursor:help}
+
+/* 말풍선 On/Off 스위치 (nav.js) */
+.nc-tipsw{
+  display:flex; align-items:center; gap:4px; margin-left:6px;
+  color:var(--nc-mut); font-size:12px; cursor:pointer; user-select:none;
+  padding:5px 9px; border:1px solid var(--nc-line); border-radius:16px;
+}
+.nc-tipsw:hover{border-color:var(--nc-g)}
+.nc-tipsw input{accent-color:#76b900; cursor:pointer; margin:0}

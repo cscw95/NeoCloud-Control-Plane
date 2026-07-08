@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>고객 포털 — NeoCloud</title>
+<link rel="stylesheet" href="/static/theme.css">
+<script src="/static/charts.js"></script>
+<style>
+  :root{--g:#76b900;--bg:#0f1722;--card:#16202e;--line:#2a3848;--mut:#8aa0b4;
+        --amber:#e8c66a;--red:#f0a3b0;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
+       background:var(--bg);color:#e6edf3;font-size:13px;line-height:1.5}
+  .wrap{max-width:1460px;margin:0 auto;padding:18px 22px}
+  h2{font-size:14px;color:var(--g);border-bottom:1px solid var(--line);padding-bottom:6px;margin:0 0 10px}
+  h3{font-size:12px;color:var(--mut);margin:12px 0 6px;text-transform:uppercase}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}
+  @media(max-width:1100px){.grid{grid-template-columns:1fr}}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:11px 14px}
+  .card .k{color:var(--mut);font-size:10.5px;text-transform:uppercase}
+  .card .v{font-size:20px;font-weight:800;color:#fff;margin-top:2px}
+  .card .v small{font-size:11px;color:var(--g);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th,td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600;text-transform:uppercase;font-size:10px}
+  .m{font-family:Menlo,monospace;font-size:10.5px}
+  .muted{color:var(--mut)}
+  .pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700}
+  .p-delivered,.p-closed,.p-resolved,.p-ok{background:#23402a;color:#9fe0a8}
+  .p-failed,.p-rejected,.p-critical{background:#43232a;color:var(--red)}
+  .p-open,.p-high,.p-warning{background:#3a2f12;color:var(--amber)}
+  .p-in_progress,.p-medium,.p-low{background:#1c2f4a;color:#9fd0ff}
+  input,select{background:#0d141d;border:1px solid var(--line);color:#e6edf3;
+        border-radius:6px;padding:6px 8px;font-size:12px;width:100%}
+  label{display:block;color:var(--mut);font-size:11px;margin:8px 0 3px}
+  button{background:var(--g);color:#08210a;border:0;border-radius:6px;padding:7px 12px;
+         font-weight:700;cursor:pointer;font-size:12px}
+  button.ghost{background:transparent;color:var(--g);border:1px solid var(--g)}
+  button.danger{background:transparent;color:var(--red);border:1px solid var(--red)}
+  .row{display:flex;gap:8px}.row>*{flex:1}
+  .bar{height:7px;border-radius:4px;background:#233043;overflow:hidden;width:100%;margin-top:4px}
+  .bar i{display:block;height:100%;background:var(--g)}
+  .scr{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+  .kv{font-family:Menlo,monospace;font-size:11px}
+</style>
+</head>
+<body>
+<header class="nc-header">
+  <span class="nc-brand">NeoCloud</span>
+  <div class="nc-head-txt">
+    <div class="nc-title">고객 포털 — Customer Portal</div>
+    <div class="nc-sub">내 클러스터 상태 · 서비스 헬스 · SLA 가시성 · 셀프서비스</div>
+  </div>
+  <nav class="nc-nav">
+    <a href="/customer" class="act">👤 고객 포털</a>
+    <a href="/biz">💼 비즈 포털</a>
+    <a href="/ops">🛠 운영 포털</a>
+    <a href="/arch">🧭 NeoCloud Control-Plane</a>
+    <a href="/nico">⚙️ NICo</a>
+    <a href="/flow">🔬 검증 콘솔</a>
+    <a href="/">📊 VRCM</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="panel" style="display:flex;gap:12px;align-items:center">
+    <b>테넌트 로그인(데모)</b>
+    <select id="tenant" style="max-width:280px" onchange="refresh()"></select>
+    <span class="muted" id="whoami"></span>
+    <a id="fablink" class="muted" style="margin-left:auto" href="/nico">내 GPU fabric 보기 →</a>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <h2>내 클러스터 — 운영 상태 (LIVE)</h2>
+        <div id="cluster" class="muted">클러스터 없음 — 우측에서 신규 주문을 요청하세요.</div>
+      </div>
+      <div class="panel">
+        <h2>서비스 현황 그래프 — 최근 추이 (LIVE · 2s 틱)</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><canvas id="ch-util" style="width:100%"></canvas></div>
+          <div><canvas id="ch-power" style="width:100%"></canvas></div>
+          <div><canvas id="ch-temp" style="width:100%"></canvas></div>
+          <div><canvas id="ch-tok" style="width:100%"></canvas></div>
+        </div>
+        <div class="muted" style="font-size:11px;margin-top:4px" id="ch-note">—</div>
+      </div>
+      <div class="panel">
+        <h2>랙별 현황 — NVL 도메인 단위 상세</h2>
+        <div class="scr"><table>
+          <thead><tr><th>랙 (NVL72)</th><th>트레이</th><th style="width:190px">평균 Util</th>
+            <th>전력</th><th>최고 온도</th><th>NVLink</th><th>fault GPU</th></tr></thead>
+          <tbody id="racks"></tbody></table></div>
+      </div>
+      <div class="panel">
+        <h2>SLA 가시성 <span class="nvreq">SLA·SLO Targets</span></h2>
+        <div id="sla" class="muted">—</div>
+        <div style="margin-top:8px;padding:8px 10px;background:#0e2f44;border:1px solid #1f6a95;border-radius:6px;font-size:11px">
+          <b style="color:#4fd8ff">NVIDIA Req — SLA/SLO 타깃 (v2.2)</b>
+          <span class="muted">: 관리면 가용성 99.95%(financially-backed) · 고속 스토리지 서비스 99.99%/30d ·
+          스토리지 QoS(요청 대역폭·IOPS) 보장 · 텔레메트리 OTLP ≤120s</span>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>내 주문 이력</h2>
+        <div class="scr"><table><thead><tr><th>주문</th><th>유형</th><th>규모</th><th>상태</th><th>리드타임</th></tr></thead>
+          <tbody id="orders"></tbody></table></div>
+      </div>
+      <div class="panel" style="border:1.5px solid #2f5d3a">
+        <h2 style="color:#8fd8a0;border-color:#2f5d3a">🔐 클러스터 접속 정보 — 딜리버리 패키지
+          <span class="nvreq">SEC01·SEC07·CNP06</span></h2>
+        <div id="access" class="muted">delivered 주문이 없습니다 — 개통 완료 시 접속·인증 정보가 발급됩니다.</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h2>셀프서비스 — 클러스터 주문</h2>
+        <div class="row">
+          <div><label>블루프린트</label>
+            <select id="o-bp"><option value="vr-nvl72">vr-nvl72 (Rubin)</option>
+              <option value="gb200-nvl72">gb200-nvl72</option></select></div>
+          <div><label>랙 수 (1 SU = 16 · NCP RD)</label><input id="o-racks" type="number" value="1" min="1" max="140"></div>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <div><label>스토리지 할당</label>
+            <select id="o-smode" onchange="$('#o-stb').disabled=$('#o-sgbps').disabled=this.value!=='manual'">
+              <option value="auto">자동 (랙당 500TB·40GB/s)</option>
+              <option value="manual">수동 지정</option></select></div>
+          <div><label>용량 (TB)</label><input id="o-stb" type="number" placeholder="예: 1200" disabled></div>
+          <div><label>QoS (GB/s)</label><input id="o-sgbps" type="number" placeholder="자동 산정" disabled></div>
+        </div>
+        <div class="muted" style="font-size:11px;margin-top:4px">기본 CPU 노드 5대(DPU·VPC 연결) 자동 포함</div>
+        <div style="margin-top:8px"><button onclick="order()">▸ 신규/확장 주문</button>
+          <span id="o-msg" class="muted"></span></div>
+        <h3>회수 요청</h3>
+        <div class="row">
+          <select id="alloc"></select>
+          <button class="danger" style="flex:0 0 auto" onclick="reclaim()">회수</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>트러블 티켓</h2>
+        <div class="row">
+          <div style="flex:2"><label>제목</label><input id="t-subj" placeholder="예: rack-00 GPU 성능 저하"></div>
+          <div><label>심각도</label>
+            <select id="t-sev"><option>medium</option><option>high</option>
+              <option>critical</option><option>low</option></select></div>
+        </div>
+        <div style="margin-top:8px"><button onclick="ticket()">+ 티켓 생성</button></div>
+        <h3>내 티켓</h3>
+        <div id="tickets" class="muted">—</div>
+      </div>
+      <div class="panel">
+        <h2>내 스토리지 (VAST) <span class="nvreq">HSS01·HSS02·HSS04</span></h2>
+        <div class="scr"><table><thead><tr><th>View</th><th>용량</th><th>QoS</th></tr></thead>
+          <tbody id="storage"></tbody></table></div>
+      </div>
+      <div class="panel">
+        <h2>내 CPU 노드 — 기본 제공 5대 (DPU · VPC 연결) <span class="nvreq">DMS01·DMS02</span></h2>
+        <div class="scr"><table><thead><tr><th>노드</th><th>사양</th><th>host IP</th><th>DPU</th><th>VPC</th></tr></thead>
+          <tbody id="cpunodes"></tbody></table></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+async function j(u){const r=await fetch(u);if(!r.ok)throw new Error((await r.json()).detail||r.status);return r.json()}
+async function jp(u,b){const r=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify(b)});if(!r.ok)throw new Error((await r.json()).detail||r.status);return r.json()}
+const tid=()=>$("#tenant").value;
+
+async function loadTenants(){
+  const ts=await j("/api/v1/tenants");
+  $("#tenant").innerHTML=ts.map(t=>`<option value="${t.id}">${t.name} (${t.id})</option>`).join("")
+    ||'<option value="">테넌트 없음 — 비즈 포털에서 계약 생성</option>';
+}
+function drawCharts(hist,my){
+  const pick=k=>hist.map(x=>x[k]);
+  ncChart($("#ch-util"),[{label:"GPU Utilization",color:"#76b900",data:pick("avg_util_pct")}],
+          {unit:"%",min:0,max:100});
+  ncChart($("#ch-power"),[{label:"전력",color:"#5aa7e8",data:pick("power_kw")}],
+          {unit:"kW",min:0,capLine:my?my.power_cap_kw:undefined});
+  ncChart($("#ch-temp"),[{label:"최고 GPU 온도",color:"#e8c66a",data:pick("max_gpu_temp_c")}],
+          {unit:"°C",min:20,max:95});
+  ncChart($("#ch-tok"),[{label:"처리량",color:"#c8a5e8",data:pick("tokens_ks")},
+                        {label:"NVLink",color:"#5ad0c8",data:pick("nvlink_tbps")}],
+          {unit:"",min:0,fill:true});
+  $("#ch-note").textContent=hist.length
+    ?`샘플 ${hist.length}개 (2s 틱) · 마지막 step ${hist[hist.length-1].step} · fault GPU ${hist[hist.length-1].fault_gpus} · ECC 누적 ${hist[hist.length-1].ecc}`
+    :"데이터 수집 중 — 클러스터 인도 후 자동 기록됩니다";
+}
+function drawRacks(trays){
+  const by={};
+  trays.forEach(t=>(by[t.rack_id]=by[t.rack_id]||[]).push(t));
+  $("#racks").innerHTML=Object.keys(by).sort().map(rid=>{
+    const ts=by[rid];
+    const gpus=ts.flatMap(t=>t.gpus);
+    const util=gpus.reduce((a,g)=>a+g.util_pct,0)/Math.max(1,gpus.length);
+    const pw=ts.reduce((a,t)=>a+t.power_w,0)/1000;
+    const tmax=Math.max(...gpus.map(g=>g.temp_c));
+    const nvl=ts.reduce((a,t)=>a+t.nvlink_tx_tbps,0);
+    const fault=gpus.filter(g=>g.state==="fault").length;
+    return `<tr><td class="m">${rid}</td><td>${ts.length}</td>
+      <td><span class="bar" style="width:120px;display:inline-block"><i style="width:${util}%"></i></span> ${util.toFixed(1)}%</td>
+      <td>${pw.toFixed(1)}kW</td><td>${tmax.toFixed(1)}°C</td>
+      <td>${nvl.toFixed(1)}TB/s</td>
+      <td style="color:${fault?"var(--red)":"inherit"}">${fault}</td></tr>`}).join("")
+    ||'<tr><td colspan="7" class="muted">활성 랙 없음</td></tr>';
+}
+async function refresh(){
+  if(!tid()){return}
+  $("#whoami").textContent=`로그인: ${tid()}`;
+  $("#fablink").href=`/nico#tenant=${tid()}`;
+  const [nodes,cls,fab,views,orders,tcks,t,hist,trays]=await Promise.all([
+    j(`/api/v1/nodes?tenant_id=${tid()}`),j("/api/v1/emu/clusters"),
+    j(`/api/v1/fabric/ib?tenant_id=${tid()}`),j("/fake-vast/views"),
+    j(`/api/v1/orders?tenant_id=${tid()}`),j(`/api/v1/tickets?tenant_id=${tid()}`),
+    j(`/api/v1/tenants/${tid()}`),
+    j(`/api/v1/emu/history?tenant_id=${tid()}&limit=150`),
+    j(`/api/v1/emu/trays?tenant_id=${tid()}`)]);
+  const cpus=await j(`/api/v1/cpu-nodes?tenant_id=${tid()}`);
+  $("#cpunodes").innerHTML=cpus.map(cn=>
+    `<tr><td class="m">${cn.id}</td><td>${cn.cpu_arch} ${cn.cores}c · ${cn.mem_tb}TB</td>
+     <td class="m">${cn.host_ip||"—"}</td><td class="m">${cn.dpu_id} (${cn.dpu_sku})</td>
+     <td class="m">${cn.segment_id||"—"}</td></tr>`).join("")
+    ||'<tr><td colspan="5" class="muted">클러스터 인도 시 자동 할당됩니다</td></tr>';
+  const my=cls.find(c=>c.tenant_id===tid());
+  const sel=fab.selected;
+  drawCharts(hist,my);
+  drawRacks(trays);
+  const inSvc=nodes.filter(n=>n.state==="in_service").length;
+  const avail=nodes.length?Math.round(inSvc/nodes.length*1000)/10:0;
+
+  const mk=(k,v)=>`<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  $("#cards").innerHTML=
+    mk("내 랙 / GPU",sel?`${sel.racks} <small>/ ${sel.gpus.toLocaleString()} GPU</small>`:"0")+
+    mk("가용 노드",`${avail}<small>%</small>`)+
+    mk("평균 Utilization",my?`${my.avg_util_pct}<small>%</small>`:"—")+
+    mk("전력",my?`${my.power_kw}<small>/${my.power_cap_kw} kW</small>`:"—")+
+    mk("스토리지",(()=>{const v=views.filter(x=>x.tenant_ref===tid());
+        return v.length?`${v.reduce((a,x)=>a+x.capacity_tb,0)}<small> TB</small>`:"0"})())+
+    mk("IB P_Key",sel&&sel.pkey?`<span class="m">${sel.pkey}</span>`:"—");
+
+  // 클러스터 상태
+  $("#cluster").innerHTML=my?`
+    <div class="kv">워크로드 <b>${my.profile}</b> · 트레이 ${my.trays} · GPU ${my.gpus.toLocaleString()} ·
+      NVLink ${my.nvlink_tbps}TB/s · ≈${my.tokens_ks}K tok/s · 최고 GPU 온도 ${my.max_gpu_temp_c}°C</div>
+    <div class="bar"><i style="width:${my.avg_util_pct}%"></i></div>
+    <div class="kv" style="margin-top:6px">SU: ${sel?sel.sus.join(", "):"—"} ·
+      fault GPU <b style="color:${my.fault_gpus?"var(--red)":"inherit"}">${my.fault_gpus}</b> ·
+      ECC(corr) ${my.ecc_corrected_total}</div>`
+    :'<span class="muted">활성 클러스터 없음</span>';
+
+  // SLA
+  const done=orders.filter(o=>o.kind==="new"&&o.state==="delivered");
+
+  // 접속 정보 — 딜리버리 패키지 (client_secret 1회 노출 컨셉)
+  const kv=(k,v)=>`<tr><td class="muted" style="width:110px;white-space:nowrap">${k}</td><td>${v}</td></tr>`;
+  const withPk=done.filter(o=>o.access_package);
+  $("#access").innerHTML=withPk.length?withPk.map(o=>{const p=o.access_package;
+    return `<div style="margin-bottom:10px">
+      <div style="font-weight:700;margin-bottom:4px">${o.id} · ${o.racks} rack
+        <span class="muted" style="font-weight:400">— 발급 ${p.issued_at.slice(0,19).replace("T"," ")}</span></div>
+      <table style="font-size:11px">
+        ${kv("SSH Bastion",`<span class="m">ssh ${p.ssh_bastion.user}@${p.ssh_bastion.host}</span>
+            <span class="muted">(${p.ssh_bastion.ip}) — ${p.ssh_bastion.auth}</span>`)}
+        ${kv("API",`<span class="m">${p.api.base_url}</span>`)}
+        ${kv("OIDC 인증",`client_id <span class="m">${p.api.client_id}</span> · secret
+            <span class="m" id="sec-${o.id}" data-s="${p.api.client_secret}">nc_****${p.api.client_secret.slice(-4)}</span>
+            <button class="ghost" style="padding:1px 7px;font-size:10px" onclick="revealSec('${o.id}')">👁 표시</button>`)}
+        ${kv("Token URL",`<span class="m" style="font-size:10px">${p.api.token_url}</span>`)}
+        ${kv("콘솔 (PAM)",`<span class="m">${p.console.pam_url}</span> <span class="muted">— ${p.console.note}</span>`)}
+        ${p.storage.map(st=>kv("스토리지",`<span class="m">${st.mount}</span> <span class="muted">(${st.protocol})</span><br>
+            <span class="m" style="font-size:10px">S3 ${st.s3_endpoint} · 키: ${st.credential_vault}</span>`)).join("")}
+        ${kv("네트워크",`VRF <span class="m">${p.network.vrf}</span> · L3VNI <span class="m">${p.network.compute_l3vni}</span>
+            · IB P_Key <span class="m">${p.network.ib_pkey||"—"}</span>`)}
+      </table>
+      <div class="muted" style="font-size:10.5px;margin-top:4px">⚠ ${p.note}</div>
+    </div>`}).join("")
+    :'<span class="muted">delivered 주문이 없습니다 — 개통 완료 시 접속·인증 정보가 발급됩니다.</span>';
+  const lts=done.map(o=>{
+    const r=o.history.find(e=>e.state==="received"),d=o.history.find(e=>e.state==="delivered");
+    return r&&d?(new Date(d.at)-new Date(r.at))/1000:null}).filter(x=>x!==null);
+  const worst=lts.length?Math.max(...lts):null;
+  $("#sla").innerHTML=`
+    <table><tbody>
+      <tr><th>프로비저닝 리드타임</th><td>${lts.length?`최근 ${lts.length}건 · 최대 <b>${worst.toFixed(1)}s</b> (SLO: 자동화 파이프라인)`:"—"}</td></tr>
+      <tr><th>가용성 (노드)</th><td><b>${avail}%</b> — in_service ${inSvc}/${nodes.length}</td></tr>
+      <tr><th>격리 검증</th><td id="slaiso">확인 중…</td></tr>
+      <tr><th>소거 보증</th><td>회수 시 NVMe·GPU·TPM 7단계 소거 리포트 제공</td></tr>
+    </tbody></table>`;
+  j(`/api/v1/tenants/${tid()}/isolation`).then(r=>{
+    $("#slaiso").innerHTML=r.ok?'<span class="pill p-ok">PASS</span> 4계층 격리'
+      :'<span class="pill p-critical">FAIL</span>'}).catch(()=>{});
+
+  // 주문 이력 + 회수 select
+  orders.sort((a,b)=>b.id.localeCompare(a.id,undefined,{numeric:true}));
+  $("#orders").innerHTML=orders.map(o=>{
+    const r=o.history.find(e=>e.state==="received"),d=o.history.find(e=>e.state==="delivered");
+    const lt=r&&d?((new Date(d.at)-new Date(r.at))/1000).toFixed(1)+"s":"—";
+    return `<tr><td class="m">${o.id}</td><td>${o.kind}</td>
+      <td>${o.kind==="new"?o.racks+" rack":o.allocation_id||"—"}</td>
+      <td><span class="pill p-${o.state}">${o.state}</span>
+        ${o.pending_stage?`<span class="pill p-open">개통 진행 중 · 다음: ${o.pending_stage}</span>`:""}</td>
+      <td>${lt}</td></tr>`}).join("")
+    ||'<tr><td colspan="5" class="muted">주문 없음</td></tr>';
+  $("#alloc").innerHTML=(t.allocations||[]).map(a=>
+    `<option value="${a.id}">${a.id} — ${a.rack_ids.length} rack</option>`).join("")
+    ||'<option value="">할당 없음</option>';
+
+  // 티켓
+  $("#tickets").innerHTML=tcks.map(x=>`
+    <div style="padding:5px 0;border-bottom:1px solid var(--line)">
+      <span class="m">${x.id}</span> <span class="pill p-${x.severity}">${x.severity}</span>
+      <span class="pill p-${x.status}">${x.status}</span> <b>${x.subject}</b>
+      ${x.comments.length?`<div class="muted" style="font-size:11px">최근 답변: ${x.comments[x.comments.length-1].text}</div>`:""}
+    </div>`).join("")||'<span class="muted">티켓 없음</span>';
+
+  // 스토리지
+  const myv=views.filter(x=>x.tenant_ref===tid());
+  $("#storage").innerHTML=myv.map(v=>
+    `<tr><td class="m">${v.path}</td><td>${v.capacity_tb}TB</td>
+     <td>${v.qos_gbps}GB/s · ${v.qos_iops_k}K IOPS</td></tr>`).join("")
+    ||'<tr><td colspan="3" class="muted">—</td></tr>';
+}
+async function order(){
+  if(!tid())return;
+  $("#o-msg").textContent="처리 중…";
+  try{
+    const body={tenant_id:tid(),kind:"new",
+      blueprint_key:$("#o-bp").value,racks:parseInt($("#o-racks").value||"1"),
+      storage_mode:$("#o-smode").value};
+    if(body.storage_mode==="manual"){
+      body.storage_tb=parseFloat($("#o-stb").value||"0");
+      body.storage_gbps=parseFloat($("#o-sgbps").value||"0");
+    }
+    const o=await jp("/api/v1/orders",body);
+    $("#o-msg").innerHTML=`<span style="color:${o.state==="delivered"?"var(--g)":"var(--red)"}">${o.id} → ${o.state}</span>`;
+    await refresh();
+  }catch(e){$("#o-msg").innerHTML=`<span style="color:var(--red)">✗ ${e.message}</span>`}
+}
+async function reclaim(){
+  const a=$("#alloc").value;if(!a)return;
+  if(!confirm(`${a} 를 회수(해지)할까요? 데이터는 7단계 소거됩니다.`))return;
+  await jp("/api/v1/orders",{tenant_id:tid(),kind:"terminate",allocation_id:a});
+  await refresh();
+}
+async function ticket(){
+  const s=$("#t-subj").value.trim();if(!s||!tid())return;
+  await jp("/api/v1/tickets",{tenant_id:tid(),subject:s,severity:$("#t-sev").value,
+    body:"고객 포털에서 접수"});
+  $("#t-subj").value="";await refresh();
+}
+function revealSec(oid){
+  const el=document.getElementById(`sec-${oid}`);
+  el.textContent=el.textContent.includes("*")?el.dataset.s:`nc_****${el.dataset.s.slice(-4)}`;
+}
+(async()=>{await loadTenants();await refresh();setInterval(refresh,5000)})();
+</script>
+<script src="/static/nvreq.js"></script>
+<script src="/static/nav.js"></script>
+</body>
+</html>

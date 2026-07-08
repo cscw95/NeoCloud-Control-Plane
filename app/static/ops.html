@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>운영 포털 — NeoCloud OS</title>
+<link rel="stylesheet" href="/static/theme.css">
+<script src="/static/charts.js"></script>
+<style>
+  :root{--g:#76b900;--bg:#0f1722;--card:#16202e;--line:#2a3848;--mut:#8aa0b4;
+        --amber:#e8c66a;--red:#f0a3b0;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
+       background:var(--bg);color:#e6edf3;font-size:13px;line-height:1.5}
+  .wrap{max-width:1460px;margin:0 auto;padding:18px 22px}
+  h2{font-size:14px;color:var(--g);border-bottom:1px solid var(--line);padding-bottom:6px;margin:0 0 10px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:1100px){.grid{grid-template-columns:1fr}}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:11px 14px}
+  .card .k{color:var(--mut);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}
+  .card .v{font-size:21px;font-weight:800;color:#fff;margin-top:2px}
+  .card .v small{font-size:11px;color:var(--mut);font-weight:600}
+  .card.warn .v{color:var(--amber)}.card.bad .v{color:var(--red)}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th,td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600;text-transform:uppercase;font-size:10px}
+  .m{font-family:Menlo,monospace;font-size:10.5px}
+  .muted{color:var(--mut)}
+  .pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700}
+  .p-delivered,.p-closed,.p-resolved,.p-pool_ready,.p-in_service{background:#23402a;color:#9fe0a8}
+  .p-failed,.p-rejected,.p-quarantined,.p-rma,.p-critical{background:#43232a;color:var(--red)}
+  .p-open,.p-cordoned,.p-high{background:#3a2f12;color:var(--amber)}
+  .p-in_progress,.p-draining,.p-medium,.p-low{background:#1c2f4a;color:#9fd0ff}
+  input,select{background:#0d141d;border:1px solid var(--line);color:#e6edf3;
+        border-radius:6px;padding:6px 8px;font-size:12px}
+  button{background:var(--g);color:#08210a;border:0;border-radius:6px;padding:6px 11px;
+         font-weight:700;cursor:pointer;font-size:12px}
+  button.ghost{background:transparent;color:var(--g);border:1px solid var(--g)}
+  button.warn{background:transparent;color:var(--amber);border:1px solid var(--amber)}
+  .finding{padding:5px 8px;border-radius:6px;margin:4px 0;font-size:11.5px}
+  .f-info{background:#1c2e20;color:#9fe0a8}.f-major{background:#332c14;color:var(--amber)}
+  .f-critical{background:#3a1f25;color:var(--red)}
+  .scr{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+  .tck{border:1px solid var(--line);border-radius:8px;padding:8px 11px;margin-bottom:8px;background:#0d141d}
+  .tck .hd{display:flex;gap:8px;align-items:center;font-weight:700}
+  .tck .bd{color:var(--mut);font-size:11.5px;margin:3px 0}
+  .tck .row{display:flex;gap:6px;margin-top:6px}
+  /* ---- Fulfillment 보드 ---------------------------------------------- */
+  .ffboard{display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:12px}
+  @media(max-width:1100px){.ffboard{grid-template-columns:1fr}}
+  .ffcol{background:#0d141d;border:1px solid var(--line);border-radius:10px;padding:10px}
+  .ffcol h4{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;
+            display:flex;align-items:center;gap:8px}
+  .ffcol .n{border-radius:11px;padding:0 9px;font-size:12px;font-weight:800}
+  .ffcol.q h4{color:var(--amber)}.ffcol.q .n{background:var(--amber);color:#241c05}
+  .ffcol.d h4{color:#9fe0a8}.ffcol.d .n{background:#23402a;color:#9fe0a8}
+  .ffcol.f h4{color:var(--red)}.ffcol.f .n{background:#43232a;color:var(--red)}
+  .ffcard{border-radius:8px;padding:10px 12px;margin-bottom:8px;background:var(--card)}
+  .ffcard.q{border:1.5px solid var(--amber);animation:ffpulse 1.6s infinite}
+  @keyframes ffpulse{50%{box-shadow:0 0 14px rgba(232,198,106,.45)}}
+  .ffcard.d{border:1px solid #3a5a40}
+  .ffcard.f{border:1px solid #5a2a34}
+  .ffstage{display:flex;flex-wrap:wrap;gap:3px;margin-top:7px;align-items:center}
+  .ffstage .st{padding:2px 9px;font-size:10px;font-weight:700;border-radius:3px;
+               background:#1a2230;color:#5a6b80;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 50%,calc(100% - 6px) 100%,0 100%,6px 50%)}
+  .ffstage .st.done{background:#23402a;color:#9fe0a8}
+  .ffstage .st.next{background:var(--amber);color:#241c05;animation:ffpulse 1.6s infinite}
+  .blink{animation:bl 1.2s infinite}@keyframes bl{50%{opacity:.45}}
+  .kv{font-family:Menlo,monospace;font-size:10.5px}
+  .obsgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .stat{background:#0d141d;border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:11px}
+  .stat b{color:#fff;font-size:13px}
+</style>
+</head>
+<body>
+<header class="nc-header">
+  <span class="nc-brand">NeoCloud OS</span>
+  <div class="nc-head-txt">
+    <div class="nc-title">운영 포털 — Operator Portal</div>
+    <div class="nc-sub">인프라·테넌트·서비스·인시던트·라이프사이클 관리 (내부 운영)</div>
+  </div>
+  <nav class="nc-nav">
+    <a href="/customer">👤 고객 포털</a>
+    <a href="/biz">💼 비즈 포털</a>
+    <a href="/ops" class="act">🛠 운영 포털</a>
+    <a href="/arch">🧭 NeoCloud Control-Plane</a>
+    <a href="/nico">⚙️ NICo</a>
+    <a href="/flow">🔬 검증 콘솔</a>
+    <a href="/">📊 VRCM</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="cards" id="cards"></div>
+
+  <!-- 자원 현황 — 사이트별 (멀티사이트 확장 대응) -->
+  <div class="panel">
+    <h2>자원 현황 — 사이트별 유효 상태 <small class="muted">
+      사이트 간 클러스터 스팬 불가(독립 IB 패브릭) — 판매가능·할당·비정상을 사이트 단위로 관리 · 사이트 추가 시 자동 확장</small>
+      <span class="nvreq">CAP01·CAP02</span></h2>
+    <table><thead><tr><th>사이트</th><th>물리 유휴</th><th>신규 계약 가능</th><th>할당</th><th>비정상</th>
+      <th>GPU (할당/전체)</th><th>노드 상태</th><th>전력 캡</th><th>테넌트</th>
+      <th>최대 단일 계약</th></tr></thead>
+      <tbody id="siteres"></tbody></table>
+    <div class="muted" style="font-size:11px;margin-top:6px">
+      물리 유휴 ≠ 계약 가능 — dedicated 테넌트가 부분 점유한 SU의 잔여 랙은 격리 정책(양방향)으로 잠깁니다. 잠김은 <b>장비 복구와 무관</b>하며, 점유 테넌트의 확장(같은 SU 잔여 채움) 또는 해당 할당 회수 시에만 풀립니다.</div>
+  </div>
+
+  <!-- Fulfillment 보드 -->
+  <div class="panel" style="border:2px solid var(--amber);border-left:6px solid var(--amber);box-shadow:0 0 18px rgba(232,198,106,.22)">
+    <h2 style="color:var(--amber);border-color:#3a2f12">⚡ Fulfillment 보드 — 주문 파이프라인 단계별 승인 게이트
+      <span class="pill p-open blink" id="ffcnt" style="margin-left:8px">대기 0</span>
+      <span class="nvreq">CNP01·CNP03·CNP04</span></h2>
+    <div class="ffboard">
+      <div class="ffcol q"><h4>승인 대기 <span class="n" id="n-q">0</span></h4><div id="ff-q"></div></div>
+      <div class="ffcol d"><h4>인도 완료 <span class="n" id="n-d">0</span></h4><div id="ff-d"></div></div>
+      <div class="ffcol f"><h4>실패 · 거절 <span class="n" id="n-f">0</span></h4><div id="ff-f"></div></div>
+    </div>
+  </div>
+
+  <!-- 테넌트 Observability -->
+  <div class="panel">
+    <h2>테넌트 Observability — GPU 노드·클러스터 (NICo REST 직접 연동)
+      <span class="nvreq">CAP05·BFX03·TEL</span>
+      <select id="obs-tenant" onchange="loadObs()" style="margin-left:10px;min-width:220px"></select>
+      <small class="muted"> 센서: GET /fake-nico/health (BMC·Redfish) · 추이: DCGM 텔레메트리</small></h2>
+    <div id="obs-stats" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px"></div>
+    <div class="obsgrid">
+      <div><canvas id="obs-util" style="width:100%"></canvas></div>
+      <div><canvas id="obs-power" style="width:100%"></canvas></div>
+    </div>
+    <h3 style="color:var(--mut);font-size:12px;margin:12px 0 6px">GPU 노드 (컴퓨트 트레이) — NICo Hardware Health</h3>
+    <div class="scr" style="max-height:240px"><table>
+      <thead><tr><th>호스트 (트레이)</th><th>인스턴스</th><th>host IP</th><th>NICo 상태</th>
+        <th>전력</th><th>GPU 온도(max)</th><th>냉각수</th><th>센서</th></tr></thead>
+      <tbody id="obs-nodes"></tbody></table></div>
+    <h3 style="color:var(--mut);font-size:12px;margin:12px 0 6px">최근 XID / 장애 이벤트 (트레이스 버스)</h3>
+    <div id="obs-xid" class="kv muted">—</div>
+    <h3 style="color:var(--mut);font-size:12px;margin:12px 0 6px">GPU 장애 조치 이력 — 처리시간·MTTR
+      <span id="obs-fltsum" class="muted" style="text-transform:none;margin-left:8px"></span></h3>
+    <div class="scr" style="max-height:150px"><table>
+      <thead><tr><th>감지</th><th>트레이 / GPU</th><th>XID</th><th>조치</th>
+        <th>TTA</th><th>TTR</th><th>상태</th></tr></thead>
+      <tbody id="obs-faults"></tbody></table></div>
+  </div>
+
+  <!-- 장비 헬스 (VRCM 취합) — 운영 조치 패널 -->
+  <div class="panel" style="border:2px solid #a04a5a;border-left:6px solid var(--red);box-shadow:0 0 18px rgba(240,163,176,.22)">
+    <h2 style="color:var(--red);border-color:#43232a">🩺 장비 헬스 — VRCM 물리 계층 취합 (사이트·층별)
+      <span class="nvreq">CAP05·CNP04</span>
+      <span id="eq-badge" style="margin-left:8px"></span></h2>
+    <div class="obsgrid">
+      <div>
+        <h3 style="color:var(--mut);font-size:12px;margin:0 0 6px">사이트 · 층별 집계</h3>
+        <table><thead><tr><th>사이트 / 층</th><th>가동</th><th>랙</th><th>랙 상태</th><th>GPU 상태</th><th>비정상</th></tr></thead>
+          <tbody id="eq-floors"></tbody></table>
+      </div>
+      <div>
+        <h3 style="color:var(--mut);font-size:12px;margin:0 0 6px">비정상 장비 (faulted · maintenance) — 조치</h3>
+        <div class="scr" style="max-height:190px"><table>
+          <thead><tr><th>장비</th><th>상태</th><th>테넌트</th><th>조치</th></tr></thead>
+          <tbody id="eq-bad"></tbody></table></div>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap">
+          <select id="eq-kind" style="width:80px"><option>rack</option><option>tray</option><option>gpu</option></select>
+          <input id="eq-id" placeholder="예: su-3-rack-05" style="flex:1;min-width:170px">
+          <select id="eq-state"><option value="faulted">장애(faulted)</option>
+            <option value="maintenance">정비(maintenance)</option><option value="ready">복구(ready)</option></select>
+          <button class="warn" onclick="setEquip()">적용</button>
+        </div>
+        <div id="eq-msg" class="muted" style="font-size:11px;margin-top:4px">
+          faulted/maintenance 랙은 M4 배치에서 자동 제외됩니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shared Services — IAM·Secrets·PAM·Audit -->
+  <div class="panel">
+    <h2>Shared Services ⑦ — IAM · Secrets · PAM · Audit (공용 플랫폼)
+      <span class="nvreq">SEC01·SEC04·SEC07·SEC08</span></h2>
+    <div class="obsgrid">
+      <div>
+        <h3 style="color:var(--mut);font-size:12px;margin:0 0 6px">
+          IAM Realm — 테넌트별 OIDC (기본 롤 3종 · 포털 MFA)</h3>
+        <table><thead><tr><th>Realm (테넌트)</th><th>롤(RBAC)</th><th>클라이언트</th>
+          <th>토큰</th></tr></thead><tbody id="ss-realms"></tbody></table>
+        <h3 style="color:var(--mut);font-size:12px;margin:12px 0 6px">
+          Vault Secrets — 주문별 자격증명 (<span id="ss-seccnt">0</span>건)</h3>
+        <div class="scr" style="max-height:120px"><table>
+          <thead><tr><th>경로</th><th>종류</th><th>버전</th><th>값</th></tr></thead>
+          <tbody id="ss-secrets"></tbody></table></div>
+      </div>
+      <div>
+        <h3 style="color:var(--mut);font-size:12px;margin:0 0 6px">
+          PAM — 운영자 권한상승 세션 (세션 녹화·TTL)</h3>
+        <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+          <input id="pam-op" placeholder="운영자" value="oncall-kim" style="width:90px">
+          <input id="pam-target" placeholder="대상 (예: console:nh-su-1-…)" style="flex:1;min-width:150px">
+          <input id="pam-reason" placeholder="사유" style="width:130px">
+          <button class="warn" onclick="pamOpen()">세션 개시</button>
+        </div>
+        <div class="scr" style="max-height:96px"><table>
+          <thead><tr><th>세션</th><th>운영자 → 대상</th><th>상태</th><th></th></tr></thead>
+          <tbody id="ss-pam"></tbody></table></div>
+        <h3 style="color:var(--mut);font-size:12px;margin:12px 0 6px">
+          보안 감사 로그 — SEC08 (최근)</h3>
+        <div class="scr" style="max-height:120px"><table>
+          <thead><tr><th>시간</th><th>주체</th><th>액션</th><th>대상</th><th>결과</th></tr></thead>
+          <tbody id="ss-audit"></tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NVIDIA BMaaS Requirements 준수 현황 -->
+  <div class="panel" style="border:1.5px solid #1f6a95">
+    <h2 style="color:#4fd8ff;border-color:#1f4a65">NVIDIA BMaaS Requirements Guide 준수 현황
+      <small class="muted">— v2.2 (2026-04-17) · BMaaS Minimum 기준 · 플랫폼 기능 매핑</small></h2>
+    <div class="scr" style="max-height:280px"><table>
+      <thead><tr><th style="width:110px">Req ID</th><th style="width:220px">요구 영역</th>
+        <th>NeoCloud OS 구현</th><th style="width:70px">상태</th></tr></thead>
+      <tbody>
+        <tr><td><span class="nvreq">CNP01</span></td><td>API/CLI — 노드 라이프사이클·전원·인벤토리</td><td>주문 파이프라인 + NICo REST/gRPC (provision·release·power) · /nodes · /fabric</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">CNP03</span></td><td>NVLink-Aware Allocation</td><td>M4 배치 — NVL72 도메인 무결성(랙 단위)·연속 배치</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">CNP04</span></td><td>Resource States</td><td>NodeInstance/Order 상태머신 (provisioning→in_service→…)</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">CNP06</span></td><td>Serial Console + 로그 보존</td><td>NICo SSH Console → Loki 스트림</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">CNP07</span></td><td>Node Group (GPU/CPU) CRUD</td><td>테넌트 클러스터(rack_set) + CPU 노드 그룹(기본 5대)</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">CNP09·SEC21·SEC22</span></td><td>Firmware Attestation · Sanitization · RoT</td><td>Day0 TPM attestation · 7단계 소거(NVMe·GPU·TPM) · Secure Boot</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">CNP10</span></td><td>Redfish over TLS (IPMI 금지)</td><td>BMC 제어 전 구간 Redfish (트레이스로 검증 가능)</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">BOOT01·BOOT02</span></td><td>커스텀 이미지 · cloud-init 메타데이터</td><td>PXE 테넌트 이미지 + cloud-init + FMDS 메타데이터</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">SDN01·SDN04</span></td><td>VPC CRUD · 3-plane 분리(BMC/사용자/스토리지)</td><td>테넌트 VPC(segment)·VRF/VNI + OOB·converged·storage 분리</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">SEC01·SEC04·SEC07·SEC08</span></td><td>IAM — OIDC 인증 · RBAC · 관리면 MFA · 감사 로그</td><td>Shared Services ⑦ — 테넌트 IAM realm(롤 3종)·acceptance 서비스 계정·Vault 자격증명·PAM 세션·감사 트레일</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">BFX01·BFX02·BFX03</span></td><td>Breakfix API — cordon·GPU reset·이력·시리얼</td><td>Break-fix 큐 + NVSentinel reset + NICo hardware/attestation API</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">HSS01·HSS02·HSS04</span></td><td>스토리지 API 프로비저닝 · QoS 보장 · 쿼터</td><td>VAST VMS — view·quota·QoS(대역폭/IOPS) 자동/수동</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">DMS01·DMS02</span></td><td>Data Mover CPU 노드 (GPU 인도 2주 전)</td><td>테넌트당 CPU 노드 5대 — DPU·VPC 연결·고성능 네트워킹</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">NET01·NET02</span></td><td>Backend Switch Fabric · NVLink Domain API</td><td>GET /api/v1/fabric/ib — spine/leaf/rail + NVL 도메인 ID</td><td><span class="pill p-in_service">구현</span></td></tr>
+        <tr><td><span class="nvreq">CAP01·CAP02·CAP05</span></td><td>Governance 지표 · 헬스 단일 SoT</td><td>nodes/summary·cpu-nodes·NICo bulk health·usage — 집계 API 정리 예정</td><td><span class="pill p-cordoned">부분</span></td></tr>
+        <tr><td><span class="nvreq">TEL</span></td><td>Telemetry — OTLP ≤120s</td><td>트레이스 버스·DCGM 시계열 보유 — OTLP 익스포트는 M8 로드맵</td><td><span class="pill p-cordoned">부분</span></td></tr>
+        <tr><td><span class="nvreq">SLA</span></td><td>관리면 가용성 99.95% (financially-backed)</td><td>M6 SLA 관리 — 측정 체계 구축 중</td><td><span class="pill p-pool_ready">계획</span></td></tr>
+      </tbody></table></div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="panel" style="border:2px solid #6a4a9a;border-left:6px solid #c8a5e8;box-shadow:0 0 18px rgba(200,165,232,.22)">
+        <h2 style="color:#c8a5e8;border-color:#2a1c3a">🚑 Break-fix 큐 — quarantined / RMA / cordoned
+          <span id="bf-cnt" class="pill p-failed" style="margin-left:6px;display:none">0</span>
+          <span class="nvreq">BFX01·BFX02</span>
+          <button class="ghost" style="float:right;padding:3px 9px" onclick="runReconcile()">Reconcile 실행</button></h2>
+        <div class="scr"><table>
+          <thead><tr><th>노드</th><th>상태</th><th>최근 사유</th></tr></thead>
+          <tbody id="bf"></tbody></table></div>
+        <div id="rec" style="margin-top:8px"></div>
+      </div>
+      <div class="panel">
+        <h2>최근 서비스 주문</h2>
+        <div class="scr"><table>
+          <thead><tr><th>주문</th><th>유형</th><th>테넌트</th><th>규모</th><th>상태</th></tr></thead>
+          <tbody id="orders"></tbody></table></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel" style="border:2px solid #3a6aa0;border-left:6px solid #5aa7e8;box-shadow:0 0 18px rgba(90,167,232,.22)">
+        <h2 style="color:#9fd0ff;border-color:#1c2f4a">🎫 티켓 큐 — 미해결 우선
+          <span id="tck-open" class="pill p-open blink" style="margin-left:6px;display:none">0</span>
+          <span id="tckcnt" class="muted"></span></h2>
+        <div id="tickets"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+async function j(u){const r=await fetch(u);if(!r.ok)throw new Error((await r.json()).detail||r.status);return r.json()}
+async function jx(m,u,b){const r=await fetch(u,{method:m,headers:{"Content-Type":"application/json"},
+  body:b?JSON.stringify(b):undefined});if(!r.ok)throw new Error((await r.json()).detail||r.status);return r.json()}
+
+const STAGES=["received","validated","reserved","provisioning","isolating",
+              "storage_binding","acceptance","delivered"];
+const STAGE_KO={received:"접수",validated:"정책·배치",reserved:"예약",
+  provisioning:"프로비저닝",isolating:"격리",storage_binding:"스토리지",
+  acceptance:"인수검증",delivered:"인도"};
+function ffTrack(o){
+  const done=o.history.map(e=>e.state);
+  return `<div class="ffstage">`+STAGES.map(s=>{
+    const cls=done.includes(s)?"done":(s===o.pending_stage?"next":"");
+    return `<span class="st ${cls}" data-stage="${s}">${STAGE_KO[s]}</span>`}).join("")+`</div>`;
+}
+async function loadFulfill(){
+  const all=(await j("/api/v1/orders")).filter(o=>o.kind==="new");
+  all.sort((a,b)=>b.id.localeCompare(a.id,undefined,{numeric:true}));
+  const q=all.filter(o=>o.pending_stage);
+  const d=all.filter(o=>o.state==="delivered").slice(0,5);
+  const f=all.filter(o=>["failed","rejected"].includes(o.state)).slice(0,5);
+  $("#ffcnt").textContent=`대기 ${q.length}`;
+  $("#n-q").textContent=q.length;$("#n-d").textContent=d.length;$("#n-f").textContent=f.length;
+
+  $("#ff-q").innerHTML=q.map(o=>`
+    <div class="ffcard q">
+      <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+        <b class="m">${o.id}</b><span class="m muted">${o.tenant_id}</span>
+        <span>${o.blueprint_key} × <b>${o.racks} rack</b> <span class="muted">(${o.racks*18}노드)</span></span>
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <button onclick="approveOrd('${o.id}')">✓ ${STAGE_KO[o.pending_stage]} 승인</button>
+          <button class="warn" onclick="rejectOrd('${o.id}')">✗ 거절</button></span></div>
+      ${ffTrack(o)}
+      <div class="muted" style="font-size:11px;margin-top:5px">
+        최근: ${o.history[o.history.length-1].state} — ${(o.history[o.history.length-1].detail||"").slice(0,90)}</div>
+    </div>`).join("")
+    ||'<span class="muted">대기 없음 — 비즈 포털 "계약+개통 요청"으로 생성</span>';
+
+  $("#ff-d").innerHTML=d.map(o=>{
+    const r=o.history.find(e=>e.state==="received"),dd=o.history.find(e=>e.state==="delivered");
+    const lt=r&&dd?((new Date(dd.at)-new Date(r.at))/1000).toFixed(1)+"s":"—";
+    return `<div class="ffcard d"><b class="m">${o.id}</b> <span class="m muted">${o.tenant_id}</span>
+      <div class="muted" style="font-size:11px">${o.blueprint_key} × ${o.racks} rack ·
+      리드타임 ${lt} ${o.approval_mode?"· 승인 게이트":"· 자동"}</div></div>`}).join("")
+    ||'<span class="muted">—</span>';
+
+  $("#ff-f").innerHTML=f.map(o=>
+    `<div class="ffcard f"><b class="m">${o.id}</b> <span class="m muted">${o.tenant_id}</span>
+     <span class="pill p-${o.state}">${o.state}</span>
+     <div class="muted" style="font-size:11px">${(o.error||"").slice(0,90)}</div></div>`).join("")
+    ||'<span class="muted">—</span>';
+}
+
+// ── 자원 현황 — 사이트별 (N사이트 동적 렌더) ─────────────────
+async function loadSiteRes(){
+  const d=await j("/api/v1/inventory/sites");
+  const row=s=>{
+    const ns=s.nodes_by_state,bf=(ns.quarantined||0)+(ns.rma||0)+(ns.cordoned||0);
+    return `<tr><td><b>${s.name}</b><br><span class="muted" style="font-size:10px">${s.site} · ${s.racks_total}랙</span></td>
+      <td>${s.racks_sellable}랙
+        <span class="muted" style="font-size:10px">${s.gpus_sellable.toLocaleString()} GPU</span></td>
+      <td><span class="pill p-in_service">${s.racks_contractable}랙</span>
+        ${s.racks_locked_by_isolation?`<span class="pill p-cordoned" title="dedicated 테넌트가 부분 점유한 SU의 잔여 유휴 랙 (GPU 환산 ${(s.racks_locked_by_isolation*72).toLocaleString()}개) — 장비 장애 복구와 무관하며, 점유 테넌트의 확장(같은 SU 채움) 또는 회수 시에만 해소">격리 잠김 ${s.racks_locked_by_isolation}랙</span>`:""}</td>
+      <td>${s.racks_allocated}랙</td>
+      <td style="color:${s.racks_unhealthy?"var(--red)":"inherit"}">${s.racks_unhealthy}</td>
+      <td class="m">${s.gpus_allocated.toLocaleString()} / ${s.gpus_total.toLocaleString()}</td>
+      <td style="font-size:10px">pool ${ns.pool_ready||0} · svc ${ns.in_service||0}
+        ${bf?`· <span style="color:var(--red)">breakfix ${bf}</span>`:""}</td>
+      <td class="m">${(s.power_cap_kw/1000).toFixed(1)}MW</td>
+      <td>${s.tenants.length}</td>
+      <td><b>${s.max_single_cluster_racks}랙</b>
+        <span class="muted" style="font-size:10px">(${(s.max_single_cluster_racks*72).toLocaleString()} GPU)</span></td></tr>`};
+  const t=d.totals;
+  $("#siteres").innerHTML=d.sites.map(row).join("")+
+    `<tr style="border-top:2px solid var(--line)"><td class="muted">합계 (${d.sites.length}개 사이트)</td>
+      <td>${t.racks_sellable}랙</td>
+      <td><b>${t.racks_contractable}랙</b>${t.racks_locked_by_isolation?` <span class="muted" style="font-size:10px">(잠김 ${t.racks_locked_by_isolation}랙)</span>`:""}</td>
+      <td>${t.racks_allocated}랙</td>
+      <td>${t.racks_unhealthy}</td>
+      <td class="m">${t.gpus_allocated.toLocaleString()} / ${t.gpus_total.toLocaleString()}</td>
+      <td class="muted" style="font-size:10px">사이트별 분리 관리</td>
+      <td class="m">${(t.power_cap_kw/1000).toFixed(1)}MW</td><td colspan="2"></td></tr>`;
+}
+
+// ── 장비 헬스 (VRCM 취합) ─────────────────────────────────────
+function stChips(states,okKeys){
+  return Object.entries(states).map(([k,v])=>{
+    const cls=["faulted","rma"].includes(k)?"p-failed":k==="maintenance"?"p-cordoned"
+      :okKeys.includes(k)?"p-in_service":"p-pool_ready";
+    return `<span class="pill ${cls}" title="${k}">${k} ${v}</span>`}).join(" ");
+}
+async function loadEquip(){
+  const h=await j("/api/v1/health/equipment");
+  const un=h.totals.unhealthy_equipment;
+  $("#eq-badge").innerHTML=un
+    ?`<span class="pill p-failed">비정상 장비 ${un}</span>`
+    :`<span class="pill p-in_service">전 장비 정상</span>`;
+  $("#eq-floors").innerHTML=h.sites.flatMap(sfac=>sfac.floors.map((fl,i)=>
+    `<tr><td>${i===0?`<b>${sfac.name}</b><br>`:""}<span class="muted">${fl.name}</span></td>
+     <td class="muted">${fl.ready}</td><td>${fl.racks}</td>
+     <td>${stChips(fl.rack_states,["allocated"])}</td>
+     <td style="font-size:10px">${stChips(fl.gpu_states,["allocated"])}</td>
+     <td style="color:${fl.unhealthy?"var(--red)":"inherit"}">${fl.unhealthy}</td></tr>`)).join("");
+  $("#eq-bad").innerHTML=h.faulted_equipment.map(e=>
+    `<tr><td class="m">${e.kind} · ${e.id}</td>
+     <td><span class="pill ${e.state==="faulted"?"p-failed":"p-cordoned"}">${e.state}</span></td>
+     <td class="m">${e.tenant_id||"—"}</td>
+     <td style="display:flex;gap:4px">
+       ${e.state==="faulted"?`<button class="warn" style="padding:2px 7px;font-size:10px"
+          onclick="setEquipDirect('${e.kind}','${e.id}','maintenance')">정비</button>`:""}
+       <button style="padding:2px 7px;font-size:10px"
+          onclick="setEquipDirect('${e.kind}','${e.id}','ready')">복구</button></td></tr>`).join("")
+    ||'<tr><td colspan="4" class="muted">비정상 장비 없음 — 전 장비 정상</td></tr>';
+}
+async function setEquipDirect(kind,id,state){
+  try{const r=await jx("PATCH","/api/v1/equipment/state",{kind,id,state});
+    $("#eq-msg").innerHTML=`<span style="color:var(--g)">✓ ${r.kind} ${r.id} → ${r.state}</span>`;
+  }catch(e){$("#eq-msg").innerHTML=`<span style="color:var(--red)">✗ ${e.message}</span>`}
+  await loadEquip();await loadCards();
+}
+async function setEquip(){
+  const id=$("#eq-id").value.trim();if(!id)return;
+  await setEquipDirect($("#eq-kind").value,id,$("#eq-state").value);
+}
+
+// ── Shared Services — IAM·Secrets·PAM·Audit ──────────────────
+async function loadShared(){
+  const [realms,secrets,pam,audit]=await Promise.all([
+    j("/fake-shared/iam/realms"),j("/fake-shared/secrets"),
+    j("/fake-shared/pam/sessions"),j("/fake-shared/audit?limit=10")]);
+  $("#ss-realms").innerHTML=realms.map(r=>{
+    const act=r.clients.filter(c=>c.state==="active");
+    const tok=r.clients.reduce((a,c)=>a+c.tokens_issued,0);
+    return `<tr><td class="m">${r.realm}</td>
+      <td style="font-size:10px">${r.roles.join(" · ")}</td>
+      <td class="m" style="font-size:10px">${act.map(c=>c.client_id
+        +(c.mfa?" <span class='pill p-in_service' style='font-size:8px'>MFA</span>":"")).join("<br>")}</td>
+      <td>${tok}</td></tr>`}).join("")
+    ||'<tr><td colspan="4" class="muted">realm 없음 — 테넌트 생성 시 자동 발급</td></tr>';
+  $("#ss-seccnt").textContent=secrets.length;
+  $("#ss-secrets").innerHTML=secrets.map(e=>
+    `<tr><td class="m" style="font-size:10px">${e.path}</td><td>${e.kind}</td>
+     <td>v${e.version}</td><td class="m muted">${e.value_masked}</td></tr>`).join("")
+    ||'<tr><td colspan="4" class="muted">시크릿 없음</td></tr>';
+  $("#ss-pam").innerHTML=pam.slice().reverse().map(s=>
+    `<tr><td class="m">${s.id}</td><td class="m" style="font-size:10px">${s.operator} → ${s.target}</td>
+     <td><span class="pill ${s.state==="active"?"p-open":"p-resolved"}">${s.state}</span></td>
+     <td>${s.state==="active"?`<button style="padding:2px 7px;font-size:10px"
+        onclick="pamClose('${s.id}')">종료</button>`:""}</td></tr>`).join("")
+    ||'<tr><td colspan="4" class="muted">활성 세션 없음</td></tr>';
+  $("#ss-audit").innerHTML=audit.map(a=>
+    `<tr><td class="m muted">${a.at.slice(11,19)}</td><td class="m">${a.actor}</td>
+     <td class="m" style="font-size:10px">${a.action}</td>
+     <td class="m" style="font-size:10px">${a.target}</td>
+     <td><span class="pill ${a.result==="success"?"p-in_service":"p-failed"}">${a.result}</span></td></tr>`).join("")
+    ||'<tr><td colspan="5" class="muted">감사 이벤트 없음</td></tr>';
+}
+async function pamOpen(){
+  const t=$("#pam-target").value.trim();if(!t)return;
+  await jx("POST","/fake-shared/pam/sessions",{operator:$("#pam-op").value||"operator",
+    target:t,reason:$("#pam-reason").value||"정비 작업"});
+  $("#pam-target").value="";$("#pam-reason").value="";await loadShared();
+}
+async function pamClose(id){
+  await jx("POST",`/fake-shared/pam/sessions/${id}/close`,{});await loadShared();
+}
+
+// ── 테넌트 Observability — NICo REST 직접 연동 ─────────────────
+async function loadObsTenants(){
+  const ts=await j("/api/v1/tenants");
+  const cur=$("#obs-tenant").value;
+  $("#obs-tenant").innerHTML=ts.map(t=>
+    `<option value="${t.id}" ${t.id===cur?"selected":""}>${t.name} (${t.id})</option>`).join("")
+    ||'<option value="">테넌트 없음</option>';
+}
+async function loadObs(){
+  const tid=$("#obs-tenant").value;
+  if(!tid){$("#obs-stats").innerHTML='<span class="muted">테넌트 없음</span>';return}
+  // ① NICo REST 직접: 벌크 BMC 센서 + 세그먼트 + 인스턴스 타입 정보
+  const [health,segs,hist,flt]=await Promise.all([
+    j(`/fake-nico/health?tenant_ref=${tid}`),
+    j("/fake-nico/segments"),
+    j(`/api/v1/emu/history?tenant_id=${tid}&limit=150`),
+    j(`/api/v1/emu/faults?tenant_id=${tid}`)]);
+  const seg=segs.find(s=>s.tenant_ref===tid);
+  const power=health.reduce((a,h)=>a+h.power_w,0)/1000;
+  const tmax=Math.max(0,...health.map(h=>Math.max(...h.gpu_temp_c)));
+  const warn=health.filter(h=>h.state==="warning").length;
+  const racks=new Set(health.map(h=>h.tray_id.split("-tray-")[0])).size;
+  const avail=flt.availability_pct;
+  $("#obs-stats").innerHTML=[
+    `클러스터(NICo): <b>호스트 ${health.length}</b> · 랙 ${racks} · GPU ${health.length*4}`,
+    `GPU 가용성 <b style="font-size:15px;color:${avail!==null&&avail<100?"var(--amber)":"var(--g)"}">${
+      avail===null?"—":avail.toFixed(2)+"%"}</b>${
+      flt.faults_open?` <span class="blink" style="color:var(--red)">장애 진행 ${flt.faults_open}</span>`:""
+      }@@border:1.5px solid #3a5a40;background:#14231a`,
+    `전력(BMC 합산) <b>${power.toFixed(1)} kW</b>`,
+    `최고 GPU 온도 <b>${tmax.toFixed(1)}°C</b>`,
+    `센서 warning <b style="color:${warn?"var(--amber)":"inherit"}">${warn}</b>`,
+    `장애 조치: MTTA <b style="font-size:14px">${flt.mtta_s===null?"—":flt.mtta_s+"s"}</b>
+      · MTTR <b style="font-size:14px;color:var(--amber)">${flt.mttr_s===null?"—":flt.mttr_s+"s"}</b>
+      <span class="muted">(누적 ${flt.faults_open+flt.faults_resolved}건)</span>
+      @@border:1.5px solid #8a6f2c;background:#241d0d`,
+    `VPC ${seg?`<b class="kv">${seg.segment_id}</b> (VRF ${seg.vrf})`:"—"}`,
+  ].map(s=>{const [h,st]=s.split("@@");
+    return `<span class="stat" style="${st||""}">${h}</span>`}).join("");
+  // ② 추이 차트 (DCGM 텔레메트리 시계열)
+  const pick=k=>hist.map(x=>x[k]);
+  ncChart($("#obs-util"),[{label:"GPU Utilization",color:"#76b900",data:pick("avg_util_pct")}],
+          {unit:"%",min:0,max:100});
+  ncChart($("#obs-power"),[{label:"전력(DCGM)",color:"#5aa7e8",data:pick("power_kw")}],
+          {unit:"kW",min:0,capLine:hist.length?hist[hist.length-1].power_cap_kw:undefined});
+  // ③ GPU 노드 테이블 — NICo Hardware Health 원본
+  $("#obs-nodes").innerHTML=health.slice(0,60).map(h=>
+    `<tr><td class="m">${h.host_id}</td><td class="m">${h.instance_id||"—"}</td>
+     <td class="m">${h.host_ip||"—"}</td>
+     <td><span class="pill p-${h.nico_state}">${h.nico_state}</span></td>
+     <td>${h.power_w}W</td><td>${Math.max(...h.gpu_temp_c).toFixed(1)}°C</td>
+     <td>${h.coolant_supply_c}/${h.coolant_return_c}°C</td>
+     <td><span class="pill p-${h.state==="ok"?"in_service":h.state==="warning"?"cordoned":"pool_ready"}">${h.state}</span></td></tr>`).join("")
+    +(health.length>60?`<tr><td colspan="8" class="muted">… 외 ${health.length-60}대</td></tr>`:"")
+    ||'<tr><td colspan="8" class="muted">할당된 GPU 노드 없음</td></tr>';
+  // ④ XID 이벤트 (트레이스)
+  const xid=await j("/api/v1/trace?q=XID&limit=200");
+  const myHosts=new Set(health.map(h=>h.host_id));
+  const mine=xid.filter(e=>e.host_id&&myHosts.has(e.host_id)).slice(-8).reverse();
+  $("#obs-xid").innerHTML=mine.map(e=>
+    `<div>${e.at.slice(11,19)} <b style="color:var(--red)">${e.op}</b> — ${e.src} · ${e.detail}</div>`).join("")
+    ||'<span class="muted">최근 XID 이벤트 없음</span>';
+  // ⑤ GPU 장애 조치 이력 — 처리시간·MTTR (에뮬 fault 에피소드)
+  $("#obs-faults").innerHTML=(flt.recent||[]).slice(0,10).map(f=>
+    `<tr><td class="m muted">${f.started_at.slice(11,19)}</td>
+     <td class="m">${f.tray_id} · GPU${f.gpu}</td>
+     <td><b style="color:var(--red)">XID ${f.xid}</b></td>
+     <td style="font-size:10.5px">${f.action}</td>
+     <td>${f.tta_s}s</td>
+     <td>${f.ttr_s===null?'<span class="muted">진행 중</span>':f.ttr_s+"s"}</td>
+     <td><span class="pill ${f.state==="resolved"?"p-resolved":"p-open"}">${
+       f.state==="resolved"?"복구":"조치 중"}</span></td></tr>`).join("")
+    ||'<tr><td colspan="7" class="muted">장애 이력 없음 — 전 GPU 정상 가동</td></tr>';
+  $("#obs-fltsum").textContent=flt.faults_resolved||flt.faults_open
+    ?`누적 ${flt.faults_open+flt.faults_resolved}건 (복구 ${flt.faults_resolved} · 진행 ${flt.faults_open}) · MTTR ${flt.mttr_s===null?"—":flt.mttr_s+"s"}`
+    :"";
+}
+async function approveOrd(id){
+  try{const o=await jx("POST",`/api/v1/orders/${id}/approve`);
+    if(o.state==="failed"||o.state==="rejected")alert(`${id} → ${o.state}: ${o.error||""}`);
+  }catch(e){alert(e.message)}
+  await refresh();
+}
+async function rejectOrd(id){
+  const reason=prompt("거절 사유","용량 정책");if(reason===null)return;
+  try{await jx("POST",`/api/v1/orders/${id}/reject?reason=${encodeURIComponent(reason)}`);
+  }catch(e){alert(e.message)}
+  await refresh();
+}
+async function loadCards(){
+  const [sum,cls,tcks,site]=await Promise.all([
+    j("/api/v1/nodes/summary"),j("/api/v1/emu/clusters"),
+    j("/api/v1/tickets"),j("/fake-nico/site")]);
+  const by=sum.by_state,bf=(by.quarantined||0)+(by.rma||0)+(by.cordoned||0);
+  const open=tcks.filter(t=>t.status!=="resolved").length;
+  const pw=cls.reduce((a,c)=>a+c.power_kw,0),cap=cls.reduce((a,c)=>a+c.power_cap_kw,0);
+  const mk=(k,v,cls="")=>`<div class="card ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  $("#cards").innerHTML=
+    mk("전체 노드",`${sum.total.toLocaleString()} <small>pool ${by.pool_ready||0}</small>`)+
+    mk("서비스 중",`${by.in_service||0} <small>노드</small>`)+
+    mk("활성 클러스터",cls.length)+
+    mk("사용 전력",`${pw.toFixed(0)} <small>/ ${cap.toFixed(0)} kW</small>`)+
+    mk("Break-fix",`${bf}`,bf?"warn":"")+
+    mk("미해결 티켓",open,open?"warn":"")+
+    mk("NICo Jobs",site.counts.jobs);
+}
+async function loadBreakfix(){
+  const nodes=await j("/api/v1/nodes");
+  const bad=nodes.filter(n=>["quarantined","rma","cordoned","draining"].includes(n.state));
+  $("#bf").innerHTML=bad.map(n=>{
+    const last=n.history[n.history.length-1];
+    return `<tr><td class="m">${n.id}</td><td><span class="pill p-${n.state}">${n.state}</span></td>
+      <td class="muted">${(last?last.detail:"").slice(0,70)}</td></tr>`}).join("")
+    ||'<tr><td colspan="3" class="muted">비정상 노드 없음 — 풀 정상</td></tr>';
+  const bc=$("#bf-cnt");
+  bc.style.display=bad.length?"inline-block":"none";
+  bc.textContent=`조치 대기 ${bad.length}`;
+  bc.classList.toggle("blink",bad.length>0);
+}
+async function runReconcile(){
+  const r=await jx("POST","/api/v1/reconcile/run");
+  $("#rec").innerHTML=`<div style="font-weight:700;margin-bottom:4px">
+    ${r.ok?'<span style="color:var(--g)">● OK</span>':'<span style="color:var(--red)">● CRITICAL</span>'}
+    <span class="muted">GHOST ${r.ghosts_registered} · ORPHAN ${r.orphans_cordoned} · MISMATCH ${r.mismatches}</span></div>`
+    +r.findings.slice(0,6).map(f=>`<div class="finding f-${f.severity}"><b>[${f.kind}]</b> ${f.message}</div>`).join("");
+  await refresh();
+}
+async function loadOrders(){
+  const os=await j("/api/v1/orders");
+  os.sort((a,b)=>b.id.localeCompare(a.id,undefined,{numeric:true}));
+  $("#orders").innerHTML=os.slice(0,12).map(o=>
+    `<tr><td class="m">${o.id}</td><td>${o.kind}</td><td class="m">${o.tenant_id}</td>
+     <td>${o.kind==="new"?o.racks+" rack":"—"}</td>
+     <td><span class="pill p-${o.state}">${o.state}</span></td></tr>`).join("")
+    ||'<tr><td colspan="5" class="muted">주문 없음</td></tr>';
+}
+async function loadTickets(){
+  const ts=await j("/api/v1/tickets");
+  const open=ts.filter(t=>t.status!=="resolved"),done=ts.filter(t=>t.status==="resolved");
+  $("#tckcnt").textContent=`— 해결 ${done.length}`;
+  const tp=$("#tck-open");
+  tp.style.display=open.length?"inline-block":"none";
+  tp.textContent=`미해결 ${open.length}`;
+  $("#tickets").innerHTML=[...open,...done.slice(0,3)].map(t=>`
+    <div class="tck">
+      <div class="hd"><span class="m">${t.id}</span>
+        <span class="pill p-${t.severity}">${t.severity}</span>
+        <span class="pill p-${t.status}">${t.status}</span>
+        <span style="margin-left:auto" class="muted m">${t.tenant_id}</span></div>
+      <div><b>${t.subject}</b>${t.ref?` <span class="muted m">(${t.ref})</span>`:""}</div>
+      <div class="bd">${t.body||""} ${t.comments.length?`· 코멘트 ${t.comments.length}건 — 최근: "${t.comments[t.comments.length-1].text}"`:""}</div>
+      ${t.status!=="resolved"?`<div class="row">
+        <input id="c-${t.id}" placeholder="처리 코멘트" style="flex:1">
+        ${t.status==="open"?`<button class="warn" onclick="tck('${t.id}','in_progress')">진행</button>`:""}
+        <button onclick="tck('${t.id}','resolved')">해결</button></div>`:""}
+    </div>`).join("")||'<span class="muted">티켓 없음</span>';
+}
+async function tck(id,status){
+  const c=$(`#c-${id}`);
+  await jx("PATCH",`/api/v1/tickets/${id}`,
+    {status,comment:c&&c.value.trim()||`상태 변경 → ${status}`,author:"operator"});
+  await loadTickets();await loadCards();
+}
+async function refresh(){
+  await Promise.all([loadFulfill(),loadCards(),loadSiteRes(),loadBreakfix(),
+                     loadOrders(),loadTickets(),loadEquip(),loadShared()]);
+  await loadObsTenants();await loadObs();
+}
+refresh();setInterval(refresh,4000);
+</script>
+<script src="/static/nvreq.js"></script>\n<script src="/static/modinfo.js"></script>
+<script src="/static/nav.js"></script>
+</body>
+</html>

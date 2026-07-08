@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# 패키징 산출물 (재현: bash packaging/build_dmg.sh)
+build/
+dist/
+packaging/icon_1024.png
+packaging/icon.iconset/
+packaging/*.spec
+
+# 로컬
+.DS_Store
+nohup.out
+*.log
