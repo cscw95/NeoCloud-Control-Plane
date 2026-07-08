@@ -27,11 +27,11 @@
       const wait = orders.filter(o => o.approval_mode && o.pending_stage
                                  && !["delivered", "failed", "rejected",
                                       "closed"].includes(o.state)).length;
-      setBadge("/ops", "nc-b-tkt", open ? `🎫${open}` : "",
+      setBadge("/ops", "nc-b-tkt", open ? `${open}` : "",
                `미해결 티켓 ${open}건`);
-      setBadge("/ops", "nc-b-appr", wait ? `⏳${wait}` : "",
+      setBadge("/ops", "nc-b-appr", wait ? `${wait}` : "",
                `승인 대기 주문 ${wait}건`);
-      setBadge("/customer", "nc-b-tkt", open ? `🎫${open}` : "",
+      setBadge("/customer", "nc-b-tkt", open ? `${open}` : "",
                `진행 중 티켓 ${open}건`);
     } catch (e) { /* 서버 미기동 시 무시 */ }
   }
@@ -52,10 +52,10 @@
     sw.title = "기능 설명 말풍선 On/Off — NVIDIA Req 요구사항·Control-Plane 모듈 역할·"
       + "주문 파이프라인 단계·Provisioning 절차 안내를 항목 위에 올리면 표시합니다. "
       + "끄면 모든 화면에서 숨겨지며 설정은 유지됩니다.";
-    sw.innerHTML = `💬 말풍선 <input type="checkbox" ${saved !== "0" ? "checked" : ""}>`;
+    sw.innerHTML = `말풍선 <input type="checkbox" ${saved !== "0" ? "checked" : ""}>`;
     sw.querySelector("input").addEventListener("change",
       e => applyTips(e.target.checked));
-    nav.appendChild(sw);
+    (document.querySelector(".nc-right") || nav).appendChild(sw);
   }
 
   tick();

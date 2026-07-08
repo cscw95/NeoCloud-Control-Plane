@@ -1,65 +1,173 @@
-/* NeoCloud OS — 공용 테마: 헤더·네비게이션 (전 페이지 통일)
-   페이지별 스타일과 충돌하지 않도록 nc- 네임스페이스만 사용한다. */
+/* NeoCloud OS — 공용 테마 "정돈된 현행"(리디자인 1b)
+   디자인 토큰 + 헤더(플랫 탭) + 공용 컴포넌트(패널·섹션헤더·버튼·테이블·칩·콜아웃).
+   페이지별 스타일과 충돌하지 않도록 nc-/공용 유틸 클래스만 정의한다.
+   원칙: 패널별 색 테두리/글로우 금지 — 상태는 dot·텍스트 색으로만. */
 :root{
-  --nc-g:#76b900; --nc-navy:#0b1f3a; --nc-bg:#0f1722; --nc-card:#16202e;
-  --nc-line:#2a3848; --nc-mut:#8aa0b4;
+  /* 배경/표면 */
+  --bg:#0f1722; --header:#0d1826; --strip:#121d2c; --card:#16202e;
+  --card-sub:#0d141d; --tab-bg:#131c29;
+  /* 라인 */
+  --line:#223142; --line-soft:#1a2433;
+  /* 텍스트 */
+  --text:#e6edf3; --text-strong:#fff; --muted:#8aa0b4; --muted-2:#5a6b80;
+  --text-soft:#cfe0ee;
+  /* 브랜드/상태 */
+  --green:#76b900; --green-text:#9fe0a8; --green-line:#2d4a12; --on-green:#08210a;
+  --amber:#e8c66a; --amber-bg:#3a2f12; --amber-line:#4a3d18;
+  --red:#f0a3b0; --red-line:#43232a;
+  --blue:#5aa7e8; --blue-text:#9fd0ff;
+  --cyan:#4fd8ff; --purple:#c8a5e8; --teal:#5ad0c8;
+  /* 구 토큰 별칭 (페이지 잔존 참조 호환) */
+  --nc-g:#76b900; --nc-navy:#0d1826; --nc-bg:#0f1722; --nc-card:#16202e;
+  --nc-line:#223142; --nc-mut:#8aa0b4;
 }
+
+/* ── 헤더: 상단 바(52px) + 타이틀 행 ─────────────────────── */
 .nc-header{
-  background:linear-gradient(90deg,var(--nc-navy),#13314f);
-  border-bottom:3px solid var(--nc-g);
-  padding:11px 22px; display:flex; align-items:center; gap:14px;
-  flex-wrap:wrap; row-gap:8px;   /* 좁은 폭: 네비를 통째로 다음 줄로 */
+  background:var(--header); border-bottom:1px solid var(--line);
   font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
 }
-.nc-brand{color:var(--nc-g); font-weight:800; font-size:15px; flex:none}
-.nc-head-txt{flex:1 1 auto; min-width:0}
-.nc-head-txt .nc-title{color:#fff; font-size:16px; font-weight:700; line-height:1.25;
-  white-space:nowrap}   /* 타이틀 세로 뭉개짐 방지 — 공간 부족 시 네비가 줄바꿈된다 */
-.nc-head-txt .nc-sub{color:var(--nc-mut); font-size:11.5px; line-height:1.3}
-.nc-nav{margin-left:auto; display:flex; gap:6px; row-gap:6px;
-  flex-wrap:wrap; justify-content:flex-end}   /* 버튼 단위 줄바꿈 — 잘림 방지 */
+.nc-topbar{
+  display:flex; align-items:stretch; gap:22px; padding:0 26px; height:52px;
+  flex-wrap:wrap;
+}
+.nc-brand{
+  color:var(--green); font-weight:800; font-size:14px;
+  display:flex; align-items:center; flex:none;
+}
+.nc-nav{display:flex; gap:2px; align-items:stretch; flex-wrap:wrap}
 .nc-nav a{
-  color:var(--nc-mut); text-decoration:none; font-size:12px; font-weight:700;
-  padding:5px 13px; border-radius:16px; border:1px solid var(--nc-line);
-  transition:all .15s; white-space:nowrap;
+  display:flex; align-items:center; gap:7px; padding:0 14px;
+  color:var(--muted); font-size:12.5px; font-weight:600; text-decoration:none;
+  white-space:nowrap;
 }
-.nc-nav a:hover{color:#fff; border-color:var(--nc-g)}
-.nc-nav a.act{background:var(--nc-g); color:#08210a; border-color:var(--nc-g)}
+.nc-nav a:hover{color:#fff}
+.nc-nav a.act{color:#fff; font-weight:700; box-shadow:inset 0 -2px 0 var(--green)}
+.nc-right{margin-left:auto; display:flex; align-items:center; gap:12px; flex:none}
+.nc-live{display:flex; align-items:center; gap:6px; color:var(--green-text);
+  font-size:11px; font-weight:700}
+.nc-live .dot{width:7px; height:7px; border-radius:50%; background:var(--green)}
+.nc-user{color:var(--muted); font-size:11.5px; border:1px solid var(--line);
+  border-radius:6px; padding:4px 10px; white-space:nowrap}
+.nc-titlebar{
+  display:flex; align-items:baseline; gap:12px; padding:14px 26px 12px;
+  flex-wrap:wrap;
+}
+.nc-title{color:#fff; font-size:19px; font-weight:800}
+.nc-sub{color:var(--muted); font-size:12px}
 
-/* 포털별 호버 하이라이트 — 메뉴 빠른 스캔용 (아이콘과 함께) */
-.nc-nav a[href="/customer"]:hover{border-color:#6fd08c; color:#9fe0a8}
-.nc-nav a[href="/biz"]:hover{border-color:#e8c66a; color:#f0d896}
-.nc-nav a[href="/ops"]:hover{border-color:#f0a3b0; color:#f5c2cb}
-.nc-nav a[href="/arch"]:hover{border-color:#4fd8ff; color:#8fe4ff}
-.nc-nav a[href="/nico"]:hover{border-color:var(--nc-g); color:#cfe8a0}
-.nc-nav a[href="/flow"]:hover{border-color:#c8a5e8; color:#ddc2f2}
-
-/* 라이브 배지 (nav.js) — 미해결 티켓 🎫 · 승인 대기 ⏳ */
+/* 라이브 배지 (nav.js) — 숫자 전용, amber */
 .nc-badge{
-  display:inline-block; margin-left:5px; padding:0 7px; border-radius:9px;
-  font-size:10px; font-weight:800; vertical-align:1px;
-  animation:ncBlink 1.5s infinite;
+  display:inline-block; padding:0 7px; border-radius:9px;
+  background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-line);
+  font-size:10px; font-weight:800; font-family:Menlo,monospace; line-height:16px;
 }
-.nc-b-tkt{background:#43232a; color:#f5c2cb; border:1px solid #7a3a48}
-.nc-b-appr{background:#3a2f12; color:#f0d896; border:1px solid #8a6f2c}
-.nc-nav a.act .nc-badge{background:#08210a; color:#d7f5b0; border-color:#08210a}
-@keyframes ncBlink{50%{opacity:.55}}
+.nc-nav a.act .nc-badge{border-color:var(--amber)}
 
-/* NVIDIA BMaaS Requirements Guide 매핑 배지 — 전 포털 공용 (시안 블루로 구분) */
+/* ── 업무 스트립 (처리할 일) ─────────────────────────────── */
+.nc-strip{
+  display:flex; gap:10px; align-items:center; padding:10px 26px;
+  background:var(--strip); border-bottom:1px solid var(--line); flex-wrap:wrap;
+  font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
+}
+.nc-strip .lbl{color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.08em}
+.nc-chip{
+  display:flex; align-items:center; gap:7px; background:var(--line-soft);
+  border:1px solid var(--amber-line); border-radius:7px; padding:5px 12px;
+  font-size:12px; color:var(--text); text-decoration:none; cursor:pointer;
+}
+.nc-chip.red{border-color:var(--red-line)}
+.nc-chip b{font-weight:800}
+.nc-chip .sub{color:var(--muted); font-size:10.5px; font-family:Menlo,monospace}
+
+/* ── 상태 dot ────────────────────────────────────────────── */
+.dot{display:inline-block; width:7px; height:7px; border-radius:50%; flex:none}
+.dot.green{background:var(--green)} .dot.amber{background:var(--amber)}
+.dot.red{background:var(--red)}     .dot.blue{background:var(--blue)}
+.dot.purple{background:var(--purple)} .dot.gray{background:var(--muted-2)}
+
+/* ── 패널 + 섹션 헤더 ────────────────────────────────────── */
+.panel{background:var(--card); border:1px solid var(--line); border-radius:10px;
+  padding:16px}
+.sec-h{display:flex; align-items:center; gap:9px; margin-bottom:12px; flex-wrap:wrap}
+.sec-h .tick{width:3px; height:14px; border-radius:2px; background:var(--green); flex:none}
+.sec-h .tick.red{background:var(--red)} .sec-h .tick.blue{background:var(--blue)}
+.sec-h .tick.cyan{background:var(--cyan)} .sec-h .tick.amber{background:var(--amber)}
+.sec-h .t{color:#fff; font-size:14px; font-weight:700}
+.sec-h .c{color:var(--muted); font-size:11px}
+
+/* ── 버튼 ────────────────────────────────────────────────── */
+.btn{background:var(--green); color:var(--on-green); border:none; border-radius:7px;
+  padding:7px 14px; font-size:12px; font-weight:700; cursor:pointer;
+  font-family:inherit}
+.btn:hover{background:#8ad00a}
+.btn-ghost{background:none; color:var(--green); border:1px solid var(--green-line);
+  border-radius:7px; padding:6px 12px; font-size:11.5px; font-weight:700;
+  cursor:pointer; font-family:inherit}
+.btn-ghost:hover{border-color:var(--green)}
+.btn-warn{background:none; color:var(--amber); border:1px solid var(--amber-line);
+  border-radius:7px; padding:6px 12px; font-size:11.5px; font-weight:700;
+  cursor:pointer; font-family:inherit}
+.btn-warn:hover{border-color:var(--amber)}
+.btn-danger{background:none; color:var(--red); border:1px solid var(--red-line);
+  border-radius:7px; padding:6px 12px; font-size:11.5px; font-weight:700;
+  cursor:pointer; font-family:inherit}
+.btn-danger:hover{border-color:var(--red)}
+
+/* ── 테이블 ──────────────────────────────────────────────── */
+.tbl{width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums}
+.tbl th{color:var(--muted); font-size:10.5px; font-weight:600; text-align:left;
+  padding:6px 8px; border-bottom:1px solid var(--line)}
+.tbl td{font-size:11.5px; padding:7px 8px; border-bottom:1px solid var(--line-soft)}
+.tbl tr:hover td{background:#1a2635}
+.tbl .num, .tbl th.num, .tbl td.num{text-align:right}
+.tbl .id{font-family:Menlo,monospace; font-size:10.5px}
+.tbl tr.warn td{background:#1a1720}
+
+/* ── KPI 밴드 ────────────────────────────────────────────── */
+.kpi-band{display:grid; grid-template-columns:repeat(auto-fit,minmax(175px,1fr));
+  gap:1px; background:var(--line); border:1px solid var(--line); border-radius:10px;
+  overflow:hidden; font-variant-numeric:tabular-nums}
+.kpi{padding:13px 18px; background:var(--card)}
+.kpi .k{color:var(--muted); font-size:10.5px; letter-spacing:.05em}
+.kpi .v{font-size:22px; font-weight:800; color:#fff}
+.kpi .v small{font-size:12px; color:var(--muted); font-weight:600}
+.kpi .s{color:var(--muted); font-size:10.5px}
+.kpi .v.amber{color:var(--amber)} .kpi .v.green{color:var(--green-text)}
+.kpi .bar{height:4px; border-radius:2px; background:#233043; margin-top:6px;
+  overflow:hidden}
+.kpi .bar>div{height:100%; background:var(--green)}
+
+/* ── 인포 콜아웃 ─────────────────────────────────────────── */
+.callout{background:var(--strip); border:1px solid var(--line); border-radius:7px;
+  padding:8px 12px; color:var(--muted); font-size:11px; line-height:1.55}
+.callout::before{content:"ⓘ "; color:var(--green-text); font-weight:700}
+.callout.amber::before{color:var(--amber)}
+.callout.cyan::before{color:var(--cyan)}
+
+/* ── 인박스 탭 바 ────────────────────────────────────────── */
+.tabbar{display:flex; align-items:center; gap:2px; border-bottom:1px solid var(--line);
+  padding:0 14px; background:var(--tab-bg); flex-wrap:wrap}
+.tabbar .tab{padding:11px 13px; font-size:12.5px; font-weight:600;
+  color:var(--muted); cursor:pointer; white-space:nowrap}
+.tabbar .tab:hover{color:#fff}
+.tabbar .tab.act{color:#fff; font-weight:700; box-shadow:inset 0 -2px 0 var(--green)}
+.tabbar .tab b{color:var(--amber)}
+
+/* ── NVIDIA Req 배지 (기존 유지 — 시안) ──────────────────── */
 .nvreq{
   display:inline-block; padding:1px 8px; border-radius:4px;
-  font-family:Menlo, monospace; font-size:9.5px; font-weight:700;
-  background:#0e2f44; color:#4fd8ff; border:1px solid #1f6a95;
-  vertical-align:2px; white-space:nowrap;
+  font-family:Menlo,monospace; font-size:9.5px; font-weight:700;
+  background:#0e2f44; color:var(--cyan); border:1px solid #1f6a95;
+  vertical-align:2px; white-space:nowrap; cursor:help;
 }
 .nvreq::before{content:"NVIDIA Req · "}
-.nvreq{cursor:help}
 
-/* NVIDIA Req 말풍선 — nvreq.js가 생성/제어 (Req ID별 요구사항 원문 요약) */
+/* ── NVIDIA Req 말풍선 (nvreq.js) ────────────────────────── */
 #nvtip{
   display:none; position:fixed; z-index:1000; max-width:420px;
   background:#0b2436; border:1px solid #1f6a95; border-radius:8px;
-  padding:10px 13px 11px; box-shadow:0 10px 28px rgba(0,0,0,.55);
+  padding:10px 13px 11px; box-shadow:0 8px 22px rgba(0,0,0,.5);
   font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
   font-size:11.5px; line-height:1.5; color:#cfe8f5; pointer-events:none;
 }
@@ -69,19 +177,19 @@
   border-left:1px solid #1f6a95; border-top:1px solid #1f6a95;
 }
 #nvtip.up::before{top:auto; bottom:-6px; transform:rotate(225deg)}
-#nvtip .nvtip-h{color:#4fd8ff; font-size:9.5px; letter-spacing:.5px;
+#nvtip .nvtip-h{color:var(--cyan); font-size:9.5px; letter-spacing:.5px;
   text-transform:uppercase; opacity:.85; margin-bottom:2px}
 #nvtip .nvtip-row{margin-top:7px}
-#nvtip .nvtip-row b{color:#4fd8ff; font-family:Menlo,monospace; font-size:10.5px;
+#nvtip .nvtip-row b{color:var(--cyan); font-family:Menlo,monospace; font-size:10.5px;
   margin-right:7px}
 #nvtip .nvtip-t{color:#e8f4fb; font-weight:700}
 #nvtip .nvtip-d{color:#9fc0d4; margin-top:2px}
 
-/* Control-Plane 모듈 역할 말풍선 — modinfo.js가 생성/제어 (그린 계열) */
+/* ── Control-Plane 모듈/단계 말풍선 (modinfo.js) ─────────── */
 #modtip{
   display:none; position:fixed; z-index:1000; max-width:430px;
   background:#101f14; border:1px solid #3f6a34; border-radius:8px;
-  padding:10px 13px 11px; box-shadow:0 10px 28px rgba(0,0,0,.55);
+  padding:10px 13px 11px; box-shadow:0 8px 22px rgba(0,0,0,.5);
   font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
   font-size:11.5px; line-height:1.55; color:#d7e8d0; pointer-events:none;
 }
@@ -91,17 +199,17 @@
   border-left:1px solid #3f6a34; border-top:1px solid #3f6a34;
 }
 #modtip.up::before{top:auto; bottom:-6px; transform:rotate(225deg)}
-#modtip .modtip-h{color:#76b900; font-size:9.5px; letter-spacing:.5px;
+#modtip .modtip-h{color:var(--green); font-size:9.5px; letter-spacing:.5px;
   text-transform:uppercase; opacity:.85; margin-bottom:3px}
 #modtip .modtip-t{color:#e9f5df; font-weight:700; margin-bottom:3px}
 #modtip .modtip-d{color:#a8c49c}
 [data-b],[data-m],[data-stage]{cursor:help}
 
-/* 말풍선 On/Off 스위치 (nav.js) */
+/* ── 말풍선 On/Off 스위치 (nav.js) ───────────────────────── */
 .nc-tipsw{
-  display:flex; align-items:center; gap:4px; margin-left:6px;
-  color:var(--nc-mut); font-size:12px; cursor:pointer; user-select:none;
-  padding:5px 9px; border:1px solid var(--nc-line); border-radius:16px;
+  display:flex; align-items:center; gap:5px; white-space:nowrap;
+  color:var(--muted); font-size:11.5px; cursor:pointer; user-select:none;
+  padding:4px 10px; border:1px solid var(--line); border-radius:6px;
 }
-.nc-tipsw:hover{border-color:var(--nc-g)}
-.nc-tipsw input{accent-color:#76b900; cursor:pointer; margin:0}
+.nc-tipsw:hover{color:#fff; border-color:var(--green-line)}
+.nc-tipsw input{accent-color:var(--green); cursor:pointer; margin:0}

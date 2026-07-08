@@ -3,89 +3,96 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NeoCloud Platform Architecture — Flow</title>
+<title>NeoCloud Control-Plane — NeoCloud OS</title>
 <link rel="stylesheet" href="/static/theme.css">
 <style>
-  :root{--g:#76b900;--navy:#0b1f3a;--bg:#0f1722;--card:#16202e;--line:#2a3848;--mut:#8aa0b4;
-        --blue:#5aa7e8;}
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,"Apple SD Gothic Neo","Segoe UI",sans-serif;
-       background:var(--bg);color:#e6edf3;font-size:13px;line-height:1.5}
+       background:var(--bg);color:var(--text);font-size:13px;line-height:1.5}
   .wrap{max-width:1520px;margin:0 auto;padding:20px 26px 30px}
-  h1{font-size:26px;margin:2px 0 2px;font-weight:800;color:#fff}
-  .sub{color:var(--mut);font-style:italic;margin-bottom:14px}
-  .legend{display:flex;gap:20px;font-size:10.5px;letter-spacing:.12em;color:var(--mut);font-weight:700}
-  .legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;vertical-align:-1px}
-  .headrow{display:flex;align-items:flex-start;gap:20px}
-  .controls{margin-left:auto;display:flex;gap:8px;align-items:center;flex:none;flex-wrap:wrap;justify-content:flex-end}
-  select{background:#0d141d;border:1px solid var(--line);color:#e6edf3;
-         border-radius:6px;padding:6px 10px;font-size:12px;min-width:230px}
-  button{background:var(--g);color:#08210a;border:0;border-radius:6px;padding:7px 12px;
-         font-weight:700;cursor:pointer;font-size:12px}
-  button.ghost{background:transparent;color:var(--g);border:1px solid var(--g)}
-  button:disabled{opacity:.4;cursor:not-allowed}
+  a{color:var(--green)}
+  .m{font-family:Menlo,monospace;font-size:10.5px}
+  .muted{color:var(--muted)}
+  /* ---- 타이틀 행 우측 컨트롤 (범례 + 주문 select + 리플레이) --------- */
+  .tb-right{margin-left:auto;display:flex;gap:14px;align-items:center;
+            flex-wrap:wrap;align-self:center;justify-content:flex-end}
+  .legend{display:flex;gap:14px;align-items:center;font-size:10px;
+          letter-spacing:.1em;color:var(--muted);font-weight:700}
+  .legend>span{display:flex;align-items:center;gap:5px;white-space:nowrap}
+  .legend .dot{width:9px;height:9px}
+  select{background:var(--card-sub);border:1px solid var(--line);color:var(--text-soft);
+         border-radius:7px;padding:6px 10px;font-size:12px;min-width:230px}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
   /* ---- diagram ------------------------------------------------------- */
-  .diagram{position:relative;padding-left:34px}
+  .dgpanel{padding:20px;margin-bottom:18px;overflow-x:auto}
+  .diagram{position:relative;padding-left:30px;min-width:960px}
   /* 섹션 밴드 기준 세로 중앙 정렬 — 콘텐츠 높이가 변해도 라벨이 따라간다 */
   .band{position:relative}
-  .band .sidelabel{position:absolute;left:-17px;top:50%;
+  .band .sidelabel{position:absolute;left:-15px;top:50%;
              transform:translate(-50%,-50%) rotate(-90deg);
-             color:#4a5a6c;font-size:10px;letter-spacing:.25em;
+             color:#4a5a6c;font-size:9.5px;letter-spacing:.25em;
              font-weight:700;white-space:nowrap}
-  .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
   .row4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
-  .portal{background:#13314f;border:1px solid #2a4868;color:#fff;border-radius:10px;
-          padding:14px 18px;transition:all .25s}
-  .portal .t{font-size:15px;font-weight:800;display:flex;gap:10px;align-items:center}
-  .portal .num{background:var(--navy);border-radius:50%;width:24px;height:24px;flex:none;
-               display:flex;align-items:center;justify-content:center;font-size:12px;color:#9fd0ff}
-  .portal .d{color:#9fb8d0;font-size:12px;margin-top:5px}
-  .arrows{display:grid;gap:18px;margin:2px 0}
-  .ar{text-align:center;color:#3a4a5c;font-size:17px;transition:all .2s}
-  .ar.flow{color:var(--g);text-shadow:0 0 8px rgba(118,185,0,.7);transform:scale(1.3)}
-  .cp{background:var(--card);border:2px solid var(--line);border-radius:12px;
-      padding:16px 20px;transition:all .25s}
-  .cp .t{font-size:18px;font-weight:800;display:flex;gap:10px;align-items:center;color:#fff}
-  .cp .t small{font-weight:400;color:var(--mut);font-style:italic;font-size:12px}
-  .cp .num{background:var(--g);color:#08210a;border-radius:50%;width:26px;height:26px;flex:none;
-           display:flex;align-items:center;justify-content:center;font-size:13px}
-  .sect{color:#5a7a94;font-size:10.5px;letter-spacing:.18em;font-weight:800;margin:13px 0 7px}
-  .row5{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
-  .blk{background:#0d141d;border:1px solid var(--line);border-radius:8px;padding:10px 8px;
-       text-align:center;font-size:12.5px;font-weight:600;color:#cfd8e3;transition:all .25s}
-  .principle{color:var(--mut);font-style:italic;font-size:11.5px;margin-top:13px}
-  .dom{border-radius:10px;padding:14px 16px;border:1.5px solid var(--line);
-       background:#121b28;transition:all .25s}
+  .portal{background:#13314f;border:1px solid #2a4868;border-radius:10px;
+          padding:13px 17px;transition:background .2s,border-color .2s}
+  .portal .t{font-size:14px;font-weight:800;color:#fff;display:flex;gap:9px;align-items:center}
+  .portal .num{background:#0b1f3a;border-radius:50%;width:22px;height:22px;flex:none;
+               display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--blue-text)}
+  .portal .d{color:#9fb8d0;font-size:11.5px;margin-top:4px}
+  .arrows{display:grid;gap:16px;margin:4px 0}
+  .ar{text-align:center;color:#3a4a5c;font-size:16px;transition:color .2s}
+  .ar.flow{color:var(--green);text-shadow:0 0 8px rgba(118,185,0,.6)}
+  .cp{background:#121b28;border:1.5px solid #2a3848;border-radius:12px;
+      padding:15px 19px;transition:background .2s,border-color .2s}
+  .cp .t{font-size:16px;font-weight:800;display:flex;gap:10px;align-items:center;color:#fff;flex-wrap:wrap}
+  .cp .t small{font-weight:400;color:var(--muted);font-style:italic;font-size:11.5px}
+  .cp .num{background:var(--green);color:var(--on-green);border-radius:50%;width:24px;height:24px;flex:none;
+           display:flex;align-items:center;justify-content:center;font-size:12px}
+  .sect{color:#5a7a94;font-size:10px;letter-spacing:.18em;font-weight:800;margin:12px 0 7px}
+  .row5{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .blk{background:var(--card-sub);border:1px solid #2a3848;border-radius:8px;padding:9px 8px;
+       text-align:center;font-size:12px;font-weight:600;color:#cfd8e3;
+       transition:background .2s,border-color .2s,color .2s}
+  .blk.on{color:#cfe8a0;font-weight:700}
+  .principle{color:var(--muted);font-style:italic;font-size:11px;margin-top:12px}
+  .dom{border-radius:10px;padding:13px 15px;border:1.5px solid #2a3848;
+       background:#121b28;transition:background .2s,border-color .2s}
   .dom.nv{background:#151f10;border-color:#4e7a2c}
-  .dom .t{font-weight:800;font-size:14.5px;display:flex;gap:9px;align-items:center;color:#e6edf3}
-  .dom .num{background:#55606c;color:#fff;border-radius:50%;width:22px;height:22px;flex:none;
-            display:flex;align-items:center;justify-content:center;font-size:11px}
-  .dom.nv .t{color:#cfe8a0}.dom.nv .num{background:var(--g);color:#08210a}
-  .pillbar{border-radius:14px;color:#fff;font-size:11px;font-weight:800;letter-spacing:.1em;
-           text-align:center;padding:5px 0;margin:9px 0}
-  .pill-g{background:var(--g);color:#08210a}.pill-x{background:#3a4552;color:#c9d2dc}
-  .dom ul{margin:6px 0 0;padding-left:16px;color:#9fb0c0;font-size:11.5px}
+  .dom .t{font-weight:800;font-size:13.5px;display:flex;gap:9px;align-items:center;color:var(--text)}
+  .dom .num{background:#55606c;color:#fff;border-radius:50%;width:20px;height:20px;flex:none;
+            display:flex;align-items:center;justify-content:center;font-size:10.5px}
+  .dom.nv .t{color:#cfe8a0}.dom.nv .num{background:var(--green);color:var(--on-green)}
+  .pillbar{border-radius:12px;font-size:10.5px;font-weight:800;letter-spacing:.1em;
+           text-align:center;padding:4px 0;margin:8px 0}
+  .pill-g{background:var(--green);color:var(--on-green)}.pill-x{background:#3a4552;color:#c9d2dc}
+  .dom ul{margin:5px 0 0;padding-left:15px;color:#9fb0c0;font-size:11px}
   .dom li{margin:2px 0}
-  .on{border-color:var(--g)!important;
-      box-shadow:0 0 0 2px rgba(118,185,0,.45),0 0 18px rgba(118,185,0,.35)!important;
+  /* 점등 — 활성 블록: 어두운 그린 배경 + 그린 보더 (글로우 최소화) */
+  .on{border-color:var(--green)!important;
+      box-shadow:0 0 0 2px rgba(118,185,0,.25)!important;
       background:#1d3a26!important}
   /* ---- flow panel ------------------------------------------------------ */
-  .flowgrid{display:grid;grid-template-columns:360px 1fr;gap:16px;margin-top:22px}
-  @media(max-width:1100px){.flowgrid{grid-template-columns:1fr}}
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
-  h2{font-size:14px;color:var(--g);border-bottom:1px solid var(--line);padding-bottom:7px;margin:0 0 10px}
+  .flowgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(370px,1fr));gap:18px}
+  #fo{font-size:10px}
+  #fs{color:var(--green-text);font-size:10.5px}
+  #fcnt{margin-left:auto;font-size:11px}
   .stage{border:1px solid var(--line);border-radius:8px;padding:8px 11px;margin-bottom:7px;
-         cursor:pointer;transition:all .2s;background:#0d141d}
+         cursor:pointer;background:var(--card-sub);
+         transition:background .2s,border-color .2s}
   .stage:hover{border-color:#4a5f78}
-  .stage.sel{border-color:var(--g);box-shadow:0 0 0 2px rgba(118,185,0,.3)}
-  .stage.act{background:#1d3a26;border-color:var(--g)}
-  .stage .nm{font-weight:800;font-size:13px;display:flex;align-items:center;gap:8px;color:#fff}
-  .stage .nm .ko{color:var(--mut);font-weight:600;font-size:11.5px}
-  .stage .cnt{margin-left:auto;background:var(--g);color:#08210a;border-radius:11px;
-              padding:1px 9px;font-size:11px;font-weight:700}
-  .stage .cnt.zero{background:#3a4552;color:#c9d2dc}
-  .stage .dt{color:var(--mut);font-size:11px;margin-top:2px}
-  .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+  .stage.sel{border-color:var(--green)}
+  .stage.act{background:#1d3a26;border-color:var(--green)}
+  .stage .nm{font-weight:700;font-size:12.5px;display:flex;align-items:center;gap:8px;color:#fff}
+  .stage .nm .ko{color:var(--muted);font-weight:600;font-size:11px}
+  .stage.sel .nm .ko,.stage.act .nm .ko{color:var(--green-text)}
+  .stage .cnt{margin-left:auto;background:#3a4552;color:#c9d2dc;border-radius:11px;
+              padding:1px 9px;font-size:10.5px;font-weight:700}
+  .stage.sel .cnt:not(.zero),.stage.act .cnt:not(.zero){background:var(--green);color:var(--on-green)}
+  .stage .dt{color:var(--muted);font-size:10.5px;margin-top:2px}
+  .stage.sel .dt,.stage.act .dt{color:var(--green-text)}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  /* 채널 칩 — 팔레트 기존 유지 */
   .ch{font-family:Menlo,monospace;font-size:9px;padding:1px 6px;border-radius:4px;font-weight:700;
       background:#1a2230;color:#8aa0b4}
   .ch-REST{background:#233043;color:#9fb8d0}.ch-gRPC{background:#153a5a;color:#9fd0ff}
@@ -96,51 +103,47 @@
   .ch-OIDC-IAM{background:#0e2f44;color:#4fd8ff}.ch-Vault{background:#332c14;color:#e8c66a}
   .ch-PAM{background:#3a2a2a;color:#e8b0a0}
   .ch-internal{background:#1a2230;color:#8aa0b4}
-  table{width:100%;border-collapse:collapse;font-size:11.5px}
-  th,td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--line)}
-  th{color:var(--mut);font-weight:700;text-transform:uppercase;font-size:10px;
-     position:sticky;top:0;background:var(--card)}
-  .m{font-family:Menlo,monospace;font-size:10.5px}
+  /* API 테이블 */
   #apibox{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:8px}
-  .muted{color:var(--mut)}
-  a{color:var(--g)}
+  #apibox table{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}
+  #apibox th{text-align:left;padding:5px 7px;border-bottom:1px solid var(--line);
+             color:var(--muted);font-weight:600;font-size:10px;
+             position:sticky;top:0;background:var(--card)}
+  #apibox td{text-align:left;padding:5px 7px;border-bottom:1px solid var(--line-soft)}
+  #apibox tbody tr:hover td{background:#1a2635}
 </style>
 </head>
 <body>
 <header class="nc-header">
-  <span class="nc-brand">NeoCloud OS</span>
-  <div class="nc-head-txt">
-    <div class="nc-title">플랫폼 아키텍처 플로우</div>
-    <div class="nc-sub">구성도 위 주문 리플레이 · 단계별 하부 호출 API 전체 리스트</div>
+  <div class="nc-topbar">
+    <span class="nc-brand">NeoCloud OS</span>
+    <nav class="nc-nav">
+      <a href="/customer">고객</a><a href="/biz">비즈</a><a href="/ops">운영</a><a href="/arch" class="act">Control-Plane</a><a href="/nico">NICo</a><a href="/flow">검증 콘솔</a><a href="/">VRCM</a>
+    </nav>
+    <div class="nc-right">
+      <span class="nc-live"><span class="dot"></span>LIVE · 4s</span>
+      <span class="nc-user">architect</span>
+    </div>
   </div>
-  <nav class="nc-nav">
-    <a href="/customer">👤 고객 포털</a>
-    <a href="/biz">💼 비즈 포털</a>
-    <a href="/ops">🛠 운영 포털</a>
-    <a href="/arch" class="act">🧭 NeoCloud Control-Plane</a>
-    <a href="/nico">⚙️ NICo</a>
-    <a href="/flow">🔬 검증 콘솔</a>
-    <a href="/">📊 VRCM</a>
-  </nav>
+  <div class="nc-titlebar">
+    <span class="nc-title">NeoCloud Control-Plane</span>
+    <span class="nc-sub">모듈 아키텍처 · 주문별 API 흐름 리플레이</span>
+    <div class="tb-right">
+      <span class="legend">
+        <span><span class="dot blue"></span>SKT IN-HOUSE</span>
+        <span><span class="dot green"></span>NVIDIA</span>
+        <span><span class="dot gray"></span>PARTNER</span>
+      </span>
+      <select id="order"></select>
+      <button id="btn-replay" class="btn" onclick="replay()">▶ 리플레이</button>
+      <button class="btn-ghost" onclick="loadOrders()">새로고침</button>
+    </div>
+  </div>
 </header>
 
 <div class="wrap">
-  <div class="headrow">
-    <div>
-      <h1>NeoCloud Platform Architecture</h1>
-      <div class="sub">BMaaS service architecture for the 30MW NeoCloud environment · <b style="color:#cfe8a0">live order flow</b></div>
-    </div>
-    <div class="controls">
-      <div class="legend"><span><i style="background:#5aa7e8"></i>SKT IN-HOUSE</span>
-        <span><i style="background:var(--g)"></i>NVIDIA</span>
-        <span><i style="background:#8a8f98"></i>PARTNER</span></div>
-      <select id="order"></select>
-      <button id="btn-replay" onclick="replay()">▶ 리플레이</button>
-      <button class="ghost" onclick="loadOrders()">새로고침</button>
-    </div>
-  </div>
-
   <!-- ================= DIAGRAM ================= -->
+  <div class="panel dgpanel">
   <div class="diagram">
     <div class="band"><div class="sidelabel">INTERFACES</div>
     <div class="row3">
@@ -203,21 +206,29 @@
             <li>Repository Caching · Security Systems</li></ul></div>
     </div></div>
   </div>
+  </div>
 
   <!-- ================= FLOW PANEL ================= -->
   <div class="flowgrid">
     <div class="panel">
-      <h2>주문 파이프라인 상태머신 — <span id="fo" class="m muted">주문 선택</span></h2>
+      <div class="sec-h"><span class="tick"></span>
+        <span class="t">주문 파이프라인 상태머신</span>
+        <span id="fo" class="m muted">주문 선택</span></div>
       <div id="stages"><span class="muted">주문을 선택하면 단계별 하부 API 호출이 표시됩니다.
         주문이 없으면 <a href="/flow">검증 콘솔</a>에서 개통을 실행하세요.</span></div>
     </div>
     <div class="panel">
-      <h2>단계 하부 호출 API 전체 리스트 — <span id="fs" class="m muted">단계 선택</span>
-        <span id="fcnt" class="muted" style="float:right"></span></h2>
+      <div class="sec-h"><span class="tick"></span>
+        <span class="t">단계 하부 호출 API 전체 리스트</span>
+        <span id="fs" class="m">단계 선택</span>
+        <span id="fcnt" class="muted"></span></div>
       <div id="apibox"><table>
         <thead><tr><th style="width:46px">#</th><th style="width:72px">시간</th>
           <th style="width:290px">송신 → 수신</th><th style="width:86px">채널</th><th>동작 — 상세</th></tr></thead>
         <tbody id="apis"></tbody></table></div>
+      <div class="callout" style="margin-top:10px">단계 카드를 선택하면 다이어그램의 관여 모듈·경로가
+        점등됩니다 — <b style="color:#cfe8a0">▶ 리플레이</b>는 전 단계를 순서대로 재생합니다.
+        트레이별 상세 절차는 <a href="/nico">NICo 대시보드 ⑧</a>에서 확인.</div>
     </div>
   </div>
 </div>
