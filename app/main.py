@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -73,6 +74,15 @@ app.include_router(tray_emu.router)
 app.include_router(nico_fake.router)
 app.include_router(vast_fake.router)
 app.include_router(shared_services.router)
+
+
+# NeoCloud 3대 콘솔(별도 오리진 :8090)에서의 API 연동 허용
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:8090", "http://localhost:8090"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")
