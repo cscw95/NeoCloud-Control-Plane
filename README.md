@@ -1,139 +1,139 @@
 # NVIDIA DSX OS NICo-Emulator
 
-NeoCloud(GPUaaS) **컨트롤 플레인 MVP**. NVIDIA **NVL72** 시스템(**GB200 / GB300 / Vera
-Rubin**)으로 구성된 멀티 세대 GPU 클러스터(DSX AI Factory)를 관리한다. 두 NVIDIA 레퍼런스
-문서를 데이터 모델·API로 코드화했다.
+A **control-plane MVP** for NeoCloud (GPUaaS). It manages a multi-generation GPU cluster
+(DSX AI Factory) composed of NVIDIA **NVL72** systems (**GB200 / GB300 / Vera
+Rubin**). Two NVIDIA reference documents are codified into its data model and APIs.
 
-### 지원 세대 (MGX)
+### Supported Generations (MGX)
 
-| 블루프린트 | 모델 | GPU/CPU | HBM | NVLink | 랙 TDP | 냉각 |
+| Blueprint | Model | GPU/CPU | HBM | NVLink | Rack TDP | Cooling |
 |---|---|---|---|---|---|---|
-| `gb200-nvl72` | GB200 NVL72 (Gen 1.1) | Blackwell / Grace | 192 GB HBM3e | NVLink5 (1.8 TB/s) | 120 kW (공칭 · MaxQ 미공개) | hybrid |
-| `gb300-nvl72` | GB300 NVL72 (Gen 1.1)¹ | Blackwell Ultra / Grace | 288 GB HBM3e | NVLink5 | 135 kW (피크 ~155 · MaxQ 미공개) | liquid |
+| `gb200-nvl72` | GB200 NVL72 (Gen 1.1) | Blackwell / Grace | 192 GB HBM3e | NVLink5 (1.8 TB/s) | 120 kW (nominal · MaxQ not published) | hybrid |
+| `gb300-nvl72` | GB300 NVL72 (Gen 1.1)¹ | Blackwell Ultra / Grace | 288 GB HBM3e | NVLink5 | 135 kW (peak ~155 · MaxQ not published) | liquid |
 | `vr-nvl72` | Vera Rubin NVL72 (Gen 1.2) | Rubin / Vera | 288 GB HBM4 | NVLink6 (3.6 TB/s) | 227 kW (MaxP 227 · MaxQ 187) | liquid |
 
-¹ GB300 전력은 공개 추정치(`preliminary=true`). 한 AI Factory에 세대 혼재 가능.
+¹ GB300 power figures are public estimates (`preliminary=true`). Generations can be mixed within a single AI Factory.
 
-> 근거 문서
+> Source documents
 > - *NVIDIA DSX Facilities Infrastructure Design Guide* v1.0 (2026-03-12)
 > - *NVIDIA Cloud Partner: Vera Rubin NVL72 Systems Reference Design* (PRD12771-001 v3.0)
 
-## 이번 MVP 범위
+## Scope of This MVP
 
-| 도메인 | 상태 | 내용 |
+| Domain | Status | Description |
 |---|---|---|
-| **인벤토리 & 토폴로지** | ✅ 구현 | AI Factory ▸ Block ▸ DU ▸ SU ▸ Rack(NVL72) ▸ Tray ▸ GPU/CPU/DPU 전개, 용량·전력 집계, 블루프린트 기반 SU 프로비저닝, MaxQ/MaxP 전력 정책 |
-| **멀티테넌시 & 격리** | ✅ 구현 | 테넌트 생명주기, 용량 할당(SU/rack-set/HAC), NVLink 파티션(GFM 모델), 자동 VNI/VRF 바인딩, 4계층 격리 검증 리포트 |
-| **서비스 라이프사이클 (M1/M3/M4-lite)** | ✅ 구현 | 주문 파이프라인(saga 보상 포함), NodeInstance·ServiceOrder 상태머신, NVL 도메인 무결성 배치, 회수·sanitization, NICo reconcile(GHOST/ORPHAN/MISMATCH) |
-| **D1 ComputeAdapter + Fake NICo** | ✅ 구현 | ComputeAdapter 계약(Local/HTTP 구현체), NICo Day 0/1/2 시뮬레이터(job 폴링·장애 주입) — 실 NICo 연동 시 어댑터만 교체 |
-| 헬스 & 텔레메트리 | 🔜 로드맵 | GPU/DPU/네트워크/시설 통합 모니터링 (NVSentinel 연동) |
-| 전력 & 냉각 연동 | 🔜 로드맵 | DSX Exchange(MQTT) IT-OT, CDU/TCS, Coordinated Leak Response |
-| 과금 & 미터링 | 🔜 로드맵 | 테넌트별 사용량 계측·빌링 (NeoCloud 매출 계층) |
+| **Inventory & Topology** | ✅ Implemented | AI Factory ▸ Block ▸ DU ▸ SU ▸ Rack (NVL72) ▸ Tray ▸ GPU/CPU/DPU expansion, capacity/power aggregation, blueprint-based SU provisioning, MaxQ/MaxP power policies |
+| **Multi-tenancy & Isolation** | ✅ Implemented | Tenant lifecycle, capacity allocation (SU/rack-set/HAC), NVLink partitions (GFM model), automatic VNI/VRF binding, 4-layer isolation verification report |
+| **Service Lifecycle (M1/M3/M4-lite)** | ✅ Implemented | Order pipeline (with saga compensation), NodeInstance/ServiceOrder state machines, NVL-domain-integrity placement, reclamation & sanitization, NICo reconcile (GHOST/ORPHAN/MISMATCH) |
+| **D1 ComputeAdapter + Fake NICo** | ✅ Implemented | ComputeAdapter contract (Local/HTTP implementations), NICo Day 0/1/2 simulator (job polling, fault injection) — swap only the adapter to integrate with a real NICo |
+| Health & Telemetry | 🔜 Roadmap | Unified GPU/DPU/network/facility monitoring (NVSentinel integration) |
+| Power & Cooling Integration | 🔜 Roadmap | DSX Exchange (MQTT) IT-OT, CDU/TCS, Coordinated Leak Response |
+| Billing & Metering | 🔜 Roadmap | Per-tenant usage metering and billing (NeoCloud revenue layer) |
 
-상세 설계와 로드맵은 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 참조.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed design and roadmap.
 
-## 빠른 시작
+## Quick Start
 
 ```bash
 cd ~/vrcm
-./run.sh                      # venv 생성 + 의존성 설치 + 서버 기동
+./run.sh                      # create venv + install dependencies + start the server
 ```
 
-- **포털 3종**: 운영 http://127.0.0.1:8000/ops · 고객 /customer · 비즈 /biz (티켓·SLA·과금 프리뷰)
-- 대시보드: http://127.0.0.1:8000/
-- 동작 검증 콘솔: http://127.0.0.1:8000/flow — 사용법: [docs/FLOW_CONSOLE_GUIDE.md](docs/FLOW_CONSOLE_GUIDE.md)
-- NICo 운영 대시보드: http://127.0.0.1:8000/nico — REST 전체 탐색 + 트레이 에뮬레이션 LIVE
-- 아키텍처 플로우: http://127.0.0.1:8000/arch — 구성도 위 주문 리플레이 + 단계별 하부 API 전체 리스트
-- API 문서(OpenAPI): http://127.0.0.1:8000/docs
-- **연동 API 레퍼런스** (NICo 에뮬레이션 포함 98 엔드포인트, 실연동 교체 지점): [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
-- **DPU Isolation 동작 상세** (실 NICo infra-controller 코드 분석 + vrcm 매핑): [docs/DPU_ISOLATION.md](docs/DPU_ISOLATION.md)
-- 헬스체크: http://127.0.0.1:8000/health
+- **Three portals**: Operations http://127.0.0.1:8000/ops · Customer /customer · Business /biz (tickets, SLA, billing preview)
+- Dashboard: http://127.0.0.1:8000/
+- Verification console: http://127.0.0.1:8000/flow — usage guide: [docs/FLOW_CONSOLE_GUIDE.md](docs/FLOW_CONSOLE_GUIDE.md)
+- NICo operations dashboard: http://127.0.0.1:8000/nico — full REST explorer + LIVE tray emulation
+- Architecture flow: http://127.0.0.1:8000/arch — order replay on top of the system diagram + full list of underlying API calls per stage
+- API docs (OpenAPI): http://127.0.0.1:8000/docs
+- **Integration API reference** (98 endpoints including the NICo emulation, with real-integration swap points): [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
+- **DPU isolation behavior in depth** (analysis of the real NICo infra-controller code + vrcm mapping): [docs/DPU_ISOLATION.md](docs/DPU_ISOLATION.md)
+- Health check: http://127.0.0.1:8000/health
 
-기본 시드는 **Phase 1 실배치 구성 (전량 Vera Rubin)** — 2개 사이트 × 각 2개 층
+The default seed is the **Phase 1 production deployment configuration (all Vera Rubin)** — 2 sites × 2 floors each.
 
-세대 추가 프로비저닝:
+Provisioning additional generations:
 ```bash
-# GB300 SU 추가
+# Add a GB300 SU
 curl -XPOST "localhost:8000/api/v1/scalable-units?blueprint_key=gb300-nvl72"
-# 지원 세대 카탈로그
+# Catalog of supported generations
 curl localhost:8000/api/v1/blueprints
-# 시드 재구성 (원하는 세대 조합)
+# Reseed with any combination of generations
 curl -XPOST "localhost:8000/api/v1/admin/reseed?blueprints=gb200-nvl72,gb300-nvl72,vr-nvl72"
 ```
 
-## 테스트 · 시연
+## Tests & Demo
 
 ```bash
 . .venv/bin/activate
-pytest -q                                        # 45 tests (E2E 시나리오 포함)
-python scripts/demo_scenario.py                  # 전체 동작 시연 러너 (11막·37검증)
-python scripts/demo_scenario.py --pause          # 발표 모드
+pytest -q                                        # 45 tests (including the E2E scenario)
+python scripts/demo_scenario.py                  # full end-to-end demo runner (11 acts, 37 checks)
+python scripts/demo_scenario.py --pause          # presentation mode
 ```
 
-시연 시나리오 상세: [docs/DEMO_SCENARIO.md](docs/DEMO_SCENARIO.md)
+Demo scenario details: [docs/DEMO_SCENARIO.md](docs/DEMO_SCENARIO.md)
 
-## 핵심 API 예시
+## Key API Examples
 
 ```bash
-# 인벤토리 요약
+# Inventory summary
 curl localhost:8000/api/v1/inventory/summary
 
-# 테넌트 생성 (자동 VNI/VRF 바인딩)
+# Create a tenant (automatic VNI/VRF binding)
 curl -XPOST localhost:8000/api/v1/tenants \
   -H 'content-type: application/json' \
   -d '{"name":"fin-corp","isolation_tier":"vm_multitenant"}'
 
-# SU 통째 할당 (티어에서 DPU 모드 자동 도출)
+# Allocate an entire SU (DPU mode derived automatically from the tier)
 curl -XPOST localhost:8000/api/v1/allocations \
   -H 'content-type: application/json' \
   -d '{"tenant_id":"tnt-fin-corp","su_id":"su-1","scope":"scalable_unit"}'
 
-# NVLink 파티션 (compute isolation)
+# NVLink partition (compute isolation)
 curl -XPOST localhost:8000/api/v1/nvlink-partitions \
   -H 'content-type: application/json' \
   -d '{"rack_id":"su-1-rack-00","tenant_id":"tnt-fin-corp","tray_ids":["su-1-rack-00-tray-00"]}'
 
-# 격리 검증 리포트
+# Isolation verification report
 curl localhost:8000/api/v1/tenants/tnt-fin-corp/isolation
 
-# --- 서비스 라이프사이클 (M1-lite) ---
-# 신규 개통 주문: 배치→예약→NICo 프로비저닝→격리→인수까지 한 번에 (실패 시 saga 롤백)
+# --- Service lifecycle (M1-lite) ---
+# New provisioning order: placement -> reservation -> NICo provisioning -> isolation -> acceptance in one shot (saga rollback on failure)
 curl -XPOST localhost:8000/api/v1/orders \
   -H 'content-type: application/json' \
   -d '{"tenant_id":"tnt-fin-corp","kind":"new","blueprint_key":"vr-nvl72","racks":2}'
 
-# 회수: drain→release→sanitization(7단계)→풀 복귀 (실패 시 RMA 에스컬레이션)
+# Reclamation: drain -> release -> sanitization (7 stages) -> return to pool (RMA escalation on failure)
 curl -XPOST localhost:8000/api/v1/orders \
   -H 'content-type: application/json' \
   -d '{"tenant_id":"tnt-fin-corp","kind":"terminate","allocation_id":"alloc-1"}'
 
-# 노드 풀 현황 / NICo 정합성 감사
+# Node pool status / NICo consistency audit
 curl localhost:8000/api/v1/nodes/summary
 curl -XPOST localhost:8000/api/v1/reconcile/run
 
-# Fake NICo 직접 조작 (장애 주입 등)
+# Direct Fake NICo manipulation (fault injection, etc.)
 curl -XPOST localhost:8000/fake-nico/hosts/nh-su-2-rack-00-tray-00/inject \
   -H 'content-type: application/json' -d '{"op":"provision"}'
 ```
 
-## 구조
+## Structure
 
 ```
 vrcm/
 ├─ app/
-│  ├─ spec.py       # NVL72/DSX 하드웨어·토폴로지 상수 (문서 single source of truth)
-│  ├─ models.py     # Pydantic 데이터 모델 (토폴로지 + 테넌시)
-│  ├─ store.py      # 인메모리 저장소 (교체 가능 인터페이스)
-│  ├─ seed.py       # 블루프린트 기반 SU 프로비저닝 + 기본 시드
-│  ├─ topology.py   # 인벤토리 & 토폴로지 API
-│  ├─ tenancy.py    # 멀티테넌시 & 격리 API + 검증 로직
-│  ├─ lifecycle.py  # 주문 파이프라인(saga)·상태머신·배치·reconcile (M1/M3/M4-lite)
-│  ├─ adapters.py   # D1 ComputeAdapter 계약 + Local/HTTP 구현체
-│  ├─ nico_fake.py  # NICo Day 0/1/2 시뮬레이터 (+ /fake-nico REST)
-│  ├─ main.py       # FastAPI 조립 + lifespan 시드
-│  └─ static/index.html   # 경량 대시보드
+│  ├─ spec.py       # NVL72/DSX hardware & topology constants (single source of truth for the documents)
+│  ├─ models.py     # Pydantic data models (topology + tenancy)
+│  ├─ store.py      # in-memory store (replaceable interface)
+│  ├─ seed.py       # blueprint-based SU provisioning + default seed
+│  ├─ topology.py   # inventory & topology APIs
+│  ├─ tenancy.py    # multi-tenancy & isolation APIs + verification logic
+│  ├─ lifecycle.py  # order pipeline (saga), state machines, placement, reconcile (M1/M3/M4-lite)
+│  ├─ adapters.py   # D1 ComputeAdapter contract + Local/HTTP implementations
+│  ├─ nico_fake.py  # NICo Day 0/1/2 simulator (+ /fake-nico REST)
+│  ├─ main.py       # FastAPI assembly + lifespan seeding
+│  └─ static/index.html   # lightweight dashboard
 ├─ tests/           # pytest (topology + tenancy + lifecycle)
-├─ docs/ARCHITECTURE.md   # 상세 설계서
+├─ docs/ARCHITECTURE.md   # detailed design document
 ├─ requirements.txt
 └─ run.sh
 ```

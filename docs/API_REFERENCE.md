@@ -1,169 +1,171 @@
-# NeoCloud Control-Plane — 연동 가능 API 레퍼런스
+# NeoCloud Control-Plane — Integration API Reference
 
-> 실행 중인 서버의 OpenAPI 스키마(`GET /openapi.json`)에서 추출한 **전체 98개 엔드포인트**를
-> Control-Plane 모듈 구조(①~⑦, cp-*)로 분류한 연동 레퍼런스.
-> 대화형 문서는 http://127.0.0.1:8000/docs (Swagger UI).
+> An integration reference covering **all 98 endpoints**, extracted from the running
+> server's OpenAPI schema (`GET /openapi.json`) and organized by the Control-Plane
+> module structure (①–⑦, cp-*).
+> Interactive documentation: http://127.0.0.1:8000/docs (Swagger UI).
 >
-> 표기 — **[실연동]**: 실 배치에서 그대로 노출되는 Northbound API ·
-> **[에뮬]**: 시뮬레이터 대역 API(실 시스템의 API 형상에 대응, 어댑터 교체 지점) ·
-> **[데모]**: 검증 콘솔 전용(장애 주입 등, 실 배치에서 제거)
+> Legend — **[Real]**: Northbound API exposed as-is in a real deployment ·
+> **[Emu]**: simulator stand-in API (mirrors the API shape of the real system; adapter swap point) ·
+> **[Demo]**: verification-console only (fault injection, etc.; removed in a real deployment)
 
 ---
 
 ## A. Northbound / Public APIs (cp-api) — `/api/v1/*`
 
-포털 3종·외부 시스템이 소비하는 공식 연동 표면. 실 배치에서는 OIDC Bearer(SEC01) +
-RBAC(SEC04)로 보호된다.
+The official integration surface consumed by the three portals and external systems.
+In a real deployment it is protected by OIDC Bearer (SEC01) + RBAC (SEC04).
 
 ### A-1. Service-Order Intake · Tenant Fulfillment (cp-intake / cp-fulfill)
 
-| Method | Path | 설명 |
+| Method | Path | Description |
 |---|---|---|
-| POST | `/api/v1/orders` | **[실연동]** 주문 생성 — `kind: new`(개통·확장) / `terminate`(회수). body: `tenant_id, blueprint_key, racks, approval_mode, storage_mode(auto\|manual), storage_tb, storage_gbps, allocation_id` |
-| GET | `/api/v1/orders` | **[실연동]** 주문 목록 (`?tenant_id=` 필터) |
-| GET | `/api/v1/orders/{id}` | **[실연동]** 주문 상세 — 상태머신 history, `access_package`(딜리버리 접속·인증 정보, secret 1회 노출) 포함 |
-| POST | `/api/v1/orders/{id}/approve` | **[실연동]** 승인 게이트 — 다음 파이프라인 단계 1개 실행 (운영 포털) |
-| POST | `/api/v1/orders/{id}/reject` | **[실연동]** 거절 — 진행분 saga 보상 원복 |
-| GET | `/api/v1/orders/{id}/flow` | **[실연동]** 단계별 하부 호출 API 전체 버킷팅 (감사·검증 콘솔용) |
+| POST | `/api/v1/orders` | **[Real]** Create an order — `kind: new` (provisioning/expansion) / `terminate` (reclamation). Body: `tenant_id, blueprint_key, racks, approval_mode, storage_mode(auto\|manual), storage_tb, storage_gbps, allocation_id` |
+| GET | `/api/v1/orders` | **[Real]** List orders (`?tenant_id=` filter) |
+| GET | `/api/v1/orders/{id}` | **[Real]** Order detail — includes state-machine history and the `access_package` (delivery access/credential information; secret exposed only once) |
+| POST | `/api/v1/orders/{id}/approve` | **[Real]** Approval gate — executes exactly one next pipeline stage (Operations Portal) |
+| POST | `/api/v1/orders/{id}/reject` | **[Real]** Reject — saga compensation rolls back any completed progress |
+| GET | `/api/v1/orders/{id}/flow` | **[Real]** Full bucketing of underlying API calls per stage (for audit and the verification console) |
 
-### A-2. Resource & Service Model (cp-model · M3 인벤토리/미러)
+### A-2. Resource & Service Model (cp-model · M3 inventory/mirror)
 
-| Method | Path | 설명 |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/api/v1/inventory/summary` | **[실연동]** 용량·전력·세대별 집계 (CAP01) |
-| GET | `/api/v1/topology/tree` | **[실연동]** Factory▸Block(층)▸DU▸SU▸Rack 트리 (+`power_mw`, `ready`) |
-| GET | `/api/v1/factories` · `/scalable-units` · `/scalable-units/{id}` | **[실연동]** 사이트/SU 조회 |
-| POST | `/api/v1/scalable-units` | **[실연동]** SU 추가 프로비저닝 (`?blueprint_key=`) |
-| GET | `/api/v1/racks` · `/racks/{id}` · `/racks/{id}/gpus` · `/trays/{id}` | **[실연동]** 랙/트레이/GPU 상세 |
-| POST | `/api/v1/racks/{id}/power-policy` | **[실연동]** MaxQ/MaxP 전력 정책 |
-| GET | `/api/v1/nodes` · `/nodes/{id}` · `/nodes/summary` | **[실연동]** NodeInstance 미러 (`?state=&tenant_id=`) — CAP02 |
-| GET | `/api/v1/cpu-nodes` | **[실연동]** CPU 노드 풀(테넌트당 5대, DPU·VPC) — DMS01/02 |
-| GET | `/api/v1/blueprints` · `/spec` | **[실연동]** 세대 카탈로그(GB200/GB300/VR)·하드웨어 상수 |
-| POST | `/api/v1/reconcile/run` | **[실연동]** SoT 정합성 감사 — GHOST/ORPHAN/STATE_MISMATCH 검출·복구 |
+| GET | `/api/v1/inventory/summary` | **[Real]** Capacity, power, and per-generation aggregates (CAP01) |
+| GET | `/api/v1/topology/tree` | **[Real]** Factory ▸ Block (floor) ▸ DU ▸ SU ▸ Rack tree (+ `power_mw`, `ready`) |
+| GET | `/api/v1/factories` · `/scalable-units` · `/scalable-units/{id}` | **[Real]** Site/SU lookup |
+| POST | `/api/v1/scalable-units` | **[Real]** Provision an additional SU (`?blueprint_key=`) |
+| GET | `/api/v1/racks` · `/racks/{id}` · `/racks/{id}/gpus` · `/trays/{id}` | **[Real]** Rack/tray/GPU detail |
+| POST | `/api/v1/racks/{id}/power-policy` | **[Real]** MaxQ/MaxP power policy |
+| GET | `/api/v1/nodes` · `/nodes/{id}` · `/nodes/summary` | **[Real]** NodeInstance mirror (`?state=&tenant_id=`) — CAP02 |
+| GET | `/api/v1/cpu-nodes` | **[Real]** CPU node pool (5 per tenant, DPU + VPC) — DMS01/02 |
+| GET | `/api/v1/blueprints` · `/spec` | **[Real]** Generation catalog (GB200/GB300/VR) and hardware constants |
+| POST | `/api/v1/reconcile/run` | **[Real]** SoT consistency audit — detects and repairs GHOST/ORPHAN/STATE_MISMATCH |
 
-### A-3. Policy Orchestration · 테넌시/격리 (cp-policy)
+### A-3. Policy Orchestration · Tenancy/Isolation (cp-policy)
 
-| Method | Path | 설명 |
+| Method | Path | Description |
 |---|---|---|
-| POST / GET | `/api/v1/tenants` · `/tenants/{id}` | **[실연동]** 테넌트 생성(IAM realm·VNI/VRF 자동 바인딩)·조회 |
-| GET | `/api/v1/tenants/{id}/isolation` | **[실연동]** 4계층 격리 검증 리포트 (acceptance 게이트) |
-| POST / GET / DELETE | `/api/v1/allocations` | **[실연동]** SU/rack-set 수동 할당·해제 |
-| POST / GET | `/api/v1/nvlink-partitions` | **[실연동]** NVLink 파티션 (NMX/GFM 모델) — NET02 |
-| GET | `/api/v1/network/vni-map` | **[실연동]** 테넌트 VNI/VRF 맵 (SDN01) |
-| GET | `/api/v1/fabric/ib` | **[실연동]** IB spine-leaf 토폴로지 (`?tenant_id=` → P_Key 스코프) — NET01 |
+| POST / GET | `/api/v1/tenants` · `/tenants/{id}` | **[Real]** Create tenants (automatic IAM realm and VNI/VRF binding) and look them up |
+| GET | `/api/v1/tenants/{id}/isolation` | **[Real]** 4-layer isolation verification report (acceptance gate) |
+| POST / GET / DELETE | `/api/v1/allocations` | **[Real]** Manual SU/rack-set allocation and release |
+| POST / GET | `/api/v1/nvlink-partitions` | **[Real]** NVLink partitions (NMX/GFM model) — NET02 |
+| GET | `/api/v1/network/vni-map` | **[Real]** Tenant VNI/VRF map (SDN01) |
+| GET | `/api/v1/fabric/ib` | **[Real]** IB spine-leaf topology (`?tenant_id=` → P_Key scope) — NET01 |
 
-### A-4. Observability · 장비 헬스 (cp-obs — CAP05·TEL)
+### A-4. Observability · Equipment Health (cp-obs — CAP05·TEL)
 
-| Method | Path | 설명 |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/api/v1/health/equipment` | **[실연동]** 사이트/층별 장비 HwState 집계 + 비정상 리스트 (단일 SoT) |
-| PATCH | `/api/v1/equipment/state` | **[실연동]** 운영자 조치 — rack/tray/gpu × faulted/maintenance/ready |
-| GET | `/api/v1/emu/clusters` · `/emu/trays` · `/emu/trays/{id}` · `/emu/status` | **[에뮬]** 트레이 텔레메트리(DCGM 대응) — 실 배치: NVSentinel/DCGM 스트림 |
-| GET | `/api/v1/emu/history` | **[에뮬]** 시계열(전역/테넌트, 240틱) — 실 배치: OTLP 시계열 저장소 |
-| POST | `/api/v1/emu/tick` · `/emu/clusters/{tid}/workload` | **[데모]** 에뮬 틱 강제·워크로드 프로파일 전환 |
-| GET / DELETE | `/api/v1/trace` | **[에뮬]** 시스템 세부 트레이스 버스 — 실 배치: OTel span/NATS `neocloud.telemetry.*` |
+| GET | `/api/v1/health/equipment` | **[Real]** Equipment HwState aggregates per site/floor + abnormal-equipment list (single SoT) |
+| PATCH | `/api/v1/equipment/state` | **[Real]** Operator action — rack/tray/gpu × faulted/maintenance/ready |
+| GET | `/api/v1/emu/clusters` · `/emu/trays` · `/emu/trays/{id}` · `/emu/status` | **[Emu]** Tray telemetry (DCGM counterpart) — real deployment: NVSentinel/DCGM streams |
+| GET | `/api/v1/emu/history` | **[Emu]** Time series (global/tenant, 240 ticks) — real deployment: OTLP time-series store |
+| POST | `/api/v1/emu/tick` · `/emu/clusters/{tid}/workload` | **[Demo]** Force an emulator tick / switch workload profile |
+| GET / DELETE | `/api/v1/trace` | **[Emu]** Detailed system trace bus — real deployment: OTel spans / NATS `neocloud.telemetry.*` |
 
-### A-5. Business (비즈 포털 백엔드 — 티켓·과금)
+### A-5. Business (Business Portal backend — tickets & billing)
 
-| Method | Path | 설명 |
+| Method | Path | Description |
 |---|---|---|
-| POST / GET | `/api/v1/tickets` | **[실연동]** 티켓 생성·목록 (`?tenant_id=&status=`) |
-| PATCH | `/api/v1/tickets/{id}` | **[실연동]** 상태 전이 open→in_progress→resolved + 코멘트 |
-| GET | `/api/v1/billing/usage` · `/billing/rates` | **[실연동]** rack-hour 사용량·월 환산, 데모 단가표 |
+| POST / GET | `/api/v1/tickets` | **[Real]** Create/list tickets (`?tenant_id=&status=`) |
+| PATCH | `/api/v1/tickets/{id}` | **[Real]** State transitions open→in_progress→resolved + comments |
+| GET | `/api/v1/billing/usage` · `/billing/rates` | **[Real]** rack-hour usage and monthly projection, demo rate card |
 
-### A-6. 시스템·관리
+### A-6. System & Admin
 
-| Method | Path | 설명 |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/health` | **[실연동]** 헬스체크 (SLA 관리면 측정 대상) |
-| POST | `/api/v1/admin/reseed` | **[데모]** 전체 재시드 (`?blueprints=` 조합) |
-| GET | `/` `/ops` `/customer` `/biz` `/flow` `/nico` `/arch` | 웹 화면 7종 |
+| GET | `/health` | **[Real]** Health check (measured by the SLA management plane) |
+| POST | `/api/v1/admin/reseed` | **[Demo]** Full reseed (`?blueprints=` combination) |
+| GET | `/` `/ops` `/customer` `/biz` `/flow` `/nico` `/arch` | The 7 web screens |
 
 ---
 
-## B. ④ Compute Services — NICo 에뮬레이션 `/fake-nico/*`
+## B. ④ Compute Services — NICo Emulation `/fake-nico/*`
 
-실 **NICo(NVIDIA/infra-controller)** API Service의 형상에 대응하는 시뮬레이터.
-Control-Plane은 이 API를 직접 호출하지 않고 **D1 ComputeAdapter**를 경유하므로,
-실 연동 시 `LocalNicoAdapter` → `NicoHttpAdapter`(REST/gRPC) 교체만으로 전환된다.
-(실 NICo의 정확한 리소스 경로·스키마는 NVIDIA 배포본 기준 재확인 필요)
+A simulator matching the shape of the real **NICo (NVIDIA/infra-controller)** API Service.
+The Control-Plane never calls this API directly — it goes through the **D1 ComputeAdapter** —
+so switching to a real integration only requires replacing `LocalNicoAdapter` with
+`NicoHttpAdapter` (REST/gRPC).
+(The exact resource paths and schemas of the real NICo must be re-verified against the NVIDIA distribution.)
 
-### B-1. 읽기 API — 실 NICo 리소스 대응
+### B-1. Read APIs — Real NICo Resource Counterparts
 
-| Method | Path | 실 NICo 대응 개념 |
+| Method | Path | Real NICo counterpart concept |
 |---|---|---|
-| GET | `/fake-nico/site` | 사이트/설비 정보 |
-| GET | `/fake-nico/hosts` · `/hosts/{id}` | 호스트 인벤토리·상태 (외부 SoT) |
-| GET | `/fake-nico/instance-types` | 인스턴스 타입 카탈로그 |
-| GET | `/fake-nico/instances` | 테넌트 인스턴스(할당) 목록 |
-| GET | `/fake-nico/jobs` · `/jobs/{id}` | 비동기 job 폴링 (provision/sanitize 수렴) |
-| GET | `/fake-nico/dhcp/leases` | DPU-DHCP 리스 테이블 |
-| GET | `/fake-nico/hosts/{id}/hardware` | HW 시리얼·펌웨어 (BFX03) |
-| GET | `/fake-nico/hosts/{id}/health` | 호스트 BMC 센서 (전력·온도·냉각수) |
-| GET | `/fake-nico/health?tenant_ref=` | 벌크 헬스 — 운영 포털 Observability가 직접 소비 (CAP05) |
-| GET | `/fake-nico/hosts/{id}/attestation` | TPM attestation 결과 (CNP09) |
-| GET | `/fake-nico/hosts/{id}/sanitize-report` · `/sanitize-reports` | 7단계 소거 보고서 (SEC21) |
+| GET | `/fake-nico/site` | Site/facility information |
+| GET | `/fake-nico/hosts` · `/hosts/{id}` | Host inventory and state (external SoT) |
+| GET | `/fake-nico/instance-types` | Instance type catalog |
+| GET | `/fake-nico/instances` | Tenant instance (allocation) list |
+| GET | `/fake-nico/jobs` · `/jobs/{id}` | Async job polling (provision/sanitize convergence) |
+| GET | `/fake-nico/dhcp/leases` | DPU-DHCP lease table |
+| GET | `/fake-nico/hosts/{id}/hardware` | HW serials and firmware (BFX03) |
+| GET | `/fake-nico/hosts/{id}/health` | Host BMC sensors (power, temperature, coolant) |
+| GET | `/fake-nico/health?tenant_ref=` | Bulk health — consumed directly by Operations Portal Observability (CAP05) |
+| GET | `/fake-nico/hosts/{id}/attestation` | TPM attestation results (CNP09) |
+| GET | `/fake-nico/hosts/{id}/sanitize-report` · `/sanitize-reports` | 7-stage sanitization reports (SEC21) |
 
-### B-2. Day 0/1/2 액션 API — D1 어댑터가 호출
+### B-2. Day 0/1/2 Action APIs — Called by the D1 Adapter
 
-| Method | Path | 파이프라인 사용 지점 |
+| Method | Path | Pipeline usage point |
 |---|---|---|
-| POST | `/fake-nico/hosts/{id}/reserve` · `/unreserve` | reserved 단계 (gRPC ReserveHost 대응) |
-| POST | `/fake-nico/hosts/{id}/provision` | provisioning — BMC(Redfish)→DHCP→PXE→cloud-init 서브스텝 트레이스 |
-| POST | `/fake-nico/hosts/{id}/abort-provision` | saga 보상 경로 |
-| POST / DELETE | `/fake-nico/instances` · `/instances/{id}` | 테넌트 할당(allocate)/회수(release) |
-| POST | `/fake-nico/hosts/{id}/sanitize` | 회수 시 7단계 소거 (NVMe·GPU·TPM) |
+| POST | `/fake-nico/hosts/{id}/reserve` · `/unreserve` | reserved stage (counterpart of gRPC ReserveHost) |
+| POST | `/fake-nico/hosts/{id}/provision` | provisioning — BMC (Redfish) → DHCP → PXE → cloud-init substep traces |
+| POST | `/fake-nico/hosts/{id}/abort-provision` | saga compensation path |
+| POST / DELETE | `/fake-nico/instances` · `/instances/{id}` | Tenant allocation (allocate) / reclamation (release) |
+| POST | `/fake-nico/hosts/{id}/sanitize` | 7-stage sanitization on reclamation (NVMe, GPU, TPM) |
 | POST | `/fake-nico/hosts/{id}/cordon` | break-fix cordon (BFX01) |
-| POST / GET / DELETE | `/fake-nico/segments` | 테넌트 VPC 세그먼트 — DPU HBN(VXLAN/EVPN) 적용 |
+| POST / GET / DELETE | `/fake-nico/segments` | Tenant VPC segments — applied via DPU HBN (VXLAN/EVPN) |
 
-### B-3. 데모 전용 (실 배치 제거 대상)
+### B-3. Demo Only (to be removed in a real deployment)
 
-| Method | Path | 용도 |
+| Method | Path | Purpose |
 |---|---|---|
-| POST | `/fake-nico/hosts/{id}/inject` | 다음 1회 실패 주입 (provision/sanitize) — saga 검증 |
-| POST | `/fake-nico/hosts/ghost` | GHOST 스테이징 (reconcile 데모) |
-| DELETE | `/fake-nico/hosts/{id}` | ORPHAN 스테이징 |
-| PATCH | `/fake-nico/hosts/{id}/state` | STATE_MISMATCH 스테이징 |
-| PATCH | `/fake-nico/config` | job 지연 조정 (폴링-수렴 데모) |
+| POST | `/fake-nico/hosts/{id}/inject` | Inject a one-shot failure on the next call (provision/sanitize) — saga verification |
+| POST | `/fake-nico/hosts/ghost` | Stage a GHOST (reconcile demo) |
+| DELETE | `/fake-nico/hosts/{id}` | Stage an ORPHAN |
+| PATCH | `/fake-nico/hosts/{id}/state` | Stage a STATE_MISMATCH |
+| PATCH | `/fake-nico/config` | Adjust job latency (polling-convergence demo) |
 
 ---
 
-## C. ⑥ Storage Services — VAST VMS 에뮬레이션 `/fake-vast/*`
+## C. ⑥ Storage Services — VAST VMS Emulation `/fake-vast/*`
 
-실 **VAST VMS REST v3**(`/api/v3/views·quotas·qospolicies`) 대응. Control-Plane은
-D4 StorageAdapter 경유 — 실 연동 시 VMS REST 어댑터로 교체.
+Counterpart of the real **VAST VMS REST v3** (`/api/v3/views·quotas·qospolicies`). The
+Control-Plane goes through the D4 StorageAdapter — swap in a VMS REST adapter for real integration.
 
-| Method | Path | 설명 |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/fake-vast/views` | **[에뮬]** 테넌트 뷰 목록 — 경로·용량(Quota)·QoS(대역폭/IOPS)·export 서브넷(테넌트 VRF 제한) |
+| GET | `/fake-vast/views` | **[Emu]** Tenant view list — path, capacity (quota), QoS (bandwidth/IOPS), export subnets (restricted to the tenant VRF) |
 
-(생성/삭제는 주문 파이프라인 storage_binding/reclaiming 단계에서 어댑터가 내부 수행 —
-트레이스 채널 `VAST-API`로 관측)
+(Creation/deletion is performed internally by the adapter during the order pipeline's
+storage_binding/reclaiming stages — observable on the `VAST-API` trace channel.)
 
 ---
 
-## D. ⑦ Shared Services — IAM·Vault·PAM 에뮬레이션 `/fake-shared/*`
+## D. ⑦ Shared Services — IAM·Vault·PAM Emulation `/fake-shared/*`
 
-실 배치 대응: **Keycloak**(OIDC admin/token) · **Vault**(KV v2) · PAM 게이트웨이.
-SEC01·SEC04·SEC07·SEC08·SEC09 매핑.
+Real-deployment counterparts: **Keycloak** (OIDC admin/token) · **Vault** (KV v2) · PAM gateway.
+Maps to SEC01·SEC04·SEC07·SEC08·SEC09.
 
-| Method | Path | 설명 |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/fake-shared/iam/realms` · `/iam/realms/{tenant_id}` | **[에뮬]** 테넌트 realm — 롤 3종(RBAC)·클라이언트(MFA)·SA(주문별, secret 마스킹) |
-| POST | `/fake-shared/iam/token` | **[에뮬]** OIDC client-credentials 토큰 발급 (비활성 클라이언트 403 + 감사 denied) |
-| GET | `/fake-shared/secrets?tenant_ref=` | **[에뮬]** Vault KV 목록 (값 마스킹 — s3-access-key·redfish-cred) |
-| POST / GET | `/fake-shared/pam/sessions` | **[에뮬]** 권한상승 세션 개시(operator/target/reason/TTL·녹화)·목록 |
-| POST | `/fake-shared/pam/sessions/{id}/close` | **[에뮬]** 세션 종료 |
-| GET | `/fake-shared/audit?tenant_ref=&limit=` | **[에뮬]** 보안 감사 트레일 (SEC08) — IAM/Vault/PAM/딜리버리 전 이벤트 |
+| GET | `/fake-shared/iam/realms` · `/iam/realms/{tenant_id}` | **[Emu]** Tenant realm — 3 roles (RBAC), clients (MFA), SAs (per-order, secret masked) |
+| POST | `/fake-shared/iam/token` | **[Emu]** OIDC client-credentials token issuance (403 for disabled clients + audit `denied`) |
+| GET | `/fake-shared/secrets?tenant_ref=` | **[Emu]** Vault KV list (values masked — s3-access-key, redfish-cred) |
+| POST / GET | `/fake-shared/pam/sessions` | **[Emu]** Open a privileged-access session (operator/target/reason/TTL, recorded) and list sessions |
+| POST | `/fake-shared/pam/sessions/{id}/close` | **[Emu]** Close a session |
+| GET | `/fake-shared/audit?tenant_ref=&limit=` | **[Emu]** Security audit trail (SEC08) — all IAM/Vault/PAM/delivery events |
 
 ---
 
-## E. 실 연동 교체 지점 요약
+## E. Real-Integration Swap Points — Summary
 
-| 에뮬레이션 | 실 시스템 | 교체 방법 |
+| Emulation | Real system | How to swap |
 |---|---|---|
-| `/fake-nico/*` (FakeNico) | NICo — NVIDIA/infra-controller (REST/gRPC, K8s·PG·Temporal 전제) | `adapters.py`의 `LocalNicoAdapter` → `NicoHttpAdapter` (계약 동일) |
-| `/fake-vast/*` (FakeVast) | VAST VMS REST v3 | D4 StorageAdapter 구현체 교체 |
-| `/fake-shared/*` (FakeSharedServices) | Keycloak(OIDC) · Vault(KV) · PAM | `shared_services.SHARED` 호출 지점을 실 클라이언트로 교체 |
-| `/api/v1/trace` (TRACER) | OTel collector · NATS `neocloud.telemetry.*` | emit() 호출부가 span 생성 지점 (M8 로드맵) |
-| `/api/v1/emu/*` (EMULATOR) | NVSentinel · DCGM 텔레메트리 | 읽기 API 형상 유지, 소스만 교체 |
+| `/fake-nico/*` (FakeNico) | NICo — NVIDIA/infra-controller (REST/gRPC; assumes K8s, PG, Temporal) | `LocalNicoAdapter` → `NicoHttpAdapter` in `adapters.py` (same contract) |
+| `/fake-vast/*` (FakeVast) | VAST VMS REST v3 | Replace the D4 StorageAdapter implementation |
+| `/fake-shared/*` (FakeSharedServices) | Keycloak (OIDC) · Vault (KV) · PAM | Replace `shared_services.SHARED` call sites with real clients |
+| `/api/v1/trace` (TRACER) | OTel collector · NATS `neocloud.telemetry.*` | emit() call sites are the span-creation points (M8 roadmap) |
+| `/api/v1/emu/*` (EMULATOR) | NVSentinel · DCGM telemetry | Keep the read API shape; swap only the source |
