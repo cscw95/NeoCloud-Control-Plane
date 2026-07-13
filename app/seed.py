@@ -208,3 +208,36 @@ def seed_default(store: Store, *, blueprints: list[str] | None = None) -> None:
     for n in range(1, 61):
         nid = f"cpu-node-{n:02d}"
         store.cpu_nodes[nid] = CpuNode(id=nid, dpu_id=f"{nid}-dpu")
+
+
+def seed_demo_samples(store: Store) -> None:
+    """데모 리셋/시드 직후 콘솔 메뉴(알림·인시던트·티켓)가 비지 않도록
+    샘플 데이터를 시드한다 — detail/body 의 "(sample)" 표기로 구분.
+
+    - 트레이 에뮬레이터 fault_log: 샘플 XID 장애 2건 (resolved 1 / open 1)
+    - 티켓: 비어 있으면 샘플 2건 (open 1 / resolved 1)
+
+    기본(Phase-1) 데모 시드 경로에서만 호출된다 — 테스트의 blueprints 명시
+    시드는 결정적 상태를 위해 샘플 없이 시작한다."""
+    from datetime import datetime, timezone
+
+    from .models import Ticket
+    from .tray_emu import EMULATOR
+
+    EMULATOR.seed_sample_faults()
+
+    if not store.tickets:
+        now = datetime.now(timezone.utc).isoformat()
+        samples = [
+            ("GPU 노드 상태 점검 요청", "critical", "open",
+             "training job 중 XID 79 알림 수신 — 해당 트레이 점검 요청 (sample)"),
+            ("스토리지 마운트 지연 문의", "medium", "resolved",
+             "VAST view 마운트 지연 문의 — 재시도 후 정상 확인 (sample)"),
+        ]
+        with store.lock:
+            for subject, sev, status, body in samples:
+                tid = f"tck-{store.next_seq('ticket')}"
+                store.tickets[tid] = Ticket(
+                    id=tid, tenant_id="tnt-fin-corp", subject=subject, body=body,
+                    severity=sev, status=status, created_at=now,
+                    updated_at=now)

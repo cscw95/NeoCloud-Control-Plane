@@ -22,6 +22,7 @@ goal here — tests assert thresholds, not exact values.
 from __future__ import annotations
 
 import asyncio
+import os
 import random
 import threading
 from collections import deque
@@ -48,6 +49,13 @@ PROFILES = {
 TOKENS_K_PER_GPU = {"Rubin": 60.0, "Blackwell Ultra (B300)": 38.0,
                     "Blackwell (B200)": 30.0}
 XID_POOL = [63, 79, 48]        # row-remap / GPU fallen off bus / DBE
+
+
+def _random_faults_enabled() -> bool:
+    """확률적 XID 장애 주입 — 데모 중 돌발 알림 방지를 위해 기본 비활성.
+
+    VRCM_RANDOM_FAULTS=1 일 때만 기존 랜덤 주입 동작 (호출 시점 평가)."""
+    return os.environ.get("VRCM_RANDOM_FAULTS", "") == "1"
 
 
 class GpuTelemetry(BaseModel):
@@ -279,7 +287,8 @@ class TrayEmulator:
                                   * (base_hbm + 0.4 * g.util_pct / 100), 1)
             if random.random() < 0.002:
                 g.ecc_corrected += 1
-            if random.random() < 0.0001:            # 희귀 XID 폴트 (~수천 GPU·수십 틱당 1건)
+            if (_random_faults_enabled()
+                    and random.random() < 0.0001):  # 희귀 XID 폴트 (opt-in)
                 xid = random.choice(XID_POOL)
                 g.xid_events.append(xid)
                 g.fault_ttl = 5
@@ -388,8 +397,41 @@ class TrayEmulator:
             "availability_pct": avail,      # 정상 GPU / 전체 (진행 장애 제외)
             "mtta_s": mtta,                 # 감지→조치 (NVSentinel 자동)
             "mttr_s": mttr,                 # 감지→복구 평균
-            "recent": (open_ + resolved)[-limit:][::-1],
+            # 콘솔 알림 호환 필드(at/resolved)를 함께 노출
+            "recent": [{**f,
+                        "at": f.get("at") or f.get("started_at"),
+                        "resolved": f.get("resolved_at") is not None}
+                       for f in (open_ + resolved)[-limit:][::-1]],
         }
+
+    def seed_sample_faults(self) -> None:
+        """리셋/시드 직후 장애 메뉴가 비지 않도록 샘플 XID 에피소드 2건 주입.
+
+        1건은 resolved(복구 완료), 1건은 open(대응 중). detail 의 "(sample)"
+        표기로 시연용 샘플임을 구분한다."""
+        with STORE.lock:
+            tray_ids = sorted(STORE.trays)
+        if not tray_ids:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        t_res, t_open = tray_ids[0], tray_ids[1 % len(tray_ids)]
+        with self._lock:
+            self.fault_log.append({
+                "tray_id": t_res, "host_id": f"nh-{t_res}", "gpu": 0,
+                "xid": 63, "tenant_id": None,
+                "started_at": now, "started_step": self.step,
+                "action": "NVSentinel — cordon/drain 지정 후 복구 절차",
+                "detail": "XID 63 row-remap — 자동 복구 완료 (sample)",
+                "tta_s": self.TICK_S, "resolved_at": now, "ttr_s": 10.0,
+                "state": "resolved"})
+            self.fault_log.append({
+                "tray_id": t_open, "host_id": f"nh-{t_open}", "gpu": 1,
+                "xid": 79, "tenant_id": None,
+                "started_at": now, "started_step": self.step,
+                "action": "NVSentinel — cordon/drain 지정 후 복구 절차",
+                "detail": "XID 79 GPU fallen off bus — 대응 중 (sample)",
+                "tta_s": self.TICK_S, "resolved_at": None, "ttr_s": None,
+                "state": "open"})
 
     async def run_loop(self) -> None:
         """Background ticker — started in the app lifespan."""
@@ -414,10 +456,55 @@ class _ProfileBody(BaseModel):
     profile: str                    # training | inference | idle
 
 
+def _emulator_reprov_faults(limit: int) -> list:
+    """NICo 에뮬레이터 /emulator/v1/faults 를 best-effort 로 조회해
+    기존 XID 항목과 호환되는 형태(tray_id/xid/resolved/at)로 변환한다.
+
+    HTTP 어댑터 모드(VRCM_NICO_URL 설정)일 때만 시도, 실패는 조용히 무시."""
+    if not os.environ.get("VRCM_NICO_URL"):
+        return []
+    try:
+        import httpx
+
+        from .integration import NICO_BASE
+        r = httpx.get(f"{NICO_BASE}/emulator/v1/faults",
+                      params={"limit": limit}, timeout=1.0)
+        if r.status_code != 200:
+            return []
+        items = r.json().get("recent", [])
+    except Exception:
+        return []
+    return [{
+        "tray_id": f.get("tray_id"),
+        "host_id": f"nh-{f.get('tray_id')}",
+        "gpu": None,
+        "xid": f.get("xid") or "REPROV",
+        "kind": f.get("kind", "reprovision"),
+        "detail": f.get("detail", ""),
+        "tenant_id": None,
+        "at": f.get("at"), "started_at": f.get("at"),
+        "resolved": bool(f.get("resolved")),
+        "resolved_at": f.get("resolved_at"),
+        "state": "resolved" if f.get("resolved") else "open",
+        "action": "NICo 재프로비저닝 — HostReady 복귀 시 자동 해제",
+        "tta_s": None, "ttr_s": None,
+    } for f in items]
+
+
 @router.get("/faults")
 def faults(tenant_id: Optional[str] = None, limit: int = 30) -> dict:
-    """GPU 장애 조치 지표 — 가용성·MTTA·MTTR + 최근 에피소드."""
-    return EMULATOR.faults(tenant_id, limit)
+    """GPU 장애 조치 지표 — 가용성·MTTA·MTTR + 최근 에피소드.
+
+    recent 에는 NICo 에뮬레이터의 재프로비저닝 장애(/emulator/v1/faults)를
+    best-effort 로 병합한다 (운영 콘솔 알림에 함께 노출)."""
+    out = EMULATOR.faults(tenant_id, limit)
+    if not tenant_id:                    # 재프로비저닝 장애는 테넌트 무관
+        merged = _emulator_reprov_faults(limit)
+        if merged:
+            recent = merged + out["recent"]
+            recent.sort(key=lambda f: f.get("at") or "", reverse=True)
+            out["recent"] = recent[:limit]
+    return out
 
 
 @router.get("/status")

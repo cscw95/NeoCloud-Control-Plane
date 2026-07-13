@@ -334,3 +334,45 @@ def test_gpu_fault_metrics_availability_and_mttr(client):
     ep = f2["recent"][0]
     assert ep["state"] == "resolved" and ep["ttr_s"] == f2["mttr_s"]
     assert ep["tta_s"] == 2 and ep["xid"] == 79
+
+
+def test_random_xid_injection_gated_by_env(client, monkeypatch):
+    """확률적 XID 주입은 VRCM_RANDOM_FAULTS=1 일 때만 동작 (기본 비활성)."""
+    from app import tray_emu
+    tid = _mk_tenant(client, "nofault-ai")
+    _deliver(client, tid, racks=1)
+
+    # random()이 항상 0을 반환해도 (주입 확률 100% 상황) env 미설정이면 미주입
+    monkeypatch.setattr(tray_emu.random, "random", lambda: 0.0)
+    monkeypatch.delenv("VRCM_RANDOM_FAULTS", raising=False)
+    n0 = len(tray_emu.EMULATOR.fault_log)
+    client.post("/api/v1/emu/tick?n=3")
+    assert len(tray_emu.EMULATOR.fault_log) == n0
+
+    # opt-in 하면 기존 랜덤 주입 경로가 그대로 동작
+    monkeypatch.setenv("VRCM_RANDOM_FAULTS", "1")
+    client.post("/api/v1/emu/tick?n=1")
+    assert len(tray_emu.EMULATOR.fault_log) > n0
+
+
+def test_seed_sample_faults_and_tickets_for_demo():
+    """데모 리셋 후 알림/티켓 메뉴가 비지 않도록 샘플이 시드된다."""
+    from app.seed import seed_default, seed_demo_samples
+    from app.store import STORE
+    from app.tray_emu import EMULATOR
+
+    seed_default(STORE, blueprints=["vr-nvl72"])
+    EMULATOR.reset()
+    try:
+        seed_demo_samples(STORE)
+        samples = [f for f in EMULATOR.fault_log
+                   if "(sample)" in f.get("detail", "")]
+        assert len(samples) == 2
+        assert sum(1 for f in samples if f["resolved_at"]) == 1      # resolved 1
+        assert sum(1 for f in samples if f["resolved_at"] is None) == 1  # 대응 중
+        assert {f["xid"] for f in samples} <= {63, 79, 48}
+        assert len(STORE.tickets) == 2
+        assert all("(sample)" in t.body for t in STORE.tickets.values())
+        assert {t.status for t in STORE.tickets.values()} == {"open", "resolved"}
+    finally:
+        EMULATOR.reset()

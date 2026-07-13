@@ -31,7 +31,7 @@ from . import (
     tray_emu,
     vast_fake,
 )
-from .seed import seed_default
+from .seed import seed_default, seed_demo_samples
 from .store import STORE
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -39,7 +39,8 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not STORE.factories:        # seed once on startup (mixed generations)
+    fresh = not STORE.factories
+    if fresh:                      # seed once on startup (Phase-1 demo)
         seed_default(STORE)
     # fake NICo/VAST mirror the topology (Day-0 done) + node bootstrap; all
     # idempotent so tests that pre-seed STORE get a matching fresh mirror.
@@ -51,6 +52,8 @@ async def lifespan(app: FastAPI):
     # 컴퓨트 트레이 에뮬레이션 — 백그라운드 틱 (2s)
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()
+    if fresh:                      # 데모 시드에만 샘플 장애/티켓 포함
+        seed_demo_samples(STORE)
     ticker = asyncio.create_task(tray_emu.EMULATOR.run_loop())
     yield
     ticker.cancel()
@@ -116,6 +119,8 @@ def reseed(blueprints: str | None = None) -> dict:
     lifecycle.bootstrap_nodes()
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()
+    if bps is None:                # 기본(데모) 리시드에만 샘플 장애/티켓 포함
+        seed_demo_samples(STORE)
     return {"reseeded": True, "scalable_units": len(STORE.sus),
             "gpus": len(STORE.gpus), "nodes": len(STORE.node_instances)}
 
