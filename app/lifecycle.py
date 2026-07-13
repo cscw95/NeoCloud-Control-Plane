@@ -902,8 +902,15 @@ def run_terminate_order(body: OrderCreate, adapter: ComputeAdapter) -> ServiceOr
                  order_id=oid,
                  payload={"pkey": pkey, "unbind_port_guids": ports,
                           "partition": "deleted"})
-        segment_id = next((sg.segment_id for sg in FAKE_NICO.list_segments()
-                           if sg.allocation_id == alloc.id), None)
+        # 세그먼트는 어댑터 경유로 조회 — http 모드에선 에뮬레이터가 원본
+        try:
+            _segs = adapter.list_segments()
+        except Exception:
+            _segs = FAKE_NICO.list_segments()
+        segment_id = next((sg.segment_id for sg in _segs
+                           if sg.allocation_id == alloc.id), None) \
+            or next((sg.segment_id for sg in _segs
+                     if sg.tenant_ref == body.tenant_id), None)
         storage_ids = [sa.id for sa in s.storage_allocs.values()
                        if sa.allocation_id == alloc.id and sa.state == "active"]
         _teardown_storage_and_segment(oid, storage_ids, segment_id, adapter)
