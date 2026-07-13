@@ -1,4 +1,4 @@
-# NVIDIA DSX OS NICo-Emulator
+# NeoCloud OS Control-Plane 
 
 A **control-plane MVP** for NeoCloud (GPUaaS). It manages a multi-generation GPU cluster
 (DSX AI Factory) composed of NVIDIA **NVL72** systems (**GB200 / GB300 / Vera
