@@ -142,11 +142,24 @@ def advance_order(order: ServiceOrder, to: OS, detail: str = "") -> None:
 # Node bootstrap — mirror NICo pool into NodeInstance (Day 0 done)
 # ---------------------------------------------------------------------------
 def bootstrap_nodes(adapter: Optional[ComputeAdapter] = None) -> int:
-    """Register a NodeInstance per NICo host whose tray we know (idempotent)."""
+    """Register a NodeInstance per NICo host whose tray we know (idempotent).
+
+    In http-adapter mode this mirrors the standalone NICo emulator's fleet, so
+    VRCM's node inventory stays in sync with NICo. Resilient: if the site
+    controller is unreachable at startup, skip (nodes reconcile later) rather
+    than crash the control-plane."""
     adapter = adapter or get_adapter()
     created = 0
+    try:
+        hosts = adapter.list_hosts()
+    except Exception as exc:
+        import logging
+        logging.getLogger("vrcm").warning(
+            "NICo unreachable at bootstrap (%s) — nodes will reconcile once "
+            "the site controller is up", type(exc).__name__)
+        return 0
     with STORE.lock:
-        for host in adapter.list_hosts():
+        for host in hosts:
             tray = STORE.trays.get(host.tray_id)
             if not tray:
                 continue                    # unknown host -> reconcile's GHOST

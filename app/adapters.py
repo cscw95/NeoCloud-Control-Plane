@@ -201,3 +201,19 @@ class NicoHttpAdapter:
     def cordon(self, host_id: str, reason: str = "") -> NicoHost:
         return NicoHost(**self._unwrap(self._c.post(
             f"/hosts/{host_id}/cordon", json={"reason": reason})))
+
+    def create_segment(self, tenant_ref: str, vrf: str, l3vni: int,
+                       converged_vni: int, host_ids: list,
+                       allocation_id: Optional[str] = None) -> NicoSegment:
+        return NicoSegment(**self._unwrap(self._c.post("/segments", json={
+            "tenant_ref": tenant_ref, "vrf": vrf, "l3vni": l3vni,
+            "converged_vni": converged_vni, "host_ids": host_ids,
+            "allocation_id": allocation_id})))
+
+    def delete_segment(self, segment_id: str) -> NicoSegment:
+        return NicoSegment(**self._unwrap(
+            self._c.delete(f"/segments/{segment_id}")))
+
+    def list_segments(self) -> list:
+        return [NicoSegment(**s) for s in
+                self._unwrap(self._c.get("/segments"))]
