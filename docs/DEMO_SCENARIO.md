@@ -5,7 +5,7 @@ Demonstrates and verifies the full behavior as a role-based BMaaS service journe
 (pipeline, isolation, storage) → **NICo/facilities** (emulation) → **Operations Portal** (break-fix, tickets, consistency).
 
 ```bash
-cd ~/vrcm && ./run.sh                                  # ① start the server (separate terminal)
+cd ~/nocp && ./run.sh                                  # ① start the server (separate terminal)
 .venv/bin/python scripts/demo_scenario.py              # ② automated run (33 checks, ~10s)
 .venv/bin/python scripts/demo_scenario.py --pause      # ③ presentation mode — Enter between acts, follow along on screen
 pytest tests/test_e2e_scenario.py -q                   # CI verification (same journey, 2-SU scale)
@@ -18,7 +18,7 @@ pytest tests/test_e2e_scenario.py -q                   # CI verification (same j
 | `/ops` Operations Portal | **⚡ Fulfillment board (3 buckets: awaiting approval / delivered / failed-rejected; chevron progress track + pulse highlight)** · **Tenant Observability (direct NICo `/health` bulk-sensor integration — GPU node table, BMC power/temperature/coolant + DCGM trend charts + XID events)** · Break-fix queue · Reconcile · Ticket handling |
 | `/customer` Customer Portal | Tenant scope: live cluster view · **4 service-status line charts (util / power + cap / temperature / throughput & NVLink)** · **per-rack detail** · SLA visibility · self-service · tickets · storage |
 | `/biz` Business Portal | Customer & contract management · **fleet-wide GPU usage (allocation rate, util, power trend charts)** · **per-tenant detail (click a row → that customer's trend charts)** · usage/billing preview · ticket queue |
-| `/` VRCM | Inventory, topology, allocations (operational detail) |
+| `/` NOCP | Inventory, topology, allocations (operational detail) |
 | `/flow` verification console | Pipeline replay, fault injection, reconcile staging |
 | `/nico` NICo dashboard | Full NICo REST explorer, LIVE tray emulation, IB fabric |
 | `/arch` architecture | Order replay on the system diagram + full list of underlying API calls per stage |

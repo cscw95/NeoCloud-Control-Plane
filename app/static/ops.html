@@ -111,7 +111,7 @@
   <div class="nc-topbar">
     <span class="nc-brand">NeoCloud OS</span>
     <nav class="nc-nav">
-      <a href="/customer">고객</a><a href="/biz">비즈</a><a href="/ops" class="act">운영</a><a href="/arch">Control-Plane</a><a href="/nico">NICo</a><a href="/flow">검증 콘솔</a><a href="/">VRCM</a>
+      <a href="/customer">고객</a><a href="/biz">비즈</a><a href="/ops" class="act">운영</a><a href="/arch">Control-Plane</a><a href="/nico">NICo</a><a href="/flow">검증 콘솔</a><a href="/">NOCP</a>
     </nav>
     <div class="nc-right">
       <span class="nc-live"><span class="dot"></span>LIVE · 4s</span>
@@ -408,7 +408,7 @@ async function loadSiteRes(){
       <td class="num m">${(t.power_cap_kw/1000).toFixed(1)}MW</td><td colspan="2"></td></tr>`;
 }
 
-// ── 장비 헬스 (VRCM 취합) ─────────────────────────────────────
+// ── 장비 헬스 (NOCP 취합) ─────────────────────────────────────
 function stChips(states,okKeys){
   return Object.entries(states).map(([k,v])=>{
     const cls=["faulted","rma"].includes(k)?"p-failed":k==="maintenance"?"p-cordoned"

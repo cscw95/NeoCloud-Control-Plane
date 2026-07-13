@@ -1,6 +1,6 @@
 """Integration status + system connectivity topology.
 
-Reports how NeoCloud OS (VRCM) is wired to the standalone NICo Emulator and
+Reports how NeoCloud OS (NOCP) is wired to the standalone NICo Emulator and
 draws the live connection graph for the verification console:
     VR NVL72 Digital Twin ↔ NICo Emulator ↔ Control-Plane ↔ Customer/Ops/Biz consoles
 """
@@ -14,9 +14,9 @@ from . import __version__
 
 router = APIRouter(prefix="/api/v1/integration", tags=["integration"])
 
-# NICo emulator base (root). VRCM_NICO_URL points at the /nico-bridge base when
+# NICo emulator base (root). NOCP_NICO_URL points at the /nico-bridge base when
 # the HTTP adapter is active; strip it to reach the emulator root for probing.
-_env = os.environ.get("VRCM_NICO_URL", "")
+_env = os.environ.get("NOCP_NICO_URL", "")
 NICO_BASE = (_env.rsplit("/nico-bridge", 1)[0] if _env else
              os.environ.get("NICO_EMULATOR_URL", "http://127.0.0.1:9000"))
 CONSOLE_BASE = os.environ.get("NC_CONSOLE_URL", "http://127.0.0.1:8090")
@@ -80,7 +80,7 @@ def topology():
          "detail": (f"v{nico['version']} · {nico['latency_ms']}ms · "
                     f"{len(nico['tenants'])} tenant(s)") if up
                    else f"unreachable @ {nico['nico_url']}"},
-        {"id": "cp", "label": "NeoCloud OS Control-Plane (VRCM)",
+        {"id": "cp", "label": "NeoCloud OS Control-Plane (NOCP)",
          "kind": "control", "status": "up",
          "detail": f"v{__version__} · adapter: {nico['adapter_mode']}"},
         {"id": "customer", "label": "Customer Console",

@@ -1,4 +1,4 @@
-"""VRCM — Vera Rubin Cluster Manager.
+"""NOCP — NeoCloud OS Control Plane.
 
 NeoCloud control-plane MVP for managing GPU clusters built from
 NVIDIA Vera Rubin NVL72 systems (DSX AI Factory building blocks).

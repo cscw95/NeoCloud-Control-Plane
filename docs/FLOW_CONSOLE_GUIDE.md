@@ -31,7 +31,7 @@ A console for verifying, step by step in the browser, the interplay between NeoC
 (order pipeline, M3 mirror, reconcile) and Fake NICo (Day 0/1/2). Start the server, then open http://127.0.0.1:8000/flow.
 
 ```bash
-cd ~/vrcm && ./run.sh          # or: .venv/bin/python -m uvicorn app.main:app --port 8000
+cd ~/nocp && ./run.sh          # or: .venv/bin/python -m uvicorn app.main:app --port 8000
 ```
 
 ## Screen Layout
@@ -110,4 +110,4 @@ cd ~/vrcm && ./run.sh          # or: .venv/bin/python -m uvicorn app.main:app --
 | Order `failed` (reserve failed) | Mismatch between NICo and the mirror (e.g. orphaned hosts) — a normal saga. Retrying routes placement around it |
 | Manual mode 409 | Host-state precondition violated (e.g. provision without reserve) — an intentional guard |
 | Page looks broken | Refresh (⌘R), then `⟲ Full Reset` |
-| Stop/restart the server | `kill $(lsof -ti :8000)` / `cd ~/vrcm && ./run.sh` |
+| Stop/restart the server | `kill $(lsof -ti :8000)` / `cd ~/nocp && ./run.sh` |

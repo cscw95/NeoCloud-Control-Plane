@@ -1,4 +1,4 @@
-"""VRCM application entrypoint.
+"""NOCP application entrypoint.
 
 Run:  uvicorn app.main:app --reload
 Dashboard:  http://127.0.0.1:8000/
@@ -60,7 +60,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="VRCM — Vera Rubin Cluster Manager",
+    title="NOCP — NeoCloud OS Control Plane",
     version=__version__,
     description="NeoCloud control-plane MVP for NVIDIA Vera Rubin NVL72 "
                 "GPU clusters (DSX AI Factory). Domains: Inventory & Topology, "

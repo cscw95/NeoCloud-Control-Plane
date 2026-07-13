@@ -337,20 +337,20 @@ def test_gpu_fault_metrics_availability_and_mttr(client):
 
 
 def test_random_xid_injection_gated_by_env(client, monkeypatch):
-    """확률적 XID 주입은 VRCM_RANDOM_FAULTS=1 일 때만 동작 (기본 비활성)."""
+    """확률적 XID 주입은 NOCP_RANDOM_FAULTS=1 일 때만 동작 (기본 비활성)."""
     from app import tray_emu
     tid = _mk_tenant(client, "nofault-ai")
     _deliver(client, tid, racks=1)
 
     # random()이 항상 0을 반환해도 (주입 확률 100% 상황) env 미설정이면 미주입
     monkeypatch.setattr(tray_emu.random, "random", lambda: 0.0)
-    monkeypatch.delenv("VRCM_RANDOM_FAULTS", raising=False)
+    monkeypatch.delenv("NOCP_RANDOM_FAULTS", raising=False)
     n0 = len(tray_emu.EMULATOR.fault_log)
     client.post("/api/v1/emu/tick?n=3")
     assert len(tray_emu.EMULATOR.fault_log) == n0
 
     # opt-in 하면 기존 랜덤 주입 경로가 그대로 동작
-    monkeypatch.setenv("VRCM_RANDOM_FAULTS", "1")
+    monkeypatch.setenv("NOCP_RANDOM_FAULTS", "1")
     client.post("/api/v1/emu/tick?n=1")
     assert len(tray_emu.EMULATOR.fault_log) > n0
 

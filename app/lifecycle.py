@@ -67,10 +67,10 @@ CPU_NODES_PER_TENANT = 5          # 테넌트당 기본 제공 범용 CPU 노드
 
 
 def get_adapter() -> ComputeAdapter:
-    """Adapter seam. Set VRCM_NICO_URL to drive the standalone NICo emulator
+    """Adapter seam. Set NOCP_NICO_URL to drive the standalone NICo emulator
     over REST (NicoHttpAdapter); unset uses the in-process FakeNico."""
     import os
-    url = os.environ.get("VRCM_NICO_URL")
+    url = os.environ.get("NOCP_NICO_URL")
     if url:
         return NicoHttpAdapter(url)
     return LocalNicoAdapter(FAKE_NICO)
@@ -145,7 +145,7 @@ def bootstrap_nodes(adapter: Optional[ComputeAdapter] = None) -> int:
     """Register a NodeInstance per NICo host whose tray we know (idempotent).
 
     In http-adapter mode this mirrors the standalone NICo emulator's fleet, so
-    VRCM's node inventory stays in sync with NICo. Resilient: if the site
+    NOCP's node inventory stays in sync with NICo. Resilient: if the site
     controller is unreachable at startup, skip (nodes reconcile later) rather
     than crash the control-plane."""
     adapter = adapter or get_adapter()
@@ -154,7 +154,7 @@ def bootstrap_nodes(adapter: Optional[ComputeAdapter] = None) -> int:
         hosts = adapter.list_hosts()
     except Exception as exc:
         import logging
-        logging.getLogger("vrcm").warning(
+        logging.getLogger("nocp").warning(
             "NICo unreachable at bootstrap (%s) — nodes will reconcile once "
             "the site controller is up", type(exc).__name__)
         return 0

@@ -6,7 +6,7 @@
   (파이프라인·격리·스토리지) → NICo/설비(에뮬레이션) → 운영 포털
   (break-fix·티켓 처리·reconcile) → Biz 포털(사용량·과금) → 회수·복원.
 
-    cd ~/vrcm && ./run.sh            # 서버 기동 (별도 터미널)
+    cd ~/nocp && ./run.sh            # 서버 기동 (별도 터미널)
     .venv/bin/python scripts/demo_scenario.py            # 자동 진행
     .venv/bin/python scripts/demo_scenario.py --pause    # 발표 모드(막마다 Enter)
 
@@ -295,5 +295,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except httpx.ConnectError:
-        print(f"{R}서버에 연결할 수 없습니다 — 먼저 실행: cd ~/vrcm && ./run.sh{X}")
+        print(f"{R}서버에 연결할 수 없습니다 — 먼저 실행: cd ~/nocp && ./run.sh{X}")
         sys.exit(2)

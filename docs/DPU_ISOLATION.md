@@ -2,7 +2,7 @@
 
 > Analysis target: `github.com/NVIDIA/infra-controller` (main, Apache-2.0 — "NVIDIA Infra
 > Controller — Hardware Lifecycle Management and multitenant networking", 9,100+ files).
-> All file paths below refer to this repository; vrcm's Fake NICo reproduces this behavior.
+> All file paths below refer to this repository; nocp's Fake NICo reproduces this behavior.
 
 ---
 
@@ -59,9 +59,9 @@
 - **Route maps/communities**: `dpu_to_evpn`, `leak_to_underlay`,
   BYOIP `65100:01/02` community lists, `DPU_TO_EVPN_AS_PATH_DROP_LIST`
 
-## 5. vrcm Reproduction Mapping
+## 5. nocp Reproduction Mapping
 
-| Behavior in the real code | vrcm implementation |
+| Behavior in the real code | nocp implementation |
 |---|---|
 | carbide VPC/segment recording | `nico_fake.create_segment` — internal event (virtualizer, vrf_dataplane, RT) |
 | dpu-agent gRPC polling | one `GetManagedHostNetworkConfig` gRPC event per segment |
@@ -75,4 +75,4 @@ the D2 isolation panel (segments annotated with FNN, vrf_dataplane, VNI), and th
 
 > Note: IB P_Key (UFM) and NVLink partitions (NMX) are commercial components outside NICo's
 > scope — a separate axis from DPU isolation (the Ethernet/VPC layer). The real NICo also has
-> VPC peering (`vpc_peering/`), BYOIP, and IPv6 dual-stack, which vrcm does not reproduce yet (backlog).
+> VPC peering (`vpc_peering/`), BYOIP, and IPv6 dual-stack, which nocp does not reproduce yet (backlog).

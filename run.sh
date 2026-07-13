@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VRCM — Vera Rubin Cluster Manager :: dev launcher
+# NOCP — NeoCloud OS Control Plane :: dev launcher
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -12,5 +12,5 @@ else
   . .venv/bin/activate
 fi
 
-echo "VRCM starting →  dashboard http://127.0.0.1:8000/   ·   API docs http://127.0.0.1:8000/docs"
+echo "NOCP starting →  dashboard http://127.0.0.1:8000/   ·   API docs http://127.0.0.1:8000/docs"
 exec uvicorn app.main:app --reload --host 127.0.0.1 --port 8000

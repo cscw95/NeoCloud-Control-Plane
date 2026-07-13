@@ -8,7 +8,7 @@ active(.act)로 표시한다.
 import re
 
 PAGES = ["/", "/flow", "/nico", "/arch", "/ops", "/customer", "/biz"]
-# 실개발 우선순위 순서: 고객 → 비즈 → 운영 → Control-Plane → NICo → 검증 → VRCM
+# 실개발 우선순위 순서: 고객 → 비즈 → 운영 → Control-Plane → NICo → 검증 → NOCP
 NAV_ORDER = ['href="/customer"', 'href="/biz"', 'href="/ops"', 'href="/arch"',
              'href="/nico"', 'href="/flow"', 'href="/"']
 

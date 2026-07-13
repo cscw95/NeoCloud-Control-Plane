@@ -1,6 +1,6 @@
 """Full-chain end-to-end proof across the whole NeoCloud OS system.
 
-Chain:  Business console (deal) -> VRCM Control-Plane (order lifecycle) ->
+Chain:  Business console (deal) -> NOCP Control-Plane (order lifecycle) ->
         NICo Emulator (bridge: reserve/provision/allocate + DPU isolation) ->
         Operations (approval gates) -> Customer (delivered cluster/telemetry).
 
@@ -9,7 +9,7 @@ Run (all three services up):  PYTHONPATH=. .venv/bin/python scripts/e2e_full_cha
 """
 import sys, time, httpx
 
-VRCM = "http://127.0.0.1:8000/api/v1"
+NOCP = "http://127.0.0.1:8000/api/v1"
 NICO = "http://127.0.0.1:9000"
 c = httpx.Client(timeout=15)
 ok = fail = 0
@@ -21,15 +21,15 @@ def check(label, cond, extra=""):
 print("NeoCloud OS — full-chain E2E\n")
 
 # 0) all services reachable
-check("VRCM reachable", c.get(VRCM + "/spec").status_code == 200)
+check("NOCP reachable", c.get(NOCP + "/spec").status_code == 200)
 check("NICo emulator reachable", c.get(NICO + "/healthz").status_code == 200)
 consoles = httpx.get("http://127.0.0.1:8090/", timeout=5).status_code
 check("Consoles reachable (:8090)", consoles == 200)
 
-# 1) VRCM <-> NICo integration status (Control-Plane view)
-integ = c.get(VRCM + "/integration/nico").json()
+# 1) NOCP <-> NICo integration status (Control-Plane view)
+integ = c.get(NOCP + "/integration/nico").json()
 check("Control-Plane sees NICo emulator", integ["reachable"], f"v{integ.get('version')}")
-topo = c.get(VRCM + "/integration/topology").json()
+topo = c.get(NOCP + "/integration/topology").json()
 nodes = {n["id"]: n["status"] for n in topo["nodes"]}
 check("topology graph complete (twin/nico/cp/consoles)",
       all(k in nodes for k in ("twin", "nico", "cp", "customer", "ops", "biz")))
@@ -43,12 +43,12 @@ check("NICo per-site controllers (gasan+ansan)",
       len(srv) == 2 and all(s["service_total"] == 16 for s in srv),
       f"{[s['nico_instance'] for s in srv]}")
 hosts = c.get(NICO + "/nico-bridge/hosts?limit=5000").json()
-check("NICo bridge exposes full fleet to VRCM (2,520 hosts)", len(hosts) == 2520)
+check("NICo bridge exposes full fleet to NOCP (2,520 hosts)", len(hosts) == 2520)
 
 # 3) Business -> Control-Plane: a real order (simulating deal conversion)
 tenant = "e2e-corp"
-c.post(VRCM + "/tenants", json={"name": tenant, "isolation_tier": "bare_metal_dedicated"})
-o = c.post(VRCM + "/orders", json={"tenant_id": f"tnt-{tenant}", "kind": "new",
+c.post(NOCP + "/tenants", json={"name": tenant, "isolation_tier": "bare_metal_dedicated"})
+o = c.post(NOCP + "/orders", json={"tenant_id": f"tnt-{tenant}", "kind": "new",
            "blueprint_key": "vr-nvl72", "racks": 2, "approval_mode": True}).json()
 oid = o["id"]
 check("Business->CP: approval-mode order created", o["state"] in ("received", "validated"),
@@ -57,16 +57,16 @@ check("Business->CP: approval-mode order created", o["state"] in ("received", "v
 # 4) Operations: walk the approval gates to delivery
 gates = 0
 for _ in range(10):
-    cur = c.get(VRCM + f"/orders/{oid}").json()
+    cur = c.get(NOCP + f"/orders/{oid}").json()
     if not cur.get("pending_stage"):
         break
-    c.post(VRCM + f"/orders/{oid}/approve"); gates += 1
-final = c.get(VRCM + f"/orders/{oid}").json()
+    c.post(NOCP + f"/orders/{oid}/approve"); gates += 1
+final = c.get(NOCP + f"/orders/{oid}").json()
 check("Operations: approval gates -> delivered", final["state"] == "delivered",
       f"{gates} gates")
 
 # 5) Customer: the tenant now has a live cluster in the control-plane
-fab = c.get(VRCM + "/fabric/ib").json()
+fab = c.get(NOCP + "/fabric/ib").json()
 mine = [t for t in fab["tenants"] if t["tenant_id"] == f"tnt-{tenant}"]
 check("Customer: delivered cluster visible (racks+P_Key)",
       bool(mine) and mine[0]["racks"] == 2, mine[0]["pkey"] if mine else "-")
@@ -77,10 +77,10 @@ check("NICo DPU isolation: inter-tenant default-deny", r["passed"])
 
 # cleanup the e2e order (reclaim) to keep state tidy
 try:
-    t = c.get(VRCM + f"/tenants/tnt-{tenant}").json()
+    t = c.get(NOCP + f"/tenants/tnt-{tenant}").json()
     alloc = (t.get("allocations") or [{}])[0].get("id")
     if alloc:
-        c.post(VRCM + "/orders", json={"tenant_id": f"tnt-{tenant}",
+        c.post(NOCP + "/orders", json={"tenant_id": f"tnt-{tenant}",
                "kind": "terminate", "allocation_id": alloc})
 except Exception:
     pass

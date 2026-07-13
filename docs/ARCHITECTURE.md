@@ -1,6 +1,6 @@
-# VRCM Architecture Design Document
+# NOCP Architecture Design Document
 
-> Vera Rubin Cluster Manager — the NeoCloud control plane
+> NeoCloud OS Control Plane — the NeoCloud control plane
 > Audience: SKT AI Infrastructure/GPUaaS. Basis: NVIDIA DSX Facilities Design Guide v1.0 + NCP Vera Rubin NVL72 Reference Design v3.0
 
 ---
@@ -35,7 +35,7 @@ Identity → Process → Compute Virtualization → **Compute Isolation (NVLink 
 The physical boundary is the **SU/HAC**, the network boundary is **VXLAN + BGP EVPN + VRF**,
 and the hardware anchor is the **BlueField-4 DPU** (NIC / DPU / DPU Zero-Trust).
 
-VRCM **codifies this entire graph into a data model** and exposes inventory queries plus
+NOCP **codifies this entire graph into a data model** and exposes inventory queries plus
 multi-tenancy allocation and isolation verification through APIs and a dashboard.
 
 ---
@@ -48,7 +48,7 @@ multi-tenancy allocation and isolation verification through APIs and a dashboard
         └───────────────────────┬────────────────────────┘
                                 │ REST API
         ┌───────────────────────┴────────────────────────┐
-        │                 VRCM (this MVP)                │
+        │                 NOCP (this MVP)                │
         │   Inventory & Topology  │  Multi-tenancy & Iso  │
         └───┬───────────────┬───────────────┬─────────────┘
   (roadmap) │               │               │ (roadmap)
@@ -178,7 +178,7 @@ GET    /api/v1/tenants/{id}/isolation      # isolation verification report
 | 4 | **Billing & Metering** | Per-tenant GPU-hour/power metering → billing (NeoCloud revenue layer) |
 | 5 | **Provisioning backend** | Replace `store.py` with NICo (bare metal), BCM, and DPF (large-scale BlueField management) adapters |
 
-Design principle: **adopt NVIDIA OSS for the operational core (scheduler, health), while VRCM
+Design principle: **adopt NVIDIA OSS for the operational core (scheduler, health), while NOCP
 owns the multi-tenancy, billing, and isolation-policy layer** — the productization layer that
 DSX OS leaves open is where SKT differentiates.
 

@@ -54,8 +54,8 @@ XID_POOL = [63, 79, 48]        # row-remap / GPU fallen off bus / DBE
 def _random_faults_enabled() -> bool:
     """확률적 XID 장애 주입 — 데모 중 돌발 알림 방지를 위해 기본 비활성.
 
-    VRCM_RANDOM_FAULTS=1 일 때만 기존 랜덤 주입 동작 (호출 시점 평가)."""
-    return os.environ.get("VRCM_RANDOM_FAULTS", "") == "1"
+    NOCP_RANDOM_FAULTS=1 일 때만 기존 랜덤 주입 동작 (호출 시점 평가)."""
+    return os.environ.get("NOCP_RANDOM_FAULTS", "") == "1"
 
 
 class GpuTelemetry(BaseModel):
@@ -460,8 +460,8 @@ def _emulator_reprov_faults(limit: int) -> list:
     """NICo 에뮬레이터 /emulator/v1/faults 를 best-effort 로 조회해
     기존 XID 항목과 호환되는 형태(tray_id/xid/resolved/at)로 변환한다.
 
-    HTTP 어댑터 모드(VRCM_NICO_URL 설정)일 때만 시도, 실패는 조용히 무시."""
-    if not os.environ.get("VRCM_NICO_URL"):
+    HTTP 어댑터 모드(NOCP_NICO_URL 설정)일 때만 시도, 실패는 조용히 무시."""
+    if not os.environ.get("NOCP_NICO_URL"):
         return []
     try:
         import httpx

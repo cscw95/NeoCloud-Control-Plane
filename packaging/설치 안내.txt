@@ -13,7 +13,7 @@ NeoCloud OS v0.1.0 — SKT GPUaaS BMaaS Control-Plane PoC (Apple Silicon)
   8000 포트가 사용 중이면 8001~8019 중 빈 포트를 자동 선택합니다.
 
   화면 구성: 고객 포털 · 비즈 포털 · 운영 포털 ·
-             NeoCloud Control-Plane · NICo(Emulator) · 검증 콘솔 · VRCM
+             NeoCloud Control-Plane · NICo(Emulator) · 검증 콘솔 · NOCP
 
 ■ 종료
   브라우저 주소창에  http://127.0.0.1:8000/shutdown  입력

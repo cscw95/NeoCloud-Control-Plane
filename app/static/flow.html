@@ -149,7 +149,7 @@
   <div class="nc-topbar">
     <span class="nc-brand">NeoCloud OS</span>
     <nav class="nc-nav">
-      <a href="/customer">고객</a><a href="/biz">비즈</a><a href="/ops">운영</a><a href="/arch">Control-Plane</a><a href="/nico">NICo</a><a href="/flow" class="act">검증 콘솔</a><a href="/">VRCM</a>
+      <a href="/customer">고객</a><a href="/biz">비즈</a><a href="/ops">운영</a><a href="/arch">Control-Plane</a><a href="/nico">NICo</a><a href="/flow" class="act">검증 콘솔</a><a href="/">NOCP</a>
     </nav>
     <div class="nc-right">
       <span class="nc-live" style="color:var(--muted)"><span class="dot" style="background:var(--muted-2)"></span>액션 구동 콘솔</span>
@@ -834,7 +834,7 @@ const TOPO_POS={
 const OFFLINE_NODES=[
   {id:"twin",label:"VR NVL72 Digital Twin",status:"unknown",detail:"emulator offline"},
   {id:"nico",label:"NICo Emulator",status:"down",detail:"unreachable"},
-  {id:"cp",label:"NeoCloud OS Control-Plane (VRCM)",status:"up",detail:"adapter: local"},
+  {id:"cp",label:"NeoCloud OS Control-Plane (NOCP)",status:"up",detail:"adapter: local"},
   {id:"customer",label:"Customer Console",status:"up",detail:"tenant self-service"},
   {id:"ops",label:"Operations Console",status:"up",detail:"SRE / NOC"},
   {id:"biz",label:"Business Console",status:"up",detail:"sales / exec"},
@@ -922,7 +922,7 @@ function renderNicoCard(n,at){
     `</tbody></table>`+
     `<div class="callout ${mode==="http"?"cyan":""}" style="margin-top:10px">`+
       `<b>local</b> = 컨트롤플레인 내부 FakeNico(in-process) 어댑터 · `+
-      `<b>http</b> = <span class="kv">VRCM_NICO_URL</span>로 독립 실행 에뮬레이터 구동(NicoHttpAdapter). `+
+      `<b>http</b> = <span class="kv">NOCP_NICO_URL</span>로 독립 실행 에뮬레이터 구동(NicoHttpAdapter). `+
       `현재 <b>${_esc(mode)}</b> 모드.`+
     `</div>`+
     `<div class="btns" style="margin-top:10px">`+

@@ -1,4 +1,4 @@
-"""In-memory data store for the VRCM MVP.
+"""In-memory data store for the NOCP MVP.
 
 A single process-wide registry of all topology + tenancy entities, keyed by id.
 Thread-safe via a coarse re-entrant lock (the MVP is read-heavy and low-QPS).

@@ -1,6 +1,6 @@
-"""End-to-end integration proof: NeoCloud OS (VRCM) → standalone NICo Emulator.
+"""End-to-end integration proof: NeoCloud OS (NOCP) → standalone NICo Emulator.
 
-Drives the *real* vrcm NicoHttpAdapter against the emulator's /nico-bridge and
+Drives the *real* nocp NicoHttpAdapter against the emulator's /nico-bridge and
 verifies the emulator twin + DPU isolation engine responds. Requires the NICo
 emulator running on :9000.  Run:  .venv/bin/python scripts/integrate_emulator.py
 """
@@ -15,10 +15,10 @@ def check(label, cond):
     global ok, fail
     print(("  PASS " if cond else "  FAIL ") + label); ok += cond; fail += (not cond)
 
-print("NeoCloud OS (VRCM) ↔ NICo Emulator — integration over REST\n")
+print("NeoCloud OS (NOCP) ↔ NICo Emulator — integration over REST\n")
 c.post("/emulator/v1/reset")
 
-HOST = "nh-su-1-rack-00-tray-00"           # a vrcm-style host id
+HOST = "nh-su-1-rack-00-tray-00"           # a nocp-style host id
 h = adapter.reserve(HOST);        check(f"adapter.reserve → {h.state}", h.state == "reserved")
 j = adapter.provision(HOST, "ubuntu-24.04-nvidia")
 check(f"adapter.provision → job {j.state}", j.state == "succeeded")

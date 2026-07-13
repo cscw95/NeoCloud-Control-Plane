@@ -1,4 +1,4 @@
-"""Pydantic data models for VRCM.
+"""Pydantic data models for NOCP.
 
 Two domains:
   1. Inventory & Topology  — the physical/logical hierarchy

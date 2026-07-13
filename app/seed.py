@@ -1,4 +1,4 @@
-"""Blueprint-based provisioning + default seed for VRCM.
+"""Blueprint-based provisioning + default seed for NOCP.
 
 `provision_scalable_unit` expands a generation blueprint (GB200 / GB300 / Vera
 Rubin) into a fully-populated SU. The same path backs both the default seed and

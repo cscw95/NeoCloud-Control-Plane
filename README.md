@@ -35,7 +35,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed design and roa
 ## Quick Start
 
 ```bash
-cd ~/vrcm
+cd ~/nocp
 ./run.sh                      # create venv + install dependencies + start the server
 ```
 
@@ -46,7 +46,7 @@ cd ~/vrcm
 - Architecture flow: http://127.0.0.1:8000/arch — order replay on top of the system diagram + full list of underlying API calls per stage
 - API docs (OpenAPI): http://127.0.0.1:8000/docs
 - **Integration API reference** (98 endpoints including the NICo emulation, with real-integration swap points): [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
-- **DPU isolation behavior in depth** (analysis of the real NICo infra-controller code + vrcm mapping): [docs/DPU_ISOLATION.md](docs/DPU_ISOLATION.md)
+- **DPU isolation behavior in depth** (analysis of the real NICo infra-controller code + nocp mapping): [docs/DPU_ISOLATION.md](docs/DPU_ISOLATION.md)
 - Health check: http://127.0.0.1:8000/health
 
 The default seed is the **Phase 1 production deployment configuration (all Vera Rubin)** — 2 sites × 2 floors each.
@@ -119,7 +119,7 @@ curl -XPOST localhost:8000/fake-nico/hosts/nh-su-2-rack-00-tray-00/inject \
 ## Structure
 
 ```
-vrcm/
+nocp/
 ├─ app/
 │  ├─ spec.py       # NVL72/DSX hardware & topology constants (single source of truth for the documents)
 │  ├─ models.py     # Pydantic data models (topology + tenancy)
