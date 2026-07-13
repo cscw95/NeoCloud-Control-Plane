@@ -21,6 +21,7 @@ from . import (
     __version__,
     business,
     fabric,
+    integration,
     lifecycle,
     nico_fake,
     shared_services,
@@ -73,6 +74,7 @@ app.include_router(fabric.router)
 app.include_router(tray_emu.router)
 app.include_router(nico_fake.router)
 app.include_router(vast_fake.router)
+app.include_router(integration.router)
 app.include_router(shared_services.router)
 
 

@@ -128,6 +128,20 @@
   #trace-box{max-height:420px;overflow:auto}
   .tr-actor{font-family:Menlo,monospace;font-size:10px;color:#9fb8d0;white-space:nowrap}
   .kv{font-family:Menlo,monospace;font-size:10.5px}
+  /* -- 시스템 연결 관계 패널 (Digital Twin · NICo · CP · Consoles) --------- */
+  .conn-wrap{display:flex;flex-wrap:wrap;gap:18px;align-items:stretch;margin-bottom:18px}
+  .conn-wrap>.panel{margin-bottom:0}
+  .conn-diagram{flex:2 1 560px;min-width:0}
+  .conn-card{flex:1 1 300px;min-width:280px}
+  .svgbox{overflow-x:auto;padding:2px 0}
+  #conn-svg{width:100%;min-width:700px;height:auto;display:block}
+  .abadge{font-family:Menlo,monospace;font-size:10px;font-weight:700;padding:1px 7px;
+          border-radius:4px;border:1px solid var(--line);background:#1a2230;color:var(--muted)}
+  .abadge.http{background:#1c3a20;color:var(--green-text);border-color:var(--green-line)}
+  a.lnkbtn{display:inline-block;text-decoration:none;color:var(--green);
+           border:1px solid var(--green-line);border-radius:7px;padding:6px 11px;
+           font-weight:700;font-size:11px}
+  a.lnkbtn:hover{border-color:var(--green)}
 </style>
 </head>
 <body>
@@ -184,6 +198,30 @@
       <span><i style="background:var(--blue)"></i>SKT IN-HOUSE (NeoCloud OS)</span>
       <span><i style="background:var(--green)"></i>NVIDIA (Emulator)</span>
       <span><i style="background:#8a8f98"></i>PARTNER / COMMON PLATFORM</span>
+    </div>
+  </div>
+
+  <!-- 시스템 연결 관계 — Digital Twin · NICo Emulator · Control-Plane · Consoles -->
+  <div class="conn-wrap">
+    <div class="panel conn-diagram">
+      <div class="sec-h"><span class="tick blue"></span>
+        <span class="t">시스템 연결 관계 — VR NVL72 Digital Twin · NICo Emulator · Control-Plane · Consoles</span>
+        <span class="c">/api/v1/integration/topology · 서버측 프로브 · 5초 폴링</span></div>
+      <div class="svgbox">
+        <svg id="conn-svg" viewBox="0 0 1000 300" role="img" aria-label="시스템 연결 관계도"></svg>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--green)"></i>up (정상)</span>
+        <span><i style="background:var(--red)"></i>down (장애)</span>
+        <span><i style="background:var(--amber)"></i>unknown (미상)</span>
+        <span><i style="background:var(--muted-2)"></i>local (in-process · 점선)</span>
+      </div>
+    </div>
+    <div class="panel conn-card">
+      <div class="sec-h"><span class="tick"></span>
+        <span class="t">NICo Emulator 연동 상태</span>
+        <span class="c">/api/v1/integration/nico</span></div>
+      <div id="nico-card"><span class="muted">불러오는 중…</span></div>
     </div>
   </div>
 
@@ -782,6 +820,129 @@ async function mReport(){
   await refreshManual();
   await refreshDetail();
 })();
+
+// ---- 시스템 연결 관계 (Digital Twin · NICo · Control-Plane · Consoles) --------
+const TOPO_POS={
+  customer:{x:12,y:16,w:156,h:52},
+  ops:{x:12,y:124,w:156,h:52},
+  biz:{x:12,y:232,w:156,h:52},
+  cp:{x:284,y:100,w:180,h:100},
+  nico:{x:566,y:100,w:170,h:100},
+  twin:{x:812,y:78,w:176,h:144},
+};
+// 폴백 — 엔드포인트가 실패해도 다이어그램이 렌더되도록 (에뮬레이터 오프라인 표현)
+const OFFLINE_NODES=[
+  {id:"twin",label:"VR NVL72 Digital Twin",status:"unknown",detail:"emulator offline"},
+  {id:"nico",label:"NICo Emulator",status:"down",detail:"unreachable"},
+  {id:"cp",label:"NeoCloud OS Control-Plane (VRCM)",status:"up",detail:"adapter: local"},
+  {id:"customer",label:"Customer Console",status:"up",detail:"tenant self-service"},
+  {id:"ops",label:"Operations Console",status:"up",detail:"SRE / NOC"},
+  {id:"biz",label:"Business Console",status:"up",detail:"sales / exec"},
+];
+const OFFLINE_EDGES=[
+  {from:"nico",to:"twin",label:"drives (Redfish/DPU/PXE)",status:"down"},
+  {from:"cp",to:"nico",label:"FakeNico (in-process)",status:"local"},
+  {from:"customer",to:"cp",label:"REST /api/v1",status:"up"},
+  {from:"ops",to:"cp",label:"REST /api/v1",status:"up"},
+  {from:"biz",to:"cp",label:"REST /api/v1",status:"up"},
+];
+function _scolor(s){return s==="up"?"var(--green)":s==="down"?"var(--red)":s==="local"?"var(--muted-2)":"var(--amber)"}
+function _smarker(s){return s==="up"?"ah-up":s==="down"?"ah-down":s==="local"?"ah-local":"ah-unknown"}
+function _esc(s){return String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
+function _wrap(str,maxc){
+  const words=String(str==null?"":str).split(/\s+/).filter(Boolean);const lines=[];let cur="";
+  for(const w of words){
+    if(!cur)cur=w;
+    else if((cur+" "+w).length<=maxc)cur+=" "+w;
+    else{lines.push(cur);cur=w}
+  }
+  if(cur)lines.push(cur);
+  return lines.length?lines:[""];
+}
+function _nodeSvg(n){
+  const P=TOPO_POS[n.id];if(!P)return"";
+  const col=_scolor(n.status),cx=P.x+P.w/2;
+  const lab=_wrap(n.label,Math.floor(P.w/6.2)),det=_wrap(n.detail,Math.floor(P.w/5.0));
+  const lh1=13,lh2=11,total=lab.length*lh1+(det.length?4+det.length*lh2:0);
+  let y=P.y+P.h/2-total/2+10,t="";
+  for(const l of lab){t+=`<text x="${cx}" y="${y}" text-anchor="middle" fill="var(--text)" font-size="11" font-weight="700">${_esc(l)}</text>`;y+=lh1}
+  if(det.length)y+=4;
+  for(const l of det){t+=`<text x="${cx}" y="${y}" text-anchor="middle" fill="var(--muted)" font-size="9">${_esc(l)}</text>`;y+=lh2}
+  const dash=n.status==="local"?' stroke-dasharray="4 3"':"";
+  return `<rect x="${P.x}" y="${P.y}" width="${P.w}" height="${P.h}" rx="9" fill="var(--card-sub)" stroke="${col}" stroke-width="1.6"${dash}/>`+t;
+}
+function _edgeSvg(e){
+  const S=TOPO_POS[e.from],T=TOPO_POS[e.to];if(!S||!T)return"";
+  const col=_scolor(e.status);
+  const x1=S.x+S.w,y1=S.y+S.h/2,x2=T.x;
+  let y2=T.y+T.h/2;
+  if(e.to==="cp"){const off={customer:0.26,ops:0.5,biz:0.74}[e.from];if(off!=null)y2=T.y+T.h*off}
+  const dash=e.status==="local"?' stroke-dasharray="6 4"':"";
+  const mx=(x1+x2)/2,my=(y1+y2)/2;
+  let lbl="";
+  if(e.label){
+    const lw=e.label.length*4.7+8;
+    lbl=`<rect x="${mx-lw/2}" y="${my-13}" width="${lw}" height="12" rx="3" fill="var(--card)" opacity="0.92"/>`+
+        `<text x="${mx}" y="${my-4}" text-anchor="middle" fill="var(--muted)" font-size="8.5" font-family="Menlo,monospace">${_esc(e.label)}</text>`;
+  }
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="1.6"${dash} marker-end="url(#${_smarker(e.status)})"/>`+lbl;
+}
+function renderTopo(d){
+  const svg=$("#conn-svg");if(!svg)return;
+  const nodes=(d&&d.nodes&&d.nodes.length)?d.nodes:OFFLINE_NODES;
+  const edges=(d&&d.edges&&d.edges.length)?d.edges:OFFLINE_EDGES;
+  const defs=`<defs>`+
+    [["ah-up","var(--green)"],["ah-down","var(--red)"],["ah-local","var(--muted-2)"],["ah-unknown","var(--amber)"]]
+      .map(m=>`<marker id="${m[0]}" markerWidth="9" markerHeight="9" refX="7.5" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L9,4 L0,8 z" fill="${m[1]}"/></marker>`).join("")+
+    `</defs>`;
+  svg.innerHTML=defs+edges.map(_edgeSvg).join("")+nodes.map(_nodeSvg).join("");
+}
+function renderNicoCard(n,at){
+  const box=$("#nico-card");if(!box)return;
+  const url=(n&&n.nico_url)||"http://127.0.0.1:9000";
+  const ok=!!(n&&n.reachable);
+  const mode=(n&&n.adapter_mode)||"local";
+  const V=x=>(x==null||x==="")?'<span class="muted">—</span>':_esc(x);
+  const tenants=(n&&n.tenants)||[];
+  const chips=tenants.length?tenants.map(t=>`<span class="chip">${_esc(t)}</span>`).join(""):'<span class="muted">없음</span>';
+  box.innerHTML=
+    `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">`+
+      `<span class="dot ${ok?"green":"red"}"></span>`+
+      `<b style="font-size:13px;color:#fff">${ok?"VRCM 연동":"미연동(오프라인)"}</b>`+
+      `<span class="abadge ${mode==="http"?"http":""}">adapter: ${_esc(mode)}</span>`+
+    `</div>`+
+    `<table><tbody>`+
+      `<tr><th>NICo URL</th><td class="kv">${_esc(url)}</td></tr>`+
+      `<tr><th>버전</th><td class="kv">${V(n&&n.version)}</td></tr>`+
+      `<tr><th>지연</th><td class="kv">${ok?_esc(n.latency_ms)+" ms":'<span class="muted">—</span>'}</td></tr>`+
+      `<tr><th>Rack · Model</th><td class="kv">${V(n&&n.rack)} · ${V(n&&n.model)}</td></tr>`+
+      `<tr><th>Trays / GPU / DPU</th><td class="kv">${V(n&&n.compute_trays)} / ${V(n&&n.gpus)} / ${V(n&&n.dpus)}</td></tr>`+
+      `<tr><th>Attachments</th><td class="kv">${V(n&&n.attachments)}</td></tr>`+
+      `<tr><th>Tenants</th><td><div class="chips" style="margin:0">${chips}</div></td></tr>`+
+    `</tbody></table>`+
+    `<div class="callout ${mode==="http"?"cyan":""}" style="margin-top:10px">`+
+      `<b>local</b> = 컨트롤플레인 내부 FakeNico(in-process) 어댑터 · `+
+      `<b>http</b> = <span class="kv">VRCM_NICO_URL</span>로 독립 실행 에뮬레이터 구동(NicoHttpAdapter). `+
+      `현재 <b>${_esc(mode)}</b> 모드.`+
+    `</div>`+
+    `<div class="btns" style="margin-top:10px">`+
+      `<button class="ghost" onclick="refreshConn()">새로고침</button>`+
+      `<a class="lnkbtn" href="http://127.0.0.1:9000/" target="_blank" rel="noopener">NICo 대시보드 ↗</a>`+
+      `<a class="lnkbtn" href="http://127.0.0.1:9000/docs" target="_blank" rel="noopener">에뮬레이터 API docs ↗</a>`+
+    `</div>`+
+    `<div class="muted" style="margin-top:6px;font-size:10px">서버측 프로브(same-origin) · 5초 폴링${at?" · 갱신 "+_esc(String(at).slice(11,19)):""}</div>`;
+}
+async function fetchTopo(){
+  try{const r=await fetch("/api/v1/integration/topology");if(!r.ok)return null;return await r.json()}
+  catch(e){return null}
+}
+async function refreshConn(){
+  const d=await fetchTopo();
+  renderTopo(d);
+  renderNicoCard(d?d.nico:null,d&&d.generated_at);
+}
+refreshConn();
+setInterval(refreshConn,5000);
 </script>
 <script src="/static/nav.js"></script>
 <script src="/static/modinfo.js"></script>
