@@ -28,6 +28,7 @@ from .adapters import (
     ComputeAdapter,
     LocalNicoAdapter,
     LocalVastAdapter,
+    NicoHttpAdapter,
     StorageAdapter,
     wait_job,
 )
@@ -66,7 +67,12 @@ CPU_NODES_PER_TENANT = 5          # 테넌트당 기본 제공 범용 CPU 노드
 
 
 def get_adapter() -> ComputeAdapter:
-    """Adapter seam — swap for NicoHttpAdapter(real site controller) later."""
+    """Adapter seam. Set VRCM_NICO_URL to drive the standalone NICo emulator
+    over REST (NicoHttpAdapter); unset uses the in-process FakeNico."""
+    import os
+    url = os.environ.get("VRCM_NICO_URL")
+    if url:
+        return NicoHttpAdapter(url)
     return LocalNicoAdapter(FAKE_NICO)
 
 
