@@ -56,6 +56,8 @@ const STAGE_GUIDE = {
     "VAST VMS view/quota/QoS 생성 — 자동(랙당 500TB·40GB/s) 또는 수동 지정. export는 테넌트 VRF 서브넷으로 제한."],
   acceptance: ["acceptance — 인수 검증",
     "4계층 격리 부정 테스트(교차 VRF·IB P_Key·NVLink) + 격리 리포트 PASS 필수. 통과 시 IAM 서비스 계정·Vault 자격증명(s3/redfish) 발급."],
+  k8s_installing: ["k8s_installing — Managed K8s 설치 (옵션)",
+    "BMaaS 인수 후 K8s 설치: CP CPU 노드 3대를 NICo(DPU isolation) 경유 Day1 프로비저닝 → Converged Network attach → NKD 부트스트랩(HA CP·kube-vip VIP) → GPU 워커 join → 관리형 애드온(CNI·GPU/Network Operator·DCGM exporter) → burn-in 검증(NCCL·dcgm diag) · DCGM 수집을 in-band로 전환."],
   delivered: ["delivered — 인도 완료",
     "노드 in_service 전환 · 접속·보안 인증 패키지 발급(SSH bastion·OIDC secret 1회 노출·스토리지 마운트·P_Key) · 과금 시작."],
   reclaiming: ["reclaiming — 회수·소거",

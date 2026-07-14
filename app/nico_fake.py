@@ -167,6 +167,17 @@ class FakeNico:
                 state=NicoHostState.pool_ready,
                 bmc_ip=ips.get("bmc_ip", ""), dpu_ip=ips.get("dpu_ip", ""),
             )
+        # 범용 CPU 노드 풀 — AI Infra Emulator 인벤토리에 호스트로 등록.
+        # GPU 트레이와 동일한 Day1 경로(rshim BFB → BMC Redfish → DPU-DHCP →
+        # PXE → cloud-init)로 프로비저닝되고 DPU isolation으로 테넌트에 할당.
+        for cn in store.cpu_nodes.values():
+            host_id = cn.nico_host_id or f"nh-{cn.id}"
+            idx = int(cn.id.rsplit("-", 1)[1])
+            self.hosts[host_id] = NicoHost(
+                host_id=host_id, tray_id=cn.id, sku="cpu-epyc",
+                site="", state=NicoHostState.pool_ready,
+                bmc_ip=f"10.254.1.{idx}", dpu_ip=f"10.255.1.{idx}",
+            )
 
     def add_ghost(self, host_id: str, sku: str = "vr-nvl72") -> NicoHost:
         """A host NICo knows about but the control plane does not (reconcile)."""
@@ -343,7 +354,11 @@ class FakeNico:
              payload={"ResetType": "ForceRestart"}, host_id=host_id)
 
         # 2. DPU-측 DHCP: 호스트 IP 할당 (per-host DHCP, 언더레이 차단)
-        host.host_ip = ips.get("host_ip", "")
+        #    CPU 노드(트레이 아님)는 전용 대역 10.250.1.x/30에서 임대
+        if host.sku == "cpu-epyc":
+            host.host_ip = f"10.250.1.{int(host.tray_id.rsplit('-', 1)[1])}"
+        else:
+            host.host_ip = ips.get("host_ip", "")
         emit(f"DPU-DHCP({host.dpu_ip})", f"Host({host.tray_id})", "DHCP",
              "DISCOVER → OFFER → REQUEST → ACK",
              f"호스트 {host.host_ip}/30 임대 — DPU가 DHCP 종단, "
@@ -519,6 +534,48 @@ class FakeNico:
              payload={"checks": ["tor_peers", "route_server_peers",
                                  "tenant_routes_advertised"],
                       "vrf": dp_vrf, "result": "PASS"})
+        return seg
+
+    def attach_hosts(self, segment_id: str, host_ids: list,
+                     purpose: str = "converged") -> NicoSegment:
+        """기존 테넌트 VPC에 호스트 추가 — Managed K8s CP(CPU) 노드를
+        Converged Network(VNI)로 GPU 워커와 묶는 경로.
+
+        create_segment와 동일한 선언적 수렴: carbide desired state 갱신 →
+        DPU agent 폴링 감지 → 호스트별 NVUE 렌더/HBN 적용 → BGP 수렴 검증."""
+        seg = self.segments.get(segment_id)
+        if not seg:
+            raise HTTPException(404, f"nico: segment '{segment_id}' not found")
+        dp = seg.vrf_dataplane or seg.vrf
+        new_ids = [h for h in host_ids if h not in seg.host_ids]
+        seg.host_ids.extend(new_ids)
+        emit("NICo.APIService(carbide)", "NICo.NetworkStore", "internal",
+             f"network-segment {segment_id} 호스트 추가 ({purpose})",
+             f"desired state 갱신 — host {len(new_ids)}대 추가, "
+             f"Converged VNI {seg.converged_vni} 바인딩 대상 (CPU CP 노드 ↔ "
+             "GPU 워커 east-west)",
+             payload={"segment_id": segment_id, "add_hosts": new_ids,
+                      "converged_vni": seg.converged_vni, "purpose": purpose})
+        for hid in new_ids:
+            host = self.hosts.get(hid)
+            if not host:
+                continue
+            host.segment_id = segment_id
+            emit(f"DPU-Agent({host.dpu_ip})", f"HBN({host.tray_id})",
+                 "NVUE/HBN",
+                 "Converged Network 바인딩 — NVUE 렌더 → HBN 적용",
+                 f"vrf {dp} · Converged VNI {seg.converged_vni} — "
+                 f"{host.tray_id} pf0hpf_if ACL 체인 · "
+                 f"호스트 {host.host_ip or '(미할당)'} → {dp} "
+                 "(스토리지/K8s API east-west 경로)",
+                 payload={"vrf": dp, "converged_vni": seg.converged_vni,
+                          "template": "nvue_startup_fnn.conf",
+                          "interface": "pf0hpf_if", "host_ip": host.host_ip},
+                 host_id=hid)
+        emit("DPU-Agent(fleet)", "HBN(vtysh)", "internal",
+             "BGP summary 수렴 검증 (호스트 추가분)",
+             f"{dp} — 추가 host {len(new_ids)}대 EVPN 경로 광고 확인",
+             payload={"vrf": dp, "added": len(new_ids), "result": "PASS"})
         return seg
 
     def delete_segment(self, segment_id: str) -> NicoSegment:
@@ -702,6 +759,17 @@ def delete_segment(segment_id: str) -> NicoSegment:
     return FAKE_NICO.delete_segment(segment_id)
 
 
+class _AttachBody(BaseModel):
+    host_ids: list[str] = Field(default_factory=list)
+    purpose: str = "converged"
+
+
+@router.patch("/segments/{segment_id}/hosts", response_model=NicoSegment)
+def attach_hosts(segment_id: str, body: _AttachBody) -> NicoSegment:
+    """세그먼트에 호스트 추가 — Managed K8s CP 노드의 Converged 바인딩."""
+    return FAKE_NICO.attach_hosts(segment_id, body.host_ids, body.purpose)
+
+
 @router.post("/hosts/{host_id}/inject")
 def inject(host_id: str, body: _InjectBody) -> dict:
     FAKE_NICO.inject_failure(host_id, body.op)
@@ -845,6 +913,17 @@ def host_hardware(host_id: str) -> dict:
 def _health_payload(host: NicoHost) -> dict:
     """BMC(Redfish) 센서 뷰 — 활성 트레이는 에뮬레이터 텔레메트리를 반영."""
     from .tray_emu import EMULATOR
+    if host.sku == "cpu-epyc":            # CPU 노드 — GPU 센서 없음(공랭)
+        active = host.state == NicoHostState.allocated
+        return {"host_id": host.host_id, "tray_id": host.tray_id,
+                "tenant_ref": host.tenant_ref, "instance_id": host.instance_id,
+                "host_ip": host.host_ip, "nico_state": host.state.value,
+                "state": "ok" if active else "standby",
+                "power_w": 780 if active else 180,
+                "gpu_temp_c": [], "cpu_temp_c": 58.0 if active else 34.0,
+                "coolant_supply_c": None, "coolant_return_c": None,
+                "leak_detected": False, "pump": "n/a",
+                "psu": [{"id": i, "status": "ok"} for i in range(1, 3)]}
     rt = EMULATOR.trays.get(host.tray_id)
     if rt and rt.tenant_id:
         gpu_temps = [g.temp_c for g in rt.gpus]

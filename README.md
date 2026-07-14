@@ -102,7 +102,25 @@ curl -XPOST localhost:8000/api/v1/orders \
   -H 'content-type: application/json' \
   -d '{"tenant_id":"tnt-fin-corp","kind":"new","blueprint_key":"vr-nvl72","racks":2}'
 
+# Managed K8s option: after BMaaS acceptance, installs K8s on the cluster —
+# 3 control-plane CPU nodes provisioned via NICo (DPU isolation) and attached
+# to the tenant VPC over the Converged Network; DCGM telemetry switches to
+# in-band (dcgm-exporter DaemonSet). Adds a `k8s_installing` pipeline stage.
+curl -XPOST localhost:8000/api/v1/orders \
+  -H 'content-type: application/json' \
+  -d '{"tenant_id":"tnt-fin-corp","kind":"new","blueprint_key":"vr-nvl72","racks":2,"managed_k8s":true,"k8s_version":"v1.32.4"}'
+
+# Day-2 add-on: install Managed K8s on an already-delivered BMaaS allocation
+curl -XPOST localhost:8000/api/v1/k8s/installs \
+  -H 'content-type: application/json' \
+  -d '{"tenant_id":"tnt-fin-corp","allocation_id":"alloc-1","k8s_version":"v1.32.4"}'
+
+# Managed K8s clusters / product spec (versions, CP sizing, managed add-ons)
+curl localhost:8000/api/v1/k8s/clusters
+curl localhost:8000/api/v1/k8s/spec
+
 # Reclamation: drain -> release -> sanitization (7 stages) -> return to pool (RMA escalation on failure)
+# (tears down the Managed K8s cluster and returns CP CPU nodes first, if present)
 curl -XPOST localhost:8000/api/v1/orders \
   -H 'content-type: application/json' \
   -d '{"tenant_id":"tnt-fin-corp","kind":"terminate","allocation_id":"alloc-1"}'

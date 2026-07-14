@@ -44,6 +44,8 @@ class ComputeAdapter(Protocol):
                        allocation_id: Optional[str] = None) -> NicoSegment: ...
     def delete_segment(self, segment_id: str) -> NicoSegment: ...
     def list_segments(self) -> list: ...
+    def attach_hosts(self, segment_id: str, host_ids: list,
+                     purpose: str = "converged") -> NicoSegment: ...
 
 
 class StorageAdapter(Protocol):
@@ -120,6 +122,10 @@ class LocalNicoAdapter:
 
     def list_segments(self) -> list:
         return self._nico.list_segments()
+
+    def attach_hosts(self, segment_id: str, host_ids: list,
+                     purpose: str = "converged") -> NicoSegment:
+        return self._nico.attach_hosts(segment_id, host_ids, purpose)
 
 
 class LocalVastAdapter:
@@ -217,3 +223,9 @@ class NicoHttpAdapter:
     def list_segments(self) -> list:
         return [NicoSegment(**s) for s in
                 self._unwrap(self._c.get("/segments"))]
+
+    def attach_hosts(self, segment_id: str, host_ids: list,
+                     purpose: str = "converged") -> NicoSegment:
+        return NicoSegment(**self._unwrap(self._c.patch(
+            f"/segments/{segment_id}/hosts",
+            json={"host_ids": host_ids, "purpose": purpose})))

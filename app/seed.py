@@ -203,11 +203,14 @@ def seed_default(store: Store, *, blueprints: list[str] | None = None) -> None:
                         racks=n_racks,
                     )
 
-    # 범용 CPU 노드 풀 (DPU 장착, 테넌트당 기본 5대 자동 제공)
+    # 범용 CPU 노드 풀 (DPU 장착, 테넌트당 기본 5대 자동 제공 + Managed K8s
+    # 옵션 시 CP 3대 추가). AI Infra Emulator(NICo)에 호스트로 등록되어
+    # DPU 기반 isolation으로 IP·OS 설치 후 테넌트에 할당된다.
     from .models import CpuNode
     for n in range(1, 61):
         nid = f"cpu-node-{n:02d}"
-        store.cpu_nodes[nid] = CpuNode(id=nid, dpu_id=f"{nid}-dpu")
+        store.cpu_nodes[nid] = CpuNode(id=nid, dpu_id=f"{nid}-dpu",
+                                       nico_host_id=f"nh-{nid}")
 
 
 def seed_demo_samples(store: Store) -> None:

@@ -31,7 +31,7 @@ def test_nico_read_api_surface(client):
     assert site["ha_nodes"] == 3
     assert {s["name"] for s in site["services"]} >= {
         "API Service", "DHCP", "PXE", "Hardware Health", "Site Agent"}
-    assert site["counts"]["hosts_by_state"]["pool_ready"] == 540
+    assert site["counts"]["hosts_by_state"]["pool_ready"] == 600   # GPU 540 + CPU 풀 60
 
     types = {t["key"]: t for t in client.get("/fake-nico/instance-types").json()}
     assert types["vr-nvl72"]["hosts_total"] == 288   # 16랙 × 18트레이
@@ -283,7 +283,7 @@ def test_nico_bulk_health_for_observability(client):
     assert h["power_w"] > 2000 and len(h["gpu_temp_c"]) == 4
 
     everything = client.get("/fake-nico/health").json()
-    assert len(everything) == 540
+    assert len(everything) == 600     # GPU 트레이 540 + CPU 노드 60
     standby = [x for x in everything if x["tenant_ref"] is None]
     assert standby and standby[0]["state"] == "standby"
 

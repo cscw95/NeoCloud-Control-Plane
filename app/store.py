@@ -24,6 +24,7 @@ from .models import (
     CpuNode,
     DeploymentUnit,
     GPU,
+    K8sCluster,
     NetworkIsolation,
     NodeInstance,
     NVLinkPartition,
@@ -64,6 +65,7 @@ class Store:
         self.storage_allocs: dict[str, StorageAllocation] = {}
         self.tickets: dict[str, Ticket] = {}
         self.cpu_nodes: dict[str, CpuNode] = {}
+        self.k8s_clusters: dict[str, K8sCluster] = {}   # Managed K8s (옵션)
         # monotonic counters for generated ids
         self._counters: dict[str, int] = {}
 
@@ -81,7 +83,7 @@ class Store:
                 self.trays, self.nvlink_trays, self.gpus, self.cpus, self.dpus,
                 self.tenants, self.allocations, self.partitions, self.netiso,
                 self.node_instances, self.orders, self.storage_allocs,
-                self.tickets, self.cpu_nodes,
+                self.tickets, self.cpu_nodes, self.k8s_clusters,
             ):
                 d.clear()
             self._counters.clear()

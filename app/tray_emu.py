@@ -390,8 +390,23 @@ class TrayEmulator:
         mtta = (round(sum(f["tta_s"] for f in items) / len(items), 1)
                 if items else None)
         avail = (round((1 - len(open_) / gpus) * 100, 3) if gpus else None)
+        # DCGM 수집 경로 — Managed K8s(running) 테넌트는 in-band(exporter
+        # DaemonSet), 그 외는 OOB(BMC/Redfish 폴링)
+        if tenant_id:
+            inband = any(c.tenant_id == tenant_id and c.state == "running"
+                         for c in STORE.k8s_clusters.values())
+            dcgm_source = ("in-band (dcgm-exporter via Managed K8s)"
+                           if inband else "oob (BMC/Redfish)")
+        else:
+            k8s_tenants = sorted({c.tenant_id
+                                  for c in STORE.k8s_clusters.values()
+                                  if c.state == "running"})
+            dcgm_source = (f"mixed — in-band {len(k8s_tenants)} tenant(s) · "
+                           "나머지 oob(Redfish)"
+                           if k8s_tenants else "oob (BMC/Redfish)")
         return {
             "gpus_total": gpus,
+            "dcgm_source": dcgm_source,     # 텔레메트리 수집 경로 전환 표시
             "faults_open": len(open_),
             "faults_resolved": len(resolved),
             "availability_pct": avail,      # 정상 GPU / 전체 (진행 장애 제외)

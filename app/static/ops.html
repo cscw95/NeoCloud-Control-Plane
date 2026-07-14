@@ -328,10 +328,14 @@ const STAGES=["received","validated","reserved","provisioning","isolating",
               "storage_binding","acceptance","delivered"];
 const STAGE_KO={received:"접수",validated:"정책·배치",reserved:"예약",
   provisioning:"프로비저닝",isolating:"격리",storage_binding:"스토리지",
-  acceptance:"인수검증",delivered:"인도"};
+  acceptance:"인수검증",k8s_installing:"K8s 설치",delivered:"인도"};
 function ffTrack(o){
   const done=o.history.map(e=>e.state);
-  return `<div class="fftrack"><div class="ffstage">`+STAGES.map((s,i)=>{
+  // Managed K8s 옵션 주문 — 인수검증 뒤 K8s 설치 단계 표시
+  let STAGES_O=STAGES;
+  if(o.managed_k8s){STAGES_O=[...STAGES];
+    STAGES_O.splice(STAGES_O.indexOf("delivered"),0,"k8s_installing");}
+  return `<div class="fftrack"><div class="ffstage">`+STAGES_O.map((s,i)=>{
     const cls=done.includes(s)?"done":(s===o.pending_stage?"next":"");
     return (i?`<span class="ln ${cls}"></span>`:"")
       +`<span class="st ${cls}" data-stage="${s}"><span class="pt"></span><span class="lb">${STAGE_KO[s]}</span></span>`}).join("")

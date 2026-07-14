@@ -294,6 +294,7 @@ class OrderState(str, Enum):
     isolating = "isolating"
     storage_binding = "storage_binding"
     acceptance = "acceptance"
+    k8s_installing = "k8s_installing"   # Managed K8s 옵션 — BMaaS 위 K8s 설치
     delivered = "delivered"
     reclaiming = "reclaiming"
     closed = "closed"
@@ -335,6 +336,9 @@ class ServiceOrder(BaseModel):
     storage_mode: str = "auto"                # auto | manual
     storage_tb: float = 0
     storage_gbps: float = 0
+    managed_k8s: bool = False                 # Managed K8s 옵션 (BMaaS+K8s)
+    k8s_version: str = ""                     # 옵션 선택 시 설치 버전
+    k8s_cluster_id: Optional[str] = None      # 생성된 K8s 클러스터 참조
     segment_id: Optional[str] = None          # tenant VPC (NICo segment)
     storage_ids: list[str] = Field(default_factory=list)
     node_ids: list[str] = Field(default_factory=list)
@@ -357,9 +361,37 @@ class CpuNode(BaseModel):
     cores: int = 96
     mem_tb: float = 1.5
     state: str = "pool_ready"         # pool_ready | allocated
+    role: str = "general"             # general | k8s_cp (Managed K8s 컨트롤플레인)
+    nico_host_id: Optional[str] = None  # AI Infra Emulator(NICo) 호스트 참조
     tenant_id: Optional[str] = None
+    order_id: Optional[str] = None    # k8s_cp — 개통 주문 귀속 (flow 버킷팅)
     host_ip: str = ""
     segment_id: Optional[str] = None
+
+
+class K8sCluster(BaseModel):
+    """Managed K8s 클러스터 — BMaaS 개통 위에 옵션으로 설치·관리되는 테넌트
+    K8s. CP 3노드는 CPU 노드 풀에서 NICo(DPU isolation) 경유로 할당되고
+    Converged Network(VNI)로 GPU 워커와 묶인다. DCGM 텔레메트리는 in-band
+    (DCGM exporter DaemonSet) 경로로 수집한다."""
+    id: str
+    tenant_id: str
+    order_id: str
+    allocation_id: Optional[str] = None
+    name: str = ""
+    version: str = ""                 # K8s 버전 (예: v1.32.4)
+    nkd_version: str = ""             # NVIDIA Kubernetes Deployment 버전
+    state: str = "installing"         # installing | running | deleting | deleted | failed
+    api_vip: str = ""                 # kube-vip — Converged Network 상 API VIP
+    oidc_issuer: str = ""             # kubeconfig 발급용 OIDC issuer
+    cp_node_ids: list[str] = Field(default_factory=list)      # CpuNode.id ×3
+    worker_node_ids: list[str] = Field(default_factory=list)  # NodeInstance.id
+    gpus_total: int = 0
+    addons: list[dict] = Field(default_factory=list)          # {name,version,status}
+    dcgm_mode: str = "in-band"        # in-band(DCGM exporter) | oob(Redfish)
+    conditions: list[dict] = Field(default_factory=list)      # 설치 검증 결과
+    created_at: str = ""
+    history: list[LifecycleEvent] = Field(default_factory=list)
 
 
 class StorageAllocation(BaseModel):
@@ -384,6 +416,8 @@ class OrderCreate(BaseModel):
     storage_mode: str = "auto"                # auto(랙 비례) | manual(직접 지정)
     storage_tb: float = 0                     # manual일 때 용량
     storage_gbps: float = 0                   # manual일 때 QoS (0=자동 산정)
+    managed_k8s: bool = False                 # Managed K8s 옵션 — BMaaS 후 K8s 설치
+    k8s_version: str = "v1.32.4"              # 옵션 선택 시 K8s 버전
 
 
 class TicketComment(BaseModel):

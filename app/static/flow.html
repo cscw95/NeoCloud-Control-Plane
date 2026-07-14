@@ -254,6 +254,14 @@
           <button class="ghost" onclick="$('#o-racks').value=32">2 SU</button>
           <button class="ghost" onclick="$('#o-racks').value=48">3 SU</button>
         </div>
+        <div class="row" style="margin-top:8px;align-items:center">
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+            <input type="checkbox" id="o-k8s" style="width:auto">
+            Managed K8s 옵션 <span class="muted">(BMaaS 후 K8s 설치 — CP CPU 3대 추가)</span></label>
+          <select id="o-k8sver" style="flex:0 0 110px">
+            <option value="v1.32.4">v1.32.4</option>
+            <option value="v1.33.2">v1.33.2</option></select>
+        </div>
         <div style="margin-top:8px"><button onclick="runOrder()">▸ 개통 실행</button>
           <span class="muted" id="o-msg"></span></div>
 
@@ -311,6 +319,20 @@
           <span class="c">cp-fulfill · 이벤트 리플레이</span></div>
         <div class="track" id="track"></div>
         <div class="evt" id="evt"><span class="muted">주문을 실행하면 상태 전이 이벤트가 시간순으로 재생됩니다.</span></div>
+      </div>
+
+      <!-- Managed K8s 설치 검증 — 클러스터·설치 단계·로그 -->
+      <div class="panel" id="k8s-panel">
+        <div class="sec-h"><span class="tick"></span>
+          <span class="t">Managed K8s 설치 검증 — 클러스터·설치 로그</span>
+          <span class="c">cp-fulfill · k8s_installing (옵션)</span>
+          <button class="ghost" style="flex:0 0 auto;margin-left:auto" onclick="loadK8s()">새로고침</button></div>
+        <div id="k8s-clusters"><span class="muted">Managed K8s 옵션으로 개통하면 클러스터·설치 검증 결과가 표시됩니다.</span></div>
+        <div id="k8s-log" style="display:none;margin-top:10px">
+          <div class="muted" style="font-size:10.5px;margin-bottom:4px">
+            K8s 설치 과정 로그 (trace channel=K8s — CP 부트스트랩→워커 join→애드온→burn-in 검증)</div>
+          <div id="k8s-log-rows" style="max-height:260px;overflow:auto;font-family:Menlo,monospace;font-size:10.5px;line-height:1.7;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px"></div>
+        </div>
       </div>
 
       <div class="grid2">
@@ -399,7 +421,8 @@
         <option>DHCP</option><option>PXE</option><option>cloud-init</option>
         <option>NVUE/HBN</option><option>UFM</option><option>NMX</option>
         <option>VAST-API</option><option>OIDC/IAM</option><option>Vault</option>
-        <option>PAM</option><option>internal</option>
+        <option>PAM</option><option>K8s</option><option>rshim</option>
+        <option>internal</option>
       </select>
       <button class="ghost" style="flex:0 0 auto" onclick="refreshTrace()">새로고침</button>
       <button class="ghost" style="flex:0 0 auto" onclick="clearTrace()">지우기</button>
@@ -439,7 +462,9 @@ const FAIL_STEPS=["rejected","compensating","failed"];
 const MOD_MAP={received:["portal","intake"],validated:["intake","policy","model"],
   reserved:["fulfill","model","nico"],provisioning:["provision","nico"],
   isolating:["fulfill","policy","sdn"],storage_binding:["fulfill","storage"],
-  acceptance:["policy","sdn","shared"],delivered:["shared","delivery","portal"],
+  acceptance:["policy","sdn","shared"],
+  k8s_installing:["fulfill","provision","nico","sdn"],
+  delivered:["shared","delivery","portal"],
   rejected:["policy","intake"],compensating:["fulfill","provision","nico","sdn","storage"],
   failed:["intake"],reclaiming:["delivery","nico","sdn","storage","shared"],
   closed:["delivery","portal"]};
@@ -491,8 +516,12 @@ function lightMods(state,err){
 
 // ---- 파이프라인 트랙 + 이벤트 리플레이 --------------------------------------
 function drawTrack(kind,history){
-  const steps=ORDER_STEPS[kind]||ORDER_STEPS.new;
+  let steps=ORDER_STEPS[kind]||ORDER_STEPS.new;
   const seen=history.map(e=>e.state);
+  // Managed K8s 옵션 주문 — acceptance 뒤에 k8s_installing 단계 삽입
+  if(seen.includes("k8s_installing")&&!steps.includes("k8s_installing")){
+    steps=[...steps];steps.splice(steps.indexOf("delivered"),0,"k8s_installing");
+  }
   $("#track").innerHTML=steps.map(s=>{
     const done=seen.includes(s);
     return `<span class="step" data-s="${s}" data-stage="${s}" data-done="${done?1:0}">${s}</span>`;
@@ -661,10 +690,11 @@ async function runOrder(){
   $("#o-msg").textContent="실행 중…";
   try{
     const order=await call("POST","/api/v1/orders",{tenant_id:tid,kind:"new",
-      blueprint_key:$("#o-bp").value,racks:parseInt($("#o-racks").value||"1")});
+      blueprint_key:$("#o-bp").value,racks:parseInt($("#o-racks").value||"1"),
+      managed_k8s:$("#o-k8s").checked,k8s_version:$("#o-k8sver").value});
     $("#o-msg").innerHTML=`<span style="color:${order.state==="delivered"?"var(--g)":"var(--red)"}">
       ${order.id} → ${order.state}${order.error?" · "+order.error:""}</span>`;
-    await replay(order);await loadAllocs();
+    await replay(order);await loadAllocs();await loadK8s();
   }catch(e){$("#o-msg").innerHTML=`<span style="color:var(--red)">✗ ${e.message}</span>`}
 }
 async function runTerminate(){
@@ -672,8 +702,48 @@ async function runTerminate(){
   if(!aid){alert("회수할 allocation이 없습니다");return}
   try{
     const order=await call("POST","/api/v1/orders",{tenant_id:tid,kind:"terminate",allocation_id:aid});
-    await replay(order);await loadAllocs();
+    await replay(order);await loadAllocs();await loadK8s();
   }catch(e){alert(e.message)}
+}
+
+// ---- Managed K8s 설치 검증 패널 ----------------------------------------------
+const K8S_ST_COLOR={running:"var(--g)",installing:"var(--amber,#e8c66a)",
+  deleting:"var(--amber,#e8c66a)",deleted:"var(--muted,#8aa0b4)",failed:"var(--red)"};
+async function loadK8s(){
+  let cs=[];try{cs=await call("GET","/api/v1/k8s/clusters");}catch(e){return}
+  const box=$("#k8s-clusters");
+  if(!cs.length){box.innerHTML='<span class="muted">Managed K8s 옵션으로 개통하면 클러스터·설치 검증 결과가 표시됩니다.</span>';
+    $("#k8s-log").style.display="none";return}
+  box.innerHTML=cs.map(c=>{
+    const col=K8S_ST_COLOR[c.state]||"var(--muted)";
+    const checks=(c.conditions||[]).map(x=>
+      `<span style="border:1px solid var(--line);border-radius:4px;padding:0 6px;font-size:10px;
+        color:${x.result==="PASS"?"var(--g)":"var(--red)"}">${x.check} ${x.result==="PASS"?"✓":"✗"}</span>`).join(" ");
+    const addons=(c.addons||[]).map(a=>
+      `<span style="border:1px solid var(--line);border-radius:4px;padding:0 6px;font-size:10px">${a.name} ${a.version}</span>`).join(" ");
+    return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <b>${c.name}</b><span class="muted">${c.id} · ${c.tenant_id} · 주문 ${c.order_id}</span>
+        <span style="color:${col};font-weight:700">● ${c.state}</span>
+        <span class="muted" style="margin-left:auto">K8s ${c.version} · NKD ${c.nkd_version}</span></div>
+      <div class="muted" style="margin:6px 0 4px;font-size:11px">
+        CP ${(c.cp_node_ids||[]).join(", ")} (Converged VNI attach) ·
+        API VIP ${c.api_vip} · 워커 ${(c.worker_node_ids||[]).length}대 / GPU ${c.gpus_total}기 ·
+        DCGM <b style="color:var(--g)">${c.dcgm_mode}</b></div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">${addons}</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${checks}</div>
+    </div>`;}).join("");
+  // 설치 로그 — K8s 채널 트레이스 (부트스트랩→join→애드온→검증)
+  try{
+    const evs=await qget("/api/v1/trace?channel=K8s&limit=200");
+    if(evs.length){
+      $("#k8s-log").style.display="";
+      $("#k8s-log-rows").innerHTML=evs.map(e=>
+        `<div><span class="muted">${e.at.slice(11,19)}</span>
+         <span style="color:var(--g)">${e.src}</span> → ${e.dst}
+         · <b>${e.op}</b> <span class="muted">${e.detail||""}</span></div>`).join("");
+    }
+  }catch(e){/* trace 미가용 — 무시 */}
 }
 async function inject(){
   try{await call("POST",`/fake-nico/hosts/${$("#i-host").value}/inject`,{op:$("#i-op").value});
@@ -819,6 +889,7 @@ async function mReport(){
   await refreshPools();
   await refreshManual();
   await refreshDetail();
+  await loadK8s();
 })();
 
 // ---- 시스템 연결 관계 (Digital Twin · NICo · Control-Plane · Consoles) --------

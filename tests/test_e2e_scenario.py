@@ -29,7 +29,7 @@ def test_full_demo_scenario(client):
 
     # ── ACT 1. 인프라 검증 ──────────────────────────────────────────────
     site = client.get("/fake-nico/site").json()
-    assert site["counts"]["hosts_by_state"]["pool_ready"] == 540
+    assert site["counts"]["hosts_by_state"]["pool_ready"] == 600   # GPU 540 + CPU 풀 60
     fabric = client.get("/api/v1/fabric/ib").json()
     assert len(fabric["sites"]) == 1                 # 테스트 시드 = 단일 사이트
     assert len(fabric["sites"][0]["networks"]) == 2      # Fabric-A/B 듀얼

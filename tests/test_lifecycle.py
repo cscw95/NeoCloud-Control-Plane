@@ -15,6 +15,7 @@ from app.store import STORE
 
 TRAYS_PER_RACK = 18
 TOTAL_NODES = (14 + 16) * TRAYS_PER_RACK       # gb200 SU 14랙 + vr SU 16랙(NCP RD)
+CPU_POOL_NODES = 60                            # 범용 CPU 노드 풀 — AI Infra Emulator 등록
 
 
 def _mk_tenant(client, name="acme-ai"):
@@ -39,7 +40,8 @@ def test_bootstrap_pool(client):
     body = r.json()
     assert body["total"] == TOTAL_NODES
     assert body["by_state"] == {"pool_ready": TOTAL_NODES}
-    assert len(FAKE_NICO.hosts) == TOTAL_NODES
+    # GPU 트레이 미러 + CPU 노드 풀(cpu_nodes read-model 관리, NodeInstance 아님)
+    assert len(FAKE_NICO.hosts) == TOTAL_NODES + CPU_POOL_NODES
 
 
 # ---------------------------------------------------------------------------
