@@ -608,12 +608,22 @@ class _InjectBody(BaseModel):
 
 @router.get("/hosts", response_model=list[NicoHost])
 def list_hosts() -> list[NicoHost]:
-    return FAKE_NICO.list_hosts()
+    # 활성 어댑터 경유 — http 모드면 실개통이 반영된 에뮬레이터 브리지를,
+    # local 모드면 in-process FakeNico를 읽는다(자산 인벤토리 정합).
+    from .lifecycle import get_adapter
+    try:
+        return get_adapter().list_hosts()
+    except Exception:
+        return FAKE_NICO.list_hosts()
 
 
 @router.get("/hosts/{host_id}", response_model=NicoHost)
 def get_host(host_id: str) -> NicoHost:
-    return FAKE_NICO.get_host(host_id)
+    from .lifecycle import get_adapter
+    try:
+        return get_adapter().get_host(host_id)
+    except Exception:
+        return FAKE_NICO.get_host(host_id)
 
 
 @router.post("/hosts/{host_id}/reserve", response_model=NicoHost)
