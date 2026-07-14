@@ -65,6 +65,59 @@ def nico_status():
     }
 
 
+def _component_nodes(up: bool):
+    """트윈 하부 에뮬레이터 플레인(UFM·NetQ·DLC·VAST·Converged) 프로브."""
+    comps = []
+
+    def add(cid, label, probe_path, describe, edge_label, twin_label):
+        st, detail = "down", "미기동"
+        if up:
+            p = _probe(f"{NICO_BASE}{probe_path}", timeout=0.9)
+            if p["reachable"]:
+                try:
+                    st, detail = describe(p.get("body"))
+                except Exception:
+                    st, detail = "unknown", "응답 파싱 실패"
+            else:
+                st, detail = "down", "미배포"
+        comps.append({"node": {"id": cid, "label": label, "kind": "plane",
+                               "status": st, "detail": detail},
+                      "edges": [
+                          {"from": "nico", "to": cid, "label": edge_label,
+                           "status": st if st != "unknown" else "up"},
+                          {"from": cid, "to": "twin", "label": twin_label,
+                           "status": st if st != "unknown" else "up"}]})
+
+    add("ufm", "UFM Enterprise (IB)", "/ufm/v1/fabric/health",
+        lambda b: (("unknown" if (b.get("links_degraded") or
+                                  b.get("links_down")) else "up"),
+                   f"sw {b['switches']['total']} · link "
+                   f"{b['links_active']}/{b['links_total']}"
+                   + (f" · deg {b['links_degraded']}"
+                      if b.get("links_degraded") else "")),
+        "UFM REST", "Quantum-X800 IB")
+    add("netq", "NetQ (Ethernet)", "/netq/v1/validation",
+        lambda b: (("unknown" if (b["summary"].get("fail") or
+                                  b["summary"].get("warn")) else "up"),
+                   f"validation {b['summary'].get('pass', 0)} pass"
+                   + (f" · {b['summary'].get('fail', 0)} fail"
+                      if b["summary"].get("fail") else "")),
+        "NetQ REST", "Spectrum-X Eth")
+    add("dlc", "SMCI DLC / CDU", "/emulator/v1/obs/dlc/cdus",
+        lambda b: (("unknown" if any((c.get("alarms") or []) for c in b)
+                    else "up"),
+                   f"CDU {len(b)} · alarms "
+                   f"{sum(len(c.get('alarms') or []) for c in b)}"),
+        "Redfish/Modbus", "액랭 DLC-2")
+    add("vast", "VAST Data (AI Storage)", "/vast/v1/clusters",
+        lambda b: ("up", f"cluster {len(b.get('clusters', b) or [])}식"),
+        "VMS REST", "NFS/S3 views")
+    add("converged", "Converged Network", "/converged/v1/overview",
+        lambda b: ("up", "storage/mgmt rail"),
+        "Spectrum-X", "CX-9/BF-4 rail")
+    return comps
+
+
 @router.get("/topology")
 def topology():
     """System connectivity graph for the verification console diagram."""
@@ -91,8 +144,6 @@ def topology():
          "kind": "console", "status": "up", "detail": "sales / exec"},
     ]
     edges = [
-        {"from": "nico", "to": "twin", "label": "drives (Redfish/DPU/PXE)",
-         "status": "up" if up else "down"},
         {"from": "cp", "to": "nico",
          "label": "NicoHttpAdapter" if nico["adapter_active"] else "FakeNico (in-process)",
          "status": ("up" if up else "down") if nico["adapter_active"] else "local"},
@@ -100,5 +151,8 @@ def topology():
         {"from": "ops", "to": "cp", "label": "REST /api/v1", "status": "up"},
         {"from": "biz", "to": "cp", "label": "REST /api/v1", "status": "up"},
     ]
+    for c in _component_nodes(up):
+        nodes.append(c["node"])
+        edges.extend(c["edges"])
     return {"nodes": nodes, "edges": edges, "nico": nico,
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}

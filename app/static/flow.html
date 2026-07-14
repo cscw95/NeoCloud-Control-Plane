@@ -208,7 +208,7 @@
         <span class="t">시스템 연결 관계 — VR NVL72 Digital Twin · NICo Emulator · Control-Plane · Consoles</span>
         <span class="c">/api/v1/integration/topology · 서버측 프로브 · 5초 폴링</span></div>
       <div class="svgbox">
-        <svg id="conn-svg" viewBox="0 0 1000 300" role="img" aria-label="시스템 연결 관계도"></svg>
+        <svg id="conn-svg" viewBox="0 0 1000 470" role="img" aria-label="시스템 연결 관계도"></svg>
       </div>
       <div class="legend">
         <span><i style="background:var(--green)"></i>up (정상)</span>
@@ -823,12 +823,17 @@ async function mReport(){
 
 // ---- 시스템 연결 관계 (Digital Twin · NICo · Control-Plane · Consoles) --------
 const TOPO_POS={
-  customer:{x:12,y:16,w:156,h:52},
-  ops:{x:12,y:124,w:156,h:52},
-  biz:{x:12,y:232,w:156,h:52},
-  cp:{x:284,y:100,w:180,h:100},
-  nico:{x:566,y:100,w:170,h:100},
-  twin:{x:812,y:78,w:176,h:144},
+  customer:{x:12,y:120,w:140,h:52},
+  ops:{x:12,y:228,w:140,h:52},
+  biz:{x:12,y:336,w:140,h:52},
+  cp:{x:214,y:204,w:166,h:100},
+  nico:{x:442,y:204,w:150,h:100},
+  ufm:{x:654,y:14,w:168,h:56},
+  netq:{x:654,y:110,w:168,h:56},
+  dlc:{x:654,y:206,w:168,h:56},
+  vast:{x:654,y:302,w:168,h:56},
+  converged:{x:654,y:398,w:168,h:56},
+  twin:{x:872,y:164,w:118,h:180},
 };
 // 폴백 — 엔드포인트가 실패해도 다이어그램이 렌더되도록 (에뮬레이터 오프라인 표현)
 const OFFLINE_NODES=[
@@ -839,8 +844,9 @@ const OFFLINE_NODES=[
   {id:"ops",label:"Operations Console",status:"up",detail:"SRE / NOC"},
   {id:"biz",label:"Business Console",status:"up",detail:"sales / exec"},
 ];
+const OFFLINE_PLANES=["ufm","netq","dlc","vast","converged"];
+OFFLINE_PLANES.forEach(p=>OFFLINE_NODES.push({id:p,label:{ufm:"UFM Enterprise (IB)",netq:"NetQ (Ethernet)",dlc:"SMCI DLC / CDU",vast:"VAST Data (AI Storage)",converged:"Converged Network"}[p],status:"down",detail:"미기동"}));
 const OFFLINE_EDGES=[
-  {from:"nico",to:"twin",label:"drives (Redfish/DPU/PXE)",status:"down"},
   {from:"cp",to:"nico",label:"FakeNico (in-process)",status:"local"},
   {from:"customer",to:"cp",label:"REST /api/v1",status:"up"},
   {from:"ops",to:"cp",label:"REST /api/v1",status:"up"},
