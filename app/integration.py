@@ -125,7 +125,7 @@ NODE_URLS = {
     "biz": "http://127.0.0.1:8090/biz/",
     "cp": "http://127.0.0.1:8000/",
     "nico": "http://127.0.0.1:9000/",
-    "twin": "http://127.0.0.1:9000/#sec=cluster",
+    "twin": "http://127.0.0.1:9000/#sec=control",
     "ufm": "http://127.0.0.1:9000/#sec=fabric",
     "netq": "http://127.0.0.1:9000/#sec=fabric",
     "dlc": "http://127.0.0.1:8090/ops/#/obs-dlc",
