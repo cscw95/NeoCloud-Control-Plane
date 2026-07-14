@@ -474,19 +474,22 @@ def _emulator_reprov_faults(limit: int) -> list:
         items = r.json().get("recent", [])
     except Exception:
         return []
+    _XID_LBL = {"reprovision": "REPROV", "gpu": "GPU", "cooling": "COOLING",
+                "fabric": "FABRIC", "storage": "STORAGE"}
     return [{
         "tray_id": f.get("tray_id"),
         "host_id": f"nh-{f.get('tray_id')}",
         "gpu": None,
-        "xid": f.get("xid") or "REPROV",
+        "xid": f.get("xid") or _XID_LBL.get(f.get("kind"), "TWIN"),
         "kind": f.get("kind", "reprovision"),
+        "severity": f.get("severity"),
         "detail": f.get("detail", ""),
         "tenant_id": None,
         "at": f.get("at"), "started_at": f.get("at"),
         "resolved": bool(f.get("resolved")),
         "resolved_at": f.get("resolved_at"),
         "state": "resolved" if f.get("resolved") else "open",
-        "action": "NICo 재프로비저닝 — HostReady 복귀 시 자동 해제",
+        "action": "트윈 장애 — 원인 해소(복구/전원 On) 시 자동 해제",
         "tta_s": None, "ttr_s": None,
     } for f in items]
 

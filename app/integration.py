@@ -139,11 +139,24 @@ def topology():
     """System connectivity graph for the verification console diagram."""
     nico = nico_status()
     up = nico["reachable"]
+    # 트윈 장애 상태 반영 — 전체 랙 Off 등 obs 요약을 노드 색·상세에 표시
+    obs = _probe(f"{NICO_BASE}/emulator/v1/obs/summary", timeout=0.9) if up else None
+    ob = (obs or {}).get("body") or {}
+    racks_off = ob.get("racks_off") or 0
+    alerts_open = ob.get("alerts_open") or 0
+    twin_status = "up" if up else "unknown"
+    twin_detail = (f"{nico['compute_trays']} trays · {nico['gpus']} GPU · "
+                   f"{nico['dpus']} DPU") if up else "emulator offline"
+    if up and (racks_off or alerts_open):
+        twin_status = "down" if racks_off >= (ob.get("racks") or 140) else "unknown"
+        twin_detail = (f"장애: 알림 {alerts_open}건"
+                       + (f" · 랙 Off {racks_off}" if racks_off else "")
+                       + (f" · cordon {ob.get('racks_cordoned')}"
+                          if ob.get("racks_cordoned") else ""))
     nodes = [
         {"id": "twin", "label": "VR NVL72 Digital Twin",
-         "kind": "infra", "status": "up" if up else "unknown",
-         "detail": (f"{nico['compute_trays']} trays · {nico['gpus']} GPU · "
-                    f"{nico['dpus']} DPU") if up else "emulator offline"},
+         "kind": "infra", "status": twin_status,
+         "detail": twin_detail},
         {"id": "nico", "label": "NICo Emulator",
          "kind": "emulator", "status": "up" if up else "down",
          "detail": (f"v{nico['version']} · {nico['latency_ms']}ms · "
