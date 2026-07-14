@@ -19,6 +19,8 @@ router = APIRouter(prefix="/api/v1/integration", tags=["integration"])
 _env = os.environ.get("NOCP_NICO_URL", "")
 NICO_BASE = (_env.rsplit("/nico-bridge", 1)[0] if _env else
              os.environ.get("NICO_EMULATOR_URL", "http://127.0.0.1:9000"))
+# AI Infra Emulator (:9100) — 물리 트윈/장비를 소유. NICo가 이를 드라이브.
+AI_INFRA_BASE = os.environ.get("AI_INFRA_URL", "http://127.0.0.1:9100")
 CONSOLE_BASE = os.environ.get("NC_CONSOLE_URL", "http://127.0.0.1:8090")
 
 
@@ -70,9 +72,10 @@ def _component_nodes(up: bool):
     comps = []
 
     def add(cid, label, probe_path, describe, edge_label, twin_label):
+        # 물리 플레인은 AI Infra Emulator(:9100)에 있다 — 거기서 프로브.
         st, detail = "down", "미기동"
         if up:
-            p = _probe(f"{NICO_BASE}{probe_path}", timeout=0.9)
+            p = _probe(f"{AI_INFRA_BASE}{probe_path}", timeout=0.9)
             if p["reachable"]:
                 try:
                     st, detail = describe(p.get("body"))
@@ -83,9 +86,7 @@ def _component_nodes(up: bool):
         comps.append({"node": {"id": cid, "label": label, "kind": "plane",
                                "status": st, "detail": detail},
                       "edges": [
-                          {"from": "nico", "to": cid, "label": edge_label,
-                           "status": st if st != "unknown" else "up"},
-                          {"from": cid, "to": "twin", "label": twin_label,
+                          {"from": "twin", "to": cid, "label": twin_label,
                            "status": st if st != "unknown" else "up"}]})
 
     add("ufm", "UFM Enterprise — Quantum-X800 IB", "/ufm/v1/fabric/health",
@@ -119,18 +120,19 @@ def _component_nodes(up: bool):
 
 
 # 노드별 접속 화면 (다이어그램 클릭 시 새 창)
+_AI = AI_INFRA_BASE
 NODE_URLS = {
     "customer": "http://127.0.0.1:8090/customer/",
     "ops": "http://127.0.0.1:8090/ops/",
     "biz": "http://127.0.0.1:8090/biz/",
     "cp": "http://127.0.0.1:8000/",
     "nico": "http://127.0.0.1:9000/",
-    "twin": "http://127.0.0.1:9000/#sec=control",
-    "ufm": "http://127.0.0.1:9000/#sec=fabric",
-    "netq": "http://127.0.0.1:9000/#sec=fabric",
+    "twin": f"{_AI}/#sec=control",
+    "ufm": f"{_AI}/#sec=fabric",
+    "netq": f"{_AI}/#sec=fabric",
     "dlc": "http://127.0.0.1:8090/ops/#/obs-dlc",
-    "vast": "http://127.0.0.1:9000/#sec=storage",
-    "converged": "http://127.0.0.1:9000/#sec=fabric",
+    "vast": f"{_AI}/#sec=storage",
+    "converged": f"{_AI}/#sec=fabric",
 }
 
 
@@ -140,13 +142,15 @@ def topology():
     nico = nico_status()
     up = nico["reachable"]
     # 트윈 장애 상태 반영 — 전체 랙 Off 등 obs 요약을 노드 색·상세에 표시
-    obs = _probe(f"{NICO_BASE}/emulator/v1/obs/summary", timeout=0.9) if up else None
+    obs = _probe(f"{AI_INFRA_BASE}/emulator/v1/obs/summary", timeout=0.9) if up else None
     ob = (obs or {}).get("body") or {}
     racks_off = ob.get("racks_off") or 0
     alerts_open = ob.get("alerts_open") or 0
     twin_status = "up" if up else "unknown"
-    twin_detail = (f"{nico['compute_trays']} trays · {nico['gpus']} GPU · "
-                   f"{nico['dpus']} DPU") if up else "emulator offline"
+    g = ob.get("gpus") or {}
+    twin_detail = (f"{ob.get('racks', '—')}랙 · {g.get('total', '—')} GPU · "
+                   f"{ob.get('cooling', {}).get('cdus', '—')} CDU · "
+                   f"{ob.get('tenants', '—')} 테넌트") if up else "AI Infra offline"
     if up and (racks_off or alerts_open):
         twin_status = "down" if racks_off >= (ob.get("racks") or 140) else "unknown"
         twin_detail = (f"장애: 알림 {alerts_open}건"
@@ -154,7 +158,7 @@ def topology():
                        + (f" · cordon {ob.get('racks_cordoned')}"
                           if ob.get("racks_cordoned") else ""))
     nodes = [
-        {"id": "twin", "label": "VR NVL72 Digital Twin",
+        {"id": "twin", "label": "AI Infra Emulator — VR NVL72 Twin",
          "kind": "infra", "status": twin_status,
          "detail": twin_detail},
         {"id": "nico", "label": "NICo Emulator",
@@ -180,7 +184,7 @@ def topology():
         {"from": "ops", "to": "cp", "label": "REST /api/v1", "status": "up"},
         {"from": "biz", "to": "cp", "label": "REST /api/v1", "status": "up"},
         {"from": "nico", "to": "twin",
-         "label": "manage (Redfish/PXE/DPU)", "status": "up" if up else "down"},
+         "label": "drive (:9100 REST)", "status": "up" if up else "down"},
     ]
     # 물리 구성 정합 엣지: 패브릭→랙, CDU→랙(액랭), 랙→converged→스토리지
     plane_edge = {
@@ -203,8 +207,8 @@ def topology():
     for n in nodes:
         n["url"] = NODE_URLS.get(n["id"])
     return {"nodes": nodes, "edges": edges, "nico": nico,
-            "region": {"label": "에뮬레이션 영역 — NICo Emulator (:9000)",
+            "region": {"label": "AI Infra Emulator (:9100) — 물리 트윈/장비",
                        "members": ["twin", "ufm", "netq", "dlc",
                                    "vast", "converged"],
-                       "url": "http://127.0.0.1:9000/"},
+                       "url": AI_INFRA_BASE + "/"},
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
