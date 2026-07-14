@@ -822,19 +822,22 @@ async function mReport(){
 })();
 
 // ---- 시스템 연결 관계 (Digital Twin · NICo · Control-Plane · Consoles) --------
+/* 물리 구성 정합 배치 — 패브릭(상단) · NVL72 랙+in-row CDU(중단) ·
+   converged rail→AI 스토리지(하단). 우측 점선 박스 = 에뮬레이션 영역 */
 const TOPO_POS={
-  customer:{x:12,y:120,w:140,h:52},
-  ops:{x:12,y:228,w:140,h:52},
-  biz:{x:12,y:336,w:140,h:52},
-  cp:{x:214,y:204,w:166,h:100},
-  nico:{x:442,y:204,w:150,h:100},
-  ufm:{x:654,y:14,w:168,h:56},
-  netq:{x:654,y:110,w:168,h:56},
-  dlc:{x:654,y:206,w:168,h:56},
-  vast:{x:654,y:302,w:168,h:56},
-  converged:{x:654,y:398,w:168,h:56},
-  twin:{x:872,y:164,w:118,h:180},
+  customer:{x:12,y:120,w:138,h:52},
+  ops:{x:12,y:228,w:138,h:52},
+  biz:{x:12,y:336,w:138,h:52},
+  cp:{x:196,y:204,w:160,h:100},
+  nico:{x:398,y:204,w:140,h:100},
+  ufm:{x:596,y:30,w:188,h:58},
+  netq:{x:802,y:30,w:188,h:58},
+  twin:{x:596,y:150,w:188,h:168},
+  dlc:{x:802,y:158,w:188,h:72},
+  converged:{x:596,y:378,w:188,h:62},
+  vast:{x:802,y:378,w:188,h:62},
 };
+const TOPO_REGION={x:572,y:6,w:428,h:458};
 // 폴백 — 엔드포인트가 실패해도 다이어그램이 렌더되도록 (에뮬레이터 오프라인 표현)
 const OFFLINE_NODES=[
   {id:"twin",label:"VR NVL72 Digital Twin",status:"unknown",detail:"emulator offline"},
@@ -875,14 +878,25 @@ function _nodeSvg(n){
   if(det.length)y+=4;
   for(const l of det){t+=`<text x="${cx}" y="${y}" text-anchor="middle" fill="var(--muted)" font-size="9">${_esc(l)}</text>`;y+=lh2}
   const dash=n.status==="local"?' stroke-dasharray="4 3"':"";
-  return `<rect x="${P.x}" y="${P.y}" width="${P.w}" height="${P.h}" rx="9" fill="var(--card-sub)" stroke="${col}" stroke-width="1.6"${dash}/>`+t;
+  const body=`<rect x="${P.x}" y="${P.y}" width="${P.w}" height="${P.h}" rx="9" fill="var(--card-sub)" stroke="${col}" stroke-width="1.6"${dash}/>`+t;
+  if(n.url) return `<a href="${_esc(n.url)}" target="_blank" rel="noopener" style="cursor:pointer">`+
+    `<title>${_esc(n.label)} — 클릭 시 접속 화면 열기 (${_esc(n.url)})</title>`+body+`</a>`;
+  return body;
 }
 function _edgeSvg(e){
   const S=TOPO_POS[e.from],T=TOPO_POS[e.to];if(!S||!T)return"";
   const col=_scolor(e.status);
-  const x1=S.x+S.w,y1=S.y+S.h/2,x2=T.x;
-  let y2=T.y+T.h/2;
-  if(e.to==="cp"){const off={customer:0.26,ops:0.5,biz:0.74}[e.from];if(off!=null)y2=T.y+T.h*off}
+  const dx=(T.x+T.w/2)-(S.x+S.w/2), dy=(T.y+T.h/2)-(S.y+S.h/2);
+  let x1,y1,x2,y2;
+  if(Math.abs(dx)>=Math.abs(dy)){          // 가로 연결
+    if(dx>0){x1=S.x+S.w;x2=T.x}else{x1=S.x;x2=T.x+T.w}
+    y1=S.y+S.h/2;y2=T.y+T.h/2;
+    if(e.to==="cp"){const off={customer:0.26,ops:0.5,biz:0.74}[e.from];if(off!=null)y2=T.y+T.h*off}
+    if(e.to==="twin"&&Math.abs(dy)>20){y2=T.y+T.h*(dy<0?0.72:0.28)}
+  }else{                                    // 세로 연결
+    if(dy>0){y1=S.y+S.h;y2=T.y}else{y1=S.y;y2=T.y+T.h}
+    x1=S.x+S.w/2;x2=T.x+T.w/2;
+  }
   const dash=e.status==="local"?' stroke-dasharray="6 4"':"";
   const mx=(x1+x2)/2,my=(y1+y2)/2;
   let lbl="";
@@ -893,6 +907,16 @@ function _edgeSvg(e){
   }
   return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="1.6"${dash} marker-end="url(#${_smarker(e.status)})"/>`+lbl;
 }
+function _regionSvg(rg){
+  const R=TOPO_REGION;
+  const url=(rg&&rg.url)||"http://127.0.0.1:9000/";
+  const label=(rg&&rg.label)||"에뮬레이션 영역 — NICo Emulator (:9000)";
+  return `<a href="${_esc(url)}" target="_blank" rel="noopener" style="cursor:pointer">`+
+    `<title>${_esc(label)} — 클릭 시 트윈 대시보드 열기</title>`+
+    `<rect x="${R.x}" y="${R.y}" width="${R.w}" height="${R.h}" rx="12" fill="var(--green)" fill-opacity="0.035" stroke="var(--green-line)" stroke-width="1.4" stroke-dasharray="7 5"/>`+
+    `<text x="${R.x+12}" y="${R.y+18}" fill="var(--green-text)" font-size="10.5" font-weight="800" letter-spacing=".04em">${_esc(label)}</text>`+
+    `</a>`;
+}
 function renderTopo(d){
   const svg=$("#conn-svg");if(!svg)return;
   const nodes=(d&&d.nodes&&d.nodes.length)?d.nodes:OFFLINE_NODES;
@@ -901,7 +925,7 @@ function renderTopo(d){
     [["ah-up","var(--green)"],["ah-down","var(--red)"],["ah-local","var(--muted-2)"],["ah-unknown","var(--amber)"]]
       .map(m=>`<marker id="${m[0]}" markerWidth="9" markerHeight="9" refX="7.5" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L9,4 L0,8 z" fill="${m[1]}"/></marker>`).join("")+
     `</defs>`;
-  svg.innerHTML=defs+edges.map(_edgeSvg).join("")+nodes.map(_nodeSvg).join("");
+  svg.innerHTML=defs+_regionSvg(d&&d.region)+edges.map(_edgeSvg).join("")+nodes.map(_nodeSvg).join("");
 }
 function renderNicoCard(n,at){
   const box=$("#nico-card");if(!box)return;

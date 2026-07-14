@@ -88,34 +88,50 @@ def _component_nodes(up: bool):
                           {"from": cid, "to": "twin", "label": twin_label,
                            "status": st if st != "unknown" else "up"}]})
 
-    add("ufm", "UFM Enterprise (IB)", "/ufm/v1/fabric/health",
+    add("ufm", "UFM Enterprise — Quantum-X800 IB", "/ufm/v1/fabric/health",
         lambda b: (("unknown" if (b.get("links_degraded") or
                                   b.get("links_down")) else "up"),
                    f"sw {b['switches']['total']} · link "
                    f"{b['links_active']}/{b['links_total']}"
                    + (f" · deg {b['links_degraded']}"
                       if b.get("links_degraded") else "")),
-        "UFM REST", "Quantum-X800 IB")
-    add("netq", "NetQ (Ethernet)", "/netq/v1/validation",
+        "UFM REST", "IB XDR rail (Fabric-A/B)")
+    add("netq", "NetQ — Spectrum-X Ethernet", "/netq/v1/validation",
         lambda b: (("unknown" if (b["summary"].get("fail") or
                                   b["summary"].get("warn")) else "up"),
                    f"validation {b['summary'].get('pass', 0)} pass"
                    + (f" · {b['summary'].get('fail', 0)} fail"
                       if b["summary"].get("fail") else "")),
-        "NetQ REST", "Spectrum-X Eth")
-    add("dlc", "SMCI DLC / CDU", "/emulator/v1/obs/dlc/cdus",
+        "NetQ REST", "SN5600 leaf/spine")
+    add("dlc", "SMCI in-row CDU (DLC-2)", "/emulator/v1/obs/dlc/cdus",
         lambda b: (("unknown" if any((c.get("alarms") or []) for c in b)
                     else "up"),
                    f"CDU {len(b)} · alarms "
                    f"{sum(len(c.get('alarms') or []) for c in b)}"),
-        "Redfish/Modbus", "액랭 DLC-2")
+        "Redfish/Modbus", "액랭 공급/회수")
     add("vast", "VAST Data (AI Storage)", "/vast/v1/clusters",
         lambda b: ("up", f"cluster {len(b.get('clusters', b) or [])}식"),
-        "VMS REST", "NFS/S3 views")
+        "VMS REST", "NFS/S3")
     add("converged", "Converged Network", "/converged/v1/overview",
-        lambda b: ("up", "storage/mgmt rail"),
-        "Spectrum-X", "CX-9/BF-4 rail")
+        lambda b: ("up", "CX-9/BF-4 storage·mgmt rail"),
+        "Spectrum-X", "storage path")
     return comps
+
+
+# 노드별 접속 화면 (다이어그램 클릭 시 새 창)
+NODE_URLS = {
+    "customer": "http://127.0.0.1:8090/customer/",
+    "ops": "http://127.0.0.1:8090/ops/",
+    "biz": "http://127.0.0.1:8090/biz/",
+    "cp": "http://127.0.0.1:8000/",
+    "nico": "http://127.0.0.1:9000/",
+    "twin": "http://127.0.0.1:9000/#sec=cluster",
+    "ufm": "http://127.0.0.1:9000/#sec=fabric",
+    "netq": "http://127.0.0.1:9000/#sec=fabric",
+    "dlc": "http://127.0.0.1:8090/ops/#/obs-dlc",
+    "vast": "http://127.0.0.1:9000/#sec=storage",
+    "converged": "http://127.0.0.1:9000/#sec=fabric",
+}
 
 
 @router.get("/topology")
@@ -150,9 +166,32 @@ def topology():
         {"from": "customer", "to": "cp", "label": "REST /api/v1", "status": "up"},
         {"from": "ops", "to": "cp", "label": "REST /api/v1", "status": "up"},
         {"from": "biz", "to": "cp", "label": "REST /api/v1", "status": "up"},
+        {"from": "nico", "to": "twin",
+         "label": "manage (Redfish/PXE/DPU)", "status": "up" if up else "down"},
     ]
-    for c in _component_nodes(up):
+    # 물리 구성 정합 엣지: 패브릭→랙, CDU→랙(액랭), 랙→converged→스토리지
+    plane_edge = {
+        "ufm": ("twin", "IB XDR rail"),
+        "netq": ("twin", "Spectrum-X Eth"),
+        "dlc": ("twin", "액랭 공급/회수"),
+        "converged": ("vast", "NFS/S3 경로"),
+    }
+    comps = _component_nodes(up)
+    comp_status = {c["node"]["id"]: c["node"]["status"] for c in comps}
+    for c in comps:
         nodes.append(c["node"])
-        edges.extend(c["edges"])
+    for cid, (dst, lbl) in plane_edge.items():
+        st = comp_status.get(cid, "down")
+        edges.append({"from": cid, "to": dst, "label": lbl,
+                      "status": st if st != "unknown" else "up"})
+    st = comp_status.get("converged", "down")
+    edges.append({"from": "twin", "to": "converged", "label": "CX-9 / BF-4",
+                  "status": st if st != "unknown" else "up"})
+    for n in nodes:
+        n["url"] = NODE_URLS.get(n["id"])
     return {"nodes": nodes, "edges": edges, "nico": nico,
+            "region": {"label": "에뮬레이션 영역 — NICo Emulator (:9000)",
+                       "members": ["twin", "ufm", "netq", "dlc",
+                                   "vast", "converged"],
+                       "url": "http://127.0.0.1:9000/"},
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
