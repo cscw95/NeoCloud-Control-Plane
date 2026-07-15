@@ -169,7 +169,7 @@
           <button class="btn-warn" onclick="setEquip()">적용</button>
         </div>
         <div id="eq-msg" class="muted" style="font-size:11px;margin-top:6px">
-          faulted/maintenance 랙은 M4 배치에서 자동 제외됩니다.</div>
+          faulted/maintenance 랙은 배치에서 자동 제외됩니다.</div>
       </div>
       <div class="tabpane" id="pane-bf">
         <div class="subh" style="margin-top:0">Break-fix 큐 — quarantined / RMA / cordoned
@@ -249,7 +249,7 @@
   <div class="grid2">
     <div class="panel">
       <div class="sec-h"><span class="tick"></span>
-        <span class="t">Shared Services ⑦ — IAM · Secrets · PAM · Audit</span>
+        <span class="t">Shared Services — IAM · Secrets · PAM · Audit</span>
         <span class="c">공용 플랫폼</span>
         <span class="nvreq" style="margin-left:auto">SEC01·SEC04·SEC07·SEC08</span></div>
       <div class="subh" style="margin-top:0">IAM Realm — 테넌트별 OIDC (기본 롤 3종 · 포털 MFA)</div>
@@ -284,7 +284,7 @@
           <th>NeoCloud OS 구현</th><th style="width:70px">상태</th></tr></thead>
         <tbody>
           <tr><td><span class="nvreq">CNP01</span></td><td>API/CLI — 노드 라이프사이클·전원·인벤토리</td><td>주문 파이프라인 + NICo REST/gRPC (provision·release·power) · /nodes · /fabric</td><td><span class="ok">구현</span></td></tr>
-          <tr><td><span class="nvreq">CNP03</span></td><td>NVLink-Aware Allocation</td><td>M4 배치 — NVL72 도메인 무결성(랙 단위)·연속 배치</td><td><span class="ok">구현</span></td></tr>
+          <tr><td><span class="nvreq">CNP03</span></td><td>NVLink-Aware Allocation</td><td>배치 엔진 — NVL72 도메인 무결성(랙 단위)·연속 배치</td><td><span class="ok">구현</span></td></tr>
           <tr><td><span class="nvreq">CNP04</span></td><td>Resource States</td><td>NodeInstance/Order 상태머신 (provisioning→in_service→…)</td><td><span class="ok">구현</span></td></tr>
           <tr><td><span class="nvreq">CNP06</span></td><td>Serial Console + 로그 보존</td><td>NICo SSH Console → Loki 스트림</td><td><span class="ok">구현</span></td></tr>
           <tr><td><span class="nvreq">CNP07</span></td><td>Node Group (GPU/CPU) CRUD</td><td>테넌트 클러스터(rack_set) + CPU 노드 그룹(기본 5대)</td><td><span class="ok">구현</span></td></tr>
@@ -292,7 +292,7 @@
           <tr><td><span class="nvreq">CNP10</span></td><td>Redfish over TLS (IPMI 금지)</td><td>BMC 제어 전 구간 Redfish (트레이스로 검증 가능)</td><td><span class="ok">구현</span></td></tr>
           <tr><td><span class="nvreq">BOOT01·BOOT02</span></td><td>커스텀 이미지 · cloud-init 메타데이터</td><td>PXE 테넌트 이미지 + cloud-init + FMDS 메타데이터</td><td><span class="ok">구현</span></td></tr>
           <tr><td><span class="nvreq">SDN01·SDN04</span></td><td>VPC CRUD · 3-plane 분리(BMC/사용자/스토리지)</td><td>테넌트 VPC(segment)·VRF/VNI + OOB·converged·storage 분리</td><td><span class="ok">구현</span></td></tr>
-          <tr><td><span class="nvreq">SEC01·SEC04·SEC07·SEC08</span></td><td>IAM — OIDC 인증 · RBAC · 관리면 MFA · 감사 로그</td><td>Shared Services ⑦ — 테넌트 IAM realm(롤 3종)·acceptance 서비스 계정·Vault 자격증명·PAM 세션·감사 트레일</td><td><span class="ok">구현</span></td></tr>
+          <tr><td><span class="nvreq">SEC01·SEC04·SEC07·SEC08</span></td><td>IAM — OIDC 인증 · RBAC · 관리면 MFA · 감사 로그</td><td>Shared Services — 테넌트 IAM realm(롤 3종)·acceptance 서비스 계정·Vault 자격증명·PAM 세션·감사 트레일</td><td><span class="ok">구현</span></td></tr>
           <tr><td><span class="nvreq">BFX01·BFX02·BFX03</span></td><td>Breakfix API — cordon·GPU reset·이력·시리얼</td><td>Break-fix 큐 + NVSentinel reset + NICo hardware/attestation API</td><td><span class="ok">구현</span></td></tr>
           <tr><td><span class="nvreq">HSS01·HSS02·HSS04</span></td><td>스토리지 API 프로비저닝 · QoS 보장 · 쿼터</td><td>VAST VMS — view·quota·QoS(대역폭/IOPS) 자동/수동</td><td><span class="ok">구현</span></td></tr>
           <tr><td><span class="nvreq">DMS01·DMS02</span></td><td>Data Mover CPU 노드 (GPU 인도 2주 전)</td><td>테넌트당 CPU 노드 5대 — DPU·VPC 연결·고성능 네트워킹</td><td><span class="ok">구현</span></td></tr>
@@ -436,7 +436,7 @@ async function loadEquip(){
   const bad=h.faulted_equipment.map(e=>
     `<div class="eqcard"><span class="dot ${e.state==="faulted"?"red":"amber"}"></span>
      <div style="min-width:0"><div class="id">${e.id}</div>
-       <div class="sub">${e.kind} · ${e.state} · ${e.tenant_id||"—"}${e.state==="faulted"?" — M4 배치 자동 제외":""}</div></div>
+       <div class="sub">${e.kind} · ${e.state} · ${e.tenant_id||"—"}${e.state==="faulted"?" — 배치 자동 제외":""}</div></div>
      <span class="eqbtns">
        ${e.state==="faulted"?`<button class="btn-warn btn-sm"
           onclick="setEquipDirect('${e.kind}','${e.id}','maintenance')">정비</button>`:""}
