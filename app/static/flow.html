@@ -1117,9 +1117,9 @@ function renderNicoCard(n,at){
       `<tr><th>NICo URL</th><td class="kv">${_esc(url)}</td></tr>`+
       `<tr><th>버전</th><td class="kv">${V(n&&n.version)}</td></tr>`+
       `<tr><th>지연</th><td class="kv">${ok?_esc(n.latency_ms)+" ms":'<span class="muted">—</span>'}</td></tr>`+
-      `<tr><th>Rack · Model</th><td class="kv">${V(n&&n.rack)} · ${V(n&&n.model)}</td></tr>`+
-      `<tr><th>Trays / GPU / DPU</th><td class="kv">${V(n&&n.compute_trays)} / ${V(n&&n.gpus)} / ${V(n&&n.dpus)}</td></tr>`+
-      `<tr><th>Attachments</th><td class="kv">${V(n&&n.attachments)}</td></tr>`+
+      `<tr><th>사이트 컨트롤러</th><td class="kv">${(n&&n.sites&&n.sites.length)?_esc(n.sites.join(" · ")):'<span class="muted">—</span>'}</td></tr>`+
+      `<tr><th>Trays / GPU / DPU</th><td class="kv">${V(n&&n.compute_trays)} / ${V(n&&n.gpus)} / ${V(n&&n.dpus)} <span class="muted">(AI Infra 경유)</span></td></tr>`+
+      `<tr><th>Managed / Jobs</th><td class="kv">${V(n&&n.managed_hosts)} hosts / ${V(n&&n.active_jobs)} active</td></tr>`+
       `<tr><th>Tenants</th><td><div class="chips" style="margin:0">${chips}</div></td></tr>`+
     `</tbody></table>`+
     `<div class="callout ${mode==="http"?"cyan":""}" style="margin-top:10px">`+

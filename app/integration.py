@@ -44,11 +44,21 @@ def _probe(url: str, timeout: float = 1.2):
 
 @router.get("/nico")
 def nico_status():
-    """Live NICo Emulator integration status (server-side probe, no CORS)."""
+    """Live NICo Emulator integration status (server-side probe, no CORS).
+
+    분리 이후 물리 트윈(/emulator/v1/twin)은 :9100 소유 — NICo 측 값은
+    healthz(버전·AI Infra 도달성·규모)와 사이트 컨트롤러 오케스트레이션
+    (/emulator/v1/sites: managed hosts·jobs·tenants_served)에서 집계한다.
+    다이어그램 박스/우측 카드가 이 값을 그대로 표시하므로 여기가 싱크 기준."""
     health = _probe(f"{NICO_BASE}/healthz")
-    twin = _probe(f"{NICO_BASE}/emulator/v1/twin") if health["reachable"] else None
-    tb = (twin or {}).get("body") or {}
     hb = health.get("body") or {}
+    ai = hb.get("ai_infra") or {}
+    sites = (_probe(f"{NICO_BASE}/emulator/v1/sites", timeout=1.5)
+             if health["reachable"] else None)
+    sb = ((sites or {}).get("body") or {}).get("sites") or []
+    orch = [(s.get("orchestration") or {}) for s in sb]
+    tenants = sorted({t for o in orch for t in (o.get("tenants_served") or [])})
+    trays = ai.get("compute_trays")
     return {
         "adapter_mode": _adapter_mode(),          # http | local
         "adapter_active": _adapter_mode() == "http",
@@ -57,13 +67,16 @@ def nico_status():
         "reachable": health["reachable"],
         "latency_ms": health["latency_ms"],
         "version": hb.get("version"),
-        "rack": hb.get("rack") or tb.get("rack_id"),
-        "model": tb.get("model"),
-        "compute_trays": hb.get("compute_trays") or tb.get("compute_trays"),
-        "dpus": hb.get("dpus") or tb.get("dpus"),
-        "gpus": tb.get("gpus"),
-        "tenants": tb.get("tenants", []),
-        "attachments": tb.get("attachments"),
+        "sites": [s.get("site_id") for s in sb],
+        "managed_hosts": sum(o.get("managed_hosts") or 0 for o in orch),
+        "active_jobs": sum(o.get("active_jobs") or 0 for o in orch),
+        "tenants": tenants,
+        "rack": ai.get("rack"),
+        "model": "VR NVL72" if trays else None,
+        "compute_trays": trays,
+        "gpus": trays * 4 if trays else None,     # VR: 4 GPU / compute tray
+        "dpus": ai.get("dpus"),
+        "ai_infra_reachable": bool(ai.get("reachable")),
     }
 
 
@@ -164,25 +177,35 @@ def topology():
         {"id": "nico", "label": "NICo Emulator",
          "kind": "emulator", "status": "up" if up else "down",
          "detail": (f"v{nico['version']} · {nico['latency_ms']}ms · "
-                    f"{len(nico['tenants'])} tenant(s)") if up
+                    f"사이트 {len(nico['sites'])} · "
+                    f"호스트 {nico['managed_hosts']} · "
+                    f"테넌트 {len(nico['tenants'])}") if up
                    else f"unreachable @ {nico['nico_url']}"},
         {"id": "cp", "label": "NeoCloud OS Control-Plane (NOCP)",
          "kind": "control", "status": "up",
          "detail": f"v{__version__} · adapter: {nico['adapter_mode']}"},
-        {"id": "customer", "label": "Customer Console",
-         "kind": "console", "status": "up", "detail": "tenant self-service"},
-        {"id": "ops", "label": "Operations Console",
-         "kind": "console", "status": "up", "detail": "SRE / NOC"},
-        {"id": "biz", "label": "Business Console",
-         "kind": "console", "status": "up", "detail": "sales / exec"},
     ]
+    # 콘솔 3종 — 하드코딩 금지: :8090 정적 서버를 실제 프로브해 상태 반영
+    con = _probe(f"{CONSOLE_BASE}/ops/", timeout=0.8)
+    con_up = con["reachable"]
+    for cid, label, detail in (
+            ("customer", "Customer Console", "tenant self-service"),
+            ("ops", "Operations Console", "SRE / NOC"),
+            ("biz", "Business Console", "sales / exec")):
+        nodes.append({"id": cid, "label": label,
+                      "kind": "console",
+                      "status": "up" if con_up else "down",
+                      "detail": detail if con_up else "미기동 (:8090)"})
     edges = [
         {"from": "cp", "to": "nico",
          "label": "NicoHttpAdapter" if nico["adapter_active"] else "FakeNico (in-process)",
          "status": ("up" if up else "down") if nico["adapter_active"] else "local"},
-        {"from": "customer", "to": "cp", "label": "REST /api/v1", "status": "up"},
-        {"from": "ops", "to": "cp", "label": "REST /api/v1", "status": "up"},
-        {"from": "biz", "to": "cp", "label": "REST /api/v1", "status": "up"},
+        {"from": "customer", "to": "cp", "label": "REST /api/v1",
+         "status": "up" if con_up else "down"},
+        {"from": "ops", "to": "cp", "label": "REST /api/v1",
+         "status": "up" if con_up else "down"},
+        {"from": "biz", "to": "cp", "label": "REST /api/v1",
+         "status": "up" if con_up else "down"},
         {"from": "nico", "to": "twin",
          "label": "drive (:9100 REST)", "status": "up" if up else "down"},
     ]
