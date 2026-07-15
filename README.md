@@ -8,7 +8,6 @@ Rubin**). Two NVIDIA reference documents are codified into its data model and AP
 
 | Blueprint | Model | GPU/CPU | HBM | NVLink | Rack TDP | Cooling |
 |---|---|---|---|---|---|---|
-| `gb200-nvl72` | GB200 NVL72 (Gen 1.1) | Blackwell / Grace | 192 GB HBM3e | NVLink5 (1.8 TB/s) | 120 kW (nominal · MaxQ not published) | hybrid |
 | `gb300-nvl72` | GB300 NVL72 (Gen 1.1)¹ | Blackwell Ultra / Grace | 288 GB HBM3e | NVLink5 | 135 kW (peak ~155 · MaxQ not published) | liquid |
 | `vr-nvl72` | Vera Rubin NVL72 (Gen 1.2) | Rubin / Vera | 288 GB HBM4 | NVLink6 (3.6 TB/s) | 227 kW (MaxP 227 · MaxQ 187) | liquid |
 
@@ -25,7 +24,7 @@ Rubin**). Two NVIDIA reference documents are codified into its data model and AP
 | **Inventory & Topology** | ✅ Implemented | AI Factory ▸ Block ▸ DU ▸ SU ▸ Rack (NVL72) ▸ Tray ▸ GPU/CPU/DPU expansion, capacity/power aggregation, blueprint-based SU provisioning, MaxQ/MaxP power policies |
 | **Multi-tenancy & Isolation** | ✅ Implemented | Tenant lifecycle, capacity allocation (SU/rack-set/HAC), NVLink partitions (GFM model), automatic VNI/VRF binding, 4-layer isolation verification report |
 | **Service Lifecycle (M1/M3/M4-lite)** | ✅ Implemented | Order pipeline (with saga compensation), NodeInstance/ServiceOrder state machines, NVL-domain-integrity placement, reclamation & sanitization, NICo reconcile (GHOST/ORPHAN/MISMATCH) |
-| **D1 ComputeAdapter + Fake NICo** | ✅ Implemented | ComputeAdapter contract (Local/HTTP implementations), NICo Day 0/1/2 simulator (job polling, fault injection) — swap only the adapter to integrate with a real NICo |
+| **ComputeAdapter by NICo** | ✅ Implemented | ComputeAdapter contract (Local/HTTP implementations), NICo Day 0/1/2 simulator (job polling, fault injection) — swap only the adapter to integrate with a real NICo |
 | Health & Telemetry | 🔜 Roadmap | Unified GPU/DPU/network/facility monitoring (NVSentinel integration) |
 | Power & Cooling Integration | 🔜 Roadmap | DSX Exchange (MQTT) IT-OT, CDU/TCS, Coordinated Leak Response |
 | Billing & Metering | 🔜 Roadmap | Per-tenant usage metering and billing (NeoCloud revenue layer) |
