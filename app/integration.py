@@ -6,11 +6,13 @@ draws the live connection graph for the verification console:
 """
 import os
 import time
+from collections import defaultdict
+from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter
 
-from . import __version__
+from . import __version__, metrics, trace
 
 router = APIRouter(prefix="/api/v1/integration", tags=["integration"])
 
@@ -296,3 +298,97 @@ def consistency():
             "tenants": {"nocp": nocp, "nico_emulator": nico, "ai_infra": ai},
             "findings": findings,
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+
+# 실시간 API 호출 집계 + 주요 상태 — /flow 모듈 아키텍처 라이브 배지가 소비.
+_twin_cache: dict = {"at": 0.0, "data": None}
+
+
+def _twin_summary(now: float):
+    """AI Infra(:9100) obs 요약 best-effort 프로브 — 5초 캐시(폴링 오버헤드 방지)."""
+    if now - _twin_cache["at"] < 5.0:
+        return _twin_cache["data"]
+    data = None
+    p = _probe(f"{AI_INFRA_BASE}/emulator/v1/obs/summary", timeout=0.6)
+    b = p.get("body") if p.get("reachable") else None
+    if isinstance(b, dict):
+        data = {"alerts_open": b.get("alerts_open"),
+                "racks_off": b.get("racks_off"),
+                "racks": b.get("racks"),
+                "tenants": b.get("tenants")}
+    _twin_cache.update(at=now, data=data)
+    return data
+
+
+def _trace_supplement(now: float):
+    """순수 내부 모듈(트레이스만 방출) 보조 카운트 — src→module 매핑 집계."""
+    counts: dict = defaultdict(int)
+    last: dict = {}
+    for ev in trace.TRACER.query(limit=2000):
+        mid = metrics.module_for_trace_src(ev.src)
+        if not mid:
+            continue
+        counts[mid] += 1
+        try:
+            last[mid] = datetime.fromisoformat(ev.at).timestamp()
+        except Exception:                          # noqa: BLE001
+            pass
+    return counts, last
+
+
+@router.get("/module-stats")
+def module_stats():
+    """모듈별 실시간 API 호출 건수·EPS·최근 활동 + 주요 상태 총계.
+
+    14개 Control-Plane 모듈(cp-* + d-*)의 누적 호출·초당 호출(60s sliding)·
+    마지막 활동(초)을 미들웨어 카운터에서 도출하고, 순수 내부 모듈은 파이프
+    라인 트레이스로 보조 카운트한다. totals는 lifecycle/tenancy store에서 진행
+    중 주문·job·테넌트·파이프라인 이벤트 수를 집계한다."""
+    from .models import OrderState
+    from .store import STORE
+
+    now = time.time()
+    mods_snap, grand_total, grand_eps = metrics.METRICS.snapshot(now)
+    sup_counts, sup_last = _trace_supplement(now)
+
+    modules = []
+    for mid in metrics.MODULES:
+        d = mods_snap[mid]
+        last_s = d["last_active_s"]
+        st = sup_last.get(mid)
+        if st is not None:
+            sup_s = round(now - st, 1)
+            last_s = sup_s if last_s is None else min(last_s, sup_s)
+        modules.append({
+            "id": mid,
+            "calls": d["calls"] + sup_counts.get(mid, 0),
+            "eps": d["eps"],
+            "last_active_s": last_s,
+        })
+
+    terminal = {OrderState.delivered, OrderState.closed,
+                OrderState.rejected, OrderState.failed}
+    inflight = {OrderState.provisioning, OrderState.isolating,
+                OrderState.storage_binding, OrderState.k8s_installing}
+    with STORE.lock:
+        active_orders = sum(1 for o in STORE.orders.values()
+                            if o.state not in terminal)
+        active_jobs = sum(1 for o in STORE.orders.values()
+                          if o.state in inflight)
+        tenants = len({a.tenant_id for a in STORE.allocations.values()}
+                      | {c.tenant_id for c in STORE.cpu_nodes.values()
+                         if c.tenant_id})
+
+    return {
+        "modules": modules,
+        "totals": {
+            "calls": grand_total,
+            "eps": grand_eps,
+            "active_orders": active_orders,
+            "active_jobs": active_jobs,
+            "tenants": tenants,
+            "pipeline_events": trace.TRACER.count(),
+        },
+        "twin": _twin_summary(now),
+        "at": datetime.now(timezone.utc).isoformat(),
+    }

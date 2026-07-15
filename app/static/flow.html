@@ -50,6 +50,26 @@
   .mod.skt{border-top:3px solid var(--blue)}
   .mod.oss{border-top:3px solid var(--green)}
   .mod.ptr{border-top:3px solid #8a8f98}
+  /* 실시간 API 호출 배지 + 활동 점등(module-stats 폴링) */
+  .mod .mbadge{display:flex;justify-content:center;align-items:baseline;gap:6px;margin-top:5px}
+  .mod .mbadge .bc{font-family:Menlo,monospace;font-weight:700;font-size:12px;color:var(--muted)}
+  .mod .mbadge .be{font-family:Menlo,monospace;font-size:9px;color:var(--muted-2)}
+  .mod.live{border-color:var(--green);box-shadow:0 0 0 1px var(--green-line) inset}
+  .mod.live .mbadge .bc{color:var(--green-text)}
+  .mod.live::after{content:"";position:absolute;top:5px;right:5px;width:6px;height:6px;
+       border-radius:50%;background:var(--green);box-shadow:0 0 5px var(--green)}
+  /* 실시간 총계 스트립 + 스파크라인 */
+  .mstotals{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 12px}
+  .ms-tile{flex:1 1 84px;background:var(--card-sub);border:1px solid var(--line);
+       border-radius:8px;padding:6px 8px;text-align:center}
+  .ms-tile .v{font-family:Menlo,monospace;font-weight:700;font-size:17px;
+       color:var(--text);line-height:1.1}
+  .ms-tile .v.hot{color:var(--green-text)}
+  .ms-tile .k{font-size:9.5px;color:var(--muted);margin-top:2px}
+  .ms-spark{flex:2 1 150px;background:var(--card-sub);border:1px solid var(--line);
+       border-radius:8px;padding:6px 8px;display:flex;flex-direction:column;justify-content:center}
+  .ms-spark svg{width:100%;height:34px;display:block}
+  .ms-spark .k{font-size:9.5px;color:var(--muted);margin-top:2px;text-align:center}
   .arrow{align-self:center;color:var(--muted);padding:0 2px;font-size:12px}
   .legend{display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--muted);flex-wrap:wrap}
   .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
@@ -169,35 +189,53 @@
     <div class="sec-h">
       <span class="tick"></span>
       <span class="t">모듈 아키텍처 — 요청이 지나가는 경로</span>
-      <span class="c">NeoCloud Control-Plane 모듈명 기준 · 괄호는 코드 모듈 · 실행 시 점등</span>
+      <span class="c">Control-Plane 14개 모듈(cp-* + d-*) · 실시간 API 호출 집계 · module-stats 2.5초 폴링</span>
+    </div>
+    <!-- 실시간 총계 — module-stats 폴링마다 갱신되는 라이브 지표 -->
+    <div class="mstotals" id="ms-totals">
+      <div class="ms-tile"><div class="v hot" id="ms-eps">—</div><div class="k">총 API/s (EPS)</div></div>
+      <div class="ms-tile"><div class="v" id="ms-calls">—</div><div class="k">누적 호출</div></div>
+      <div class="ms-tile"><div class="v" id="ms-orders">—</div><div class="k">활성 주문</div></div>
+      <div class="ms-tile"><div class="v" id="ms-jobs">—</div><div class="k">진행 job</div></div>
+      <div class="ms-tile"><div class="v" id="ms-tenants">—</div><div class="k">테넌트</div></div>
+      <div class="ms-tile"><div class="v" id="ms-events">—</div><div class="k">파이프라인 이벤트</div></div>
+      <div class="ms-spark"><svg id="ms-spark" viewBox="0 0 120 34" preserveAspectRatio="none" aria-label="EPS 추이"></svg>
+        <div class="k">EPS 추이 (최근 48회 폴링)</div></div>
     </div>
     <div class="arch" id="arch">
-      <div class="mod skt" data-m="portal"><div class="nm">Portals · Public APIs</div><div class="rl">①~③ · cp-api</div></div>
+      <div class="mod skt" data-m="cp-api"><div class="nm">Portals · Public APIs</div><div class="rl">cp-api</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
       <div class="arrow">→</div>
-      <div class="mod skt" data-m="intake"><div class="nm">Service-Order Intake</div><div class="rl">cp-intake</div></div>
+      <div class="mod skt" data-m="cp-intake"><div class="nm">Service-Order Intake</div><div class="rl">cp-intake</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
       <div class="arrow">→</div>
-      <div class="mod skt" data-m="fulfill"><div class="nm">Tenant Fulfillment</div><div class="rl">cp-fulfill · M1 saga</div></div>
+      <div class="mod skt" data-m="cp-fulfill"><div class="nm">Tenant Fulfillment</div><div class="rl">cp-fulfill</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
       <div class="arrow">→</div>
-      <div class="mod skt" data-m="policy"><div class="nm">Policy Orchestration</div><div class="rl">cp-policy · M4 배치</div></div>
+      <div class="mod skt" data-m="cp-policy"><div class="nm">Policy Orchestration</div><div class="rl">cp-policy</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
       <div class="arrow">→</div>
-      <div class="mod skt" data-m="model"><div class="nm">Resource &amp; Service Model</div><div class="rl">cp-model · M3 미러</div></div>
+      <div class="mod skt" data-m="cp-model"><div class="nm">Resource &amp; Service Model</div><div class="rl">cp-model</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
       <div class="arrow">→</div>
-      <div class="mod skt" data-m="provision"><div class="nm">BM Provisioning</div><div class="rl">cp-provision · D1 어댑터</div></div>
+      <div class="mod skt" data-m="cp-provision"><div class="nm">BM Provisioning</div><div class="rl">cp-provision</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
       <div class="arrow">→</div>
-      <div class="mod oss" data-m="nico"><div class="nm">④ Compute Services</div><div class="rl">NICo Day 0/1/2</div></div>
+      <div class="mod skt" data-m="cp-obs"><div class="nm">Observability</div><div class="rl">cp-obs</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
       <div class="arrow">→</div>
-      <div class="mod oss" data-m="sdn"><div class="nm">⑤ SDN / Network Fabric</div><div class="rl">D2 — HBN·UFM·NMX</div></div>
+      <div class="mod skt" data-m="cp-sla"><div class="nm">SLA Management</div><div class="rl">cp-sla</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
       <div class="arrow">→</div>
-      <div class="mod ptr" data-m="storage"><div class="nm">⑥ Storage Services</div><div class="rl">D4 — VAST VMS</div></div>
+      <div class="mod oss" data-m="d-compute"><div class="nm">Compute Services</div><div class="rl">d-compute · NICo</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
       <div class="arrow">→</div>
-      <div class="mod ptr" data-m="shared"><div class="nm">⑦ Shared Services</div><div class="rl">IAM · Vault · PAM</div></div>
+      <div class="mod oss" data-m="d-sdn"><div class="nm">SDN / Network Fabric</div><div class="rl">d-sdn · HBN·UFM·NMX</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
       <div class="arrow">→</div>
-      <div class="mod skt" data-m="delivery"><div class="nm">Delivery · Reclamation</div><div class="rl">cp-delivery · cp-reclaim</div></div>
+      <div class="mod ptr" data-m="d-storage"><div class="nm">Storage Services</div><div class="rl">d-storage · VAST VMS</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
+      <div class="arrow">→</div>
+      <div class="mod ptr" data-m="d-shared"><div class="nm">Shared Services</div><div class="rl">d-shared · IAM·Vault·PAM</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
+      <div class="arrow">→</div>
+      <div class="mod skt" data-m="cp-delivery"><div class="nm">Delivery · Expansion</div><div class="rl">cp-delivery</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
+      <div class="arrow">→</div>
+      <div class="mod skt" data-m="cp-reclaim"><div class="nm">Reclamation · Sanitization</div><div class="rl">cp-reclaim</div><div class="mbadge"><span class="bc">0</span><span class="be">0/s</span></div></div>
     </div>
     <div class="legend">
       <span><i style="background:var(--blue)"></i>SKT IN-HOUSE (NeoCloud OS)</span>
       <span><i style="background:var(--green)"></i>NVIDIA (Emulator)</span>
       <span><i style="background:#8a8f98"></i>PARTNER / COMMON PLATFORM</span>
+      <span><i style="background:var(--green)"></i>● 최근 10초 내 호출(활성)</span>
     </div>
   </div>
 
@@ -348,13 +386,13 @@
         <div class="panel">
           <div class="sec-h"><span class="tick"></span>
             <span class="t">Resource &amp; Service Model — NodeInstance 미러</span>
-            <span class="c">cp-model · M3</span></div>
+            <span class="c">cp-model</span></div>
           <div class="chips" id="node-chips"></div>
           <div class="racks" id="node-racks"></div>
         </div>
         <div class="panel">
           <div class="sec-h"><span class="tick"></span>
-            <span class="t">④ Compute Services — NICo Emulator 호스트</span>
+            <span class="t">Compute Services — NICo Emulator 호스트</span>
             <span class="c">외부 SoT</span></div>
           <div class="chips" id="host-chips"></div>
           <div class="racks" id="host-racks"></div>
@@ -364,14 +402,14 @@
       <div class="grid2">
         <div class="panel">
           <div class="sec-h"><span class="tick"></span>
-            <span class="t">⑤ SDN / Network Fabric — 테넌트 격리</span>
-            <span class="c">D2 · VPC · IB P_Key · NVLink</span></div>
+            <span class="t">SDN / Network Fabric — 테넌트 격리</span>
+            <span class="c">VPC · IB P_Key · NVLink</span></div>
           <div id="iso"><span class="muted">테넌트를 선택하고 개통을 실행하면 격리 구성이 표시됩니다.</span></div>
         </div>
         <div class="panel">
           <div class="sec-h"><span class="tick"></span>
-            <span class="t">⑥ Storage Services — VAST VMS</span>
-            <span class="c">D4 · View · Quota · QoS</span></div>
+            <span class="t">Storage Services — VAST VMS</span>
+            <span class="c">View · Quota · QoS</span></div>
           <table><thead><tr><th>View 경로</th><th class="num">용량</th><th class="num">QoS</th><th>테넌트</th><th>Export 제한</th></tr></thead>
             <tbody id="vast"></tbody></table>
         </div>
@@ -379,8 +417,8 @@
 
       <div class="panel">
         <div class="sec-h"><span class="tick"></span>
-          <span class="t">④ Compute Services — NICo Day 0/1/2 API 수동 실행</span>
-          <span class="c">D1 어댑터 경계 검증</span></div>
+          <span class="t">Compute Services — NICo Day 0/1/2 API 수동 실행</span>
+          <span class="c">어댑터 경계 검증</span></div>
         <div class="row">
           <div><label>호스트</label><input id="mh" value="nh-su-1-rack-13-tray-17"></div>
           <div style="flex:0 0 auto;display:flex;align-items:flex-end">
@@ -409,7 +447,7 @@
         </div>
         <div class="panel">
           <div class="sec-h"><span class="tick"></span>
-            <span class="t">⑦ Shared Services — 테넌트 자격증명</span>
+            <span class="t">Shared Services — 테넌트 자격증명</span>
             <span class="c">IAM · Vault · Audit</span></div>
           <div id="shared"><span class="muted">테넌트 생성·개통 시 IAM realm·시크릿·감사 트레일이 표시됩니다.</span></div>
         </div>
@@ -421,7 +459,7 @@
   <div class="panel">
     <div class="sec-h"><span class="tick"></span>
       <span class="t">시스템 세부 동작 트레이스</span>
-      <span class="c">NeoCloud OS ↔ NICo ↔ BMC(Redfish)/DHCP/PXE/DPU(HBN) ↔ UFM/NMX ↔ VAST ↔ IAM/Vault(⑦) · 행 클릭 시 메시지 페이로드</span></div>
+      <span class="c">NeoCloud OS ↔ NICo ↔ BMC(Redfish)/DHCP/PXE/DPU(HBN) ↔ UFM/NMX ↔ VAST ↔ IAM/Vault · 행 클릭 시 메시지 페이로드</span></div>
     <div class="row" style="margin-bottom:8px">
       <input id="tq" placeholder="필터 — 호스트/키워드 (예: nh-su-2-rack-00, VRF, P_Key)">
       <select id="tch" style="flex:0 0 170px">
@@ -467,16 +505,16 @@ const ORDER_STEPS={new:["received","validated","reserved","provisioning","isolat
                         "storage_binding","acceptance","delivered"],
                    terminate:["received","validated","reclaiming","closed"]};
 const FAIL_STEPS=["rejected","compensating","failed"];
-// 상태 → 점등 모듈 (arch.html의 BLOCKS 매핑과 동일 기준)
-const MOD_MAP={received:["portal","intake"],validated:["intake","policy","model"],
-  reserved:["fulfill","model","nico"],provisioning:["provision","nico"],
-  isolating:["fulfill","policy","sdn"],storage_binding:["fulfill","storage"],
-  acceptance:["policy","sdn","shared"],
-  k8s_installing:["fulfill","provision","nico","sdn"],
-  delivered:["shared","delivery","portal"],
-  rejected:["policy","intake"],compensating:["fulfill","provision","nico","sdn","storage"],
-  failed:["intake"],reclaiming:["delivery","nico","sdn","storage","shared"],
-  closed:["delivery","portal"]};
+// 상태 → 점등 모듈 (arch.html의 BLOCKS 매핑과 동일 기준 · cp-*/d-* id)
+const MOD_MAP={received:["cp-api","cp-intake"],validated:["cp-intake","cp-policy","cp-model"],
+  reserved:["cp-fulfill","cp-model","d-compute"],provisioning:["cp-provision","d-compute"],
+  isolating:["cp-fulfill","cp-policy","d-sdn"],storage_binding:["cp-fulfill","d-storage"],
+  acceptance:["cp-obs","cp-sla","d-sdn","d-shared"],
+  k8s_installing:["cp-fulfill","cp-provision","d-compute","d-sdn"],
+  delivered:["cp-delivery","d-shared","cp-api"],
+  rejected:["cp-policy","cp-intake"],compensating:["cp-fulfill","cp-provision","d-compute","d-sdn","d-storage"],
+  failed:["cp-intake"],reclaiming:["cp-reclaim","d-compute","d-sdn","d-storage","d-shared"],
+  closed:["cp-reclaim","cp-api"]};
 
 // ---- API wrapper: 모든 호출을 로그에 기록 --------------------------------
 const LOG=[];
@@ -588,7 +626,7 @@ async function refreshPools(){
          +(h.segment_id?` · ${h.segment_id}`:""));
 }
 
-// ---- 시스템 세부 트레이스 / D2 격리 / D4 스토리지 ---------------------------
+// ---- 시스템 세부 트레이스 / 격리 / 스토리지 ---------------------------
 // (콘솔 내부 읽기라 API 로그를 어지럽히지 않도록 raw fetch 사용)
 async function qget(path){const r=await fetch(path);return r.json()}
 let TR=[];
@@ -840,7 +878,7 @@ async function checkConsistency(){
     const fmt=v=>v===null?'<span class="muted">미응답</span>':(v.length?v.join(", "):'<span class="muted">없음</span>');
     const rows=(c.findings||[]).map(f=>{
       const col=f.severity==="fail"?"var(--red)":(f.severity==="warn"?"var(--amber,#e8c66a)":"var(--muted)");
-      return `<div style="color:${col};margin-top:3px">${f.severity==="fail"?"✗":(f.severity==="warn"?"⚠":"ℹ")} ${esc(f.message)}</div>`;
+      return `<div style="color:${col};margin-top:3px">${f.severity==="fail"?"✗":(f.severity==="warn"?"⚠":"ℹ")} ${_esc(f.message)}</div>`;
     }).join("");
     box.innerHTML=`<div style="display:flex;gap:8px;align-items:center">
         <b style="color:${c.ok?"var(--g)":"var(--red)"}">${c.ok?"✓ 정합":"✗ 불일치"}</b>
@@ -849,7 +887,7 @@ async function checkConsistency(){
         <span class="muted">NOCP</span> ${fmt(t.nocp)}<br>
         <span class="muted">NICo Emu</span> ${fmt(t.nico_emulator)}<br>
         <span class="muted">AI Infra</span> ${fmt(t.ai_infra)}</div>${rows}`;
-  }catch(e){box.innerHTML='<span class="muted">점검 실패 — '+esc(e.message)+'</span>';}
+  }catch(e){box.innerHTML='<span class="muted">점검 실패 — '+_esc(e.message)+'</span>';}
 }
 async function stageMismatch(){
   const nodes=await call("GET","/api/v1/nodes?state=in_service");
@@ -922,6 +960,50 @@ async function mReport(){
   }catch(e){$("#san").innerHTML=`<span class="muted">${e.message}</span>`}
 }
 
+// ---- 실시간 API 호출 집계 폴링 (module-stats) --------------------------------
+const EPS_HIST=[];
+async function pollModuleStats(){
+  let s;try{s=await qget("/api/v1/integration/module-stats")}catch(e){return}
+  if(!s||!s.modules)return;
+  const byId={};s.modules.forEach(m=>byId[m.id]=m);
+  document.querySelectorAll("#arch .mod").forEach(el=>{
+    const m=byId[el.dataset.m];if(!m)return;
+    const bc=el.querySelector(".mbadge .bc"),be=el.querySelector(".mbadge .be");
+    if(bc)bc.textContent=m.calls;
+    if(be){const e=m.eps||0;be.textContent=(e<10?e.toFixed(1):Math.round(e))+"/s"}
+    el.classList.toggle("live",m.last_active_s!=null&&m.last_active_s<10);
+  });
+  const t=s.totals||{};
+  $("#ms-eps").textContent=(t.eps||0).toFixed(2);
+  $("#ms-calls").textContent=t.calls??"—";
+  $("#ms-orders").textContent=t.active_orders??"—";
+  $("#ms-jobs").textContent=t.active_jobs??"—";
+  $("#ms-tenants").textContent=t.tenants??"—";
+  $("#ms-events").textContent=t.pipeline_events??"—";
+  EPS_HIST.push(t.eps||0);if(EPS_HIST.length>48)EPS_HIST.shift();
+  drawSpark();
+}
+function drawSpark(){
+  const svg=$("#ms-spark");if(!svg)return;
+  const n=EPS_HIST.length;if(!n){svg.innerHTML="";return}
+  const max=Math.max(0.001,...EPS_HIST);
+  const pts=EPS_HIST.map((v,i)=>{
+    const x=n>1?(i/(n-1))*120:60;const y=34-(v/max)*30-2;
+    return x.toFixed(1)+","+y.toFixed(1);}).join(" ");
+  svg.innerHTML=`<polyline fill="none" stroke="var(--green)" stroke-width="1.5" `+
+    `stroke-linejoin="round" points="${pts}"/>`;
+}
+let MS_TIMER=null;
+function startModulePolling(){
+  if(MS_TIMER)return;
+  pollModuleStats();
+  MS_TIMER=setInterval(()=>{if(!document.hidden)pollModuleStats()},2500);
+}
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){if(MS_TIMER){clearInterval(MS_TIMER);MS_TIMER=null}}
+  else startModulePolling();
+});
+
 // ---- init ---------------------------------------------------------------------
 (async function(){
   drawTrack("new",[]);
@@ -933,6 +1015,7 @@ async function mReport(){
   await refreshDetail();
   await loadK8s();
   await checkConsistency();
+  startModulePolling();
 })();
 
 // ---- 시스템 연결 관계 (Digital Twin · NICo · Control-Plane · Consoles) --------

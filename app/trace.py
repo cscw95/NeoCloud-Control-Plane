@@ -72,6 +72,10 @@ class Tracer:
                 out.append(ev)
             return out[-limit:]
 
+    def count(self) -> int:
+        with self._lock:
+            return len(self._events)
+
     def clear(self) -> None:
         with self._lock:
             self._events.clear()

@@ -23,6 +23,7 @@ from . import (
     fabric,
     integration,
     lifecycle,
+    metrics,
     nico_fake,
     shared_services,
     tenancy,
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI):
     vast_fake.FAKE_VAST.reset()
     shared_services.SHARED.reset()
     trace.TRACER.clear()
+    metrics.METRICS.reset()        # 실시간 API 호출 집계 초기화
     lifecycle.bootstrap_nodes()
     # 컴퓨트 트레이 에뮬레이션 — 백그라운드 틱 (2s)
     tray_emu.EMULATOR.reset()
@@ -88,6 +90,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def count_api_calls(request, call_next):
+    """경량 요청 카운터 — 경로를 Control-Plane 모듈로 매핑해 집계.
+
+    요청당 O(1)(카운터 증가 + 타임스탬프). /flow의 module-stats 배지가 소비한다."""
+    metrics.METRICS.record(request.url.path)
+    return await call_next(request)
 
 
 @app.middleware("http")
