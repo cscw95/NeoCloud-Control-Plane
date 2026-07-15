@@ -212,3 +212,64 @@ def topology():
                                    "vast", "converged"],
                        "url": AI_INFRA_BASE + "/"},
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+
+@router.get("/consistency")
+def consistency():
+    """계층 간 데이터 정합성 점검 — 테넌트 집합 비교.
+
+    NOCP(주문/할당 보유 테넌트) vs NICo Emulator 브리지(세그먼트 tenant_ref)
+    vs AI Infra 물리 트윈(DPU attachment 테넌트)을 비교해 고아(orphan —
+    물리에만 존재)·미반영(missing — NOCP에만 존재)을 보고한다.
+    /flow 검증 콘솔의 '데이터 정합성' 패널이 소비한다."""
+    from .store import STORE
+
+    with STORE.lock:
+        nocp = sorted({a.tenant_id for a in STORE.allocations.values()}
+                      | {c.tenant_id for c in STORE.cpu_nodes.values()
+                         if c.tenant_id})
+    # 리셋/테스트 시 오버라이드 가능하도록 호출 시점에 env를 읽는다
+    env = os.environ.get("NOCP_NICO_URL", "")
+    nico_base = (env.rsplit("/nico-bridge", 1)[0] if env else
+                 os.environ.get("NICO_EMULATOR_URL", "http://127.0.0.1:9000"))
+    ai_base = os.environ.get("AI_INFRA_URL", "http://127.0.0.1:9100")
+    adapter = "http" if env else "local"
+
+    def _get(url, timeout=2.5):
+        try:
+            r = httpx.get(url, timeout=timeout)
+            return r.json() if r.status_code < 400 else None
+        except Exception:                          # noqa: BLE001
+            return None
+
+    segs = _get(nico_base + "/nico-bridge/segments")
+    nico = (sorted({s.get("tenant_ref") for s in segs if s.get("tenant_ref")})
+            if isinstance(segs, list) else None)
+    twin = _get(ai_base + "/emulator/v1/twin")
+    ai = sorted(twin.get("tenants") or []) if isinstance(twin, dict) else None
+
+    findings = []
+    if adapter == "local":
+        findings.append({"severity": "info", "kind": "ADAPTER_LOCAL",
+                         "message": "NOCP가 인프로세스(FakeNico) 어댑터로 동작 중 — "
+                                    "주문이 물리 계층(:9000/:9100)에 반영되지 않는다. "
+                                    "풀체인 정합은 NOCP_NICO_URL로 기동(Mode B)."})
+    for name, remote in (("nico_emulator", nico), ("ai_infra", ai)):
+        if remote is None:
+            findings.append({"severity": "warn", "kind": "UNREACHABLE",
+                             "message": f"{name} 미응답 — 비교 불가"})
+            continue
+        orphan = [t for t in remote if t not in nocp]
+        missing = [t for t in nocp if t not in remote]
+        if orphan:
+            findings.append({"severity": "fail", "kind": "ORPHAN_TENANT",
+                             "message": f"{name}에만 존재(NOCP에 없음): {orphan} "
+                                        "— 전체 초기화 또는 회수 필요"})
+        if missing and adapter == "http":
+            findings.append({"severity": "warn", "kind": "MISSING_TENANT",
+                             "message": f"NOCP에만 존재({name} 미반영): {missing}"})
+    ok = not any(f["severity"] == "fail" for f in findings)
+    return {"ok": ok, "adapter": adapter,
+            "tenants": {"nocp": nocp, "nico_emulator": nico, "ai_infra": ai},
+            "findings": findings,
+            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}

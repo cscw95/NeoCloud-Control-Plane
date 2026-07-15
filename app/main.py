@@ -125,6 +125,58 @@ def reseed(blueprints: str | None = None) -> dict:
             "gpus": len(STORE.gpus), "nodes": len(STORE.node_instances)}
 
 
+# ── 시스템별/전체 초기화 — 검증 콘솔(/flow)에서 사용 ─────────────────────
+# 각 계층은 인메모리 상태를 독립 보유하므로 리셋이 전파되지 않으면 계층 간
+# 데이터(테넌트 등)가 어긋난다. reset-all이 NOCP → NICo Emulator(:9000,
+# cascade=true) → AI Infra(:9100)까지 한 번에 초기화한다. 외부 계층은
+# best-effort(미기동이면 unreachable로 보고, 실패해도 로컬 리셋은 유지).
+def _post_json(url: str, timeout: float = 6.0) -> dict:
+    import httpx
+    try:
+        r = httpx.post(url, timeout=timeout)
+        if r.status_code >= 400:
+            return {"status": "error", "detail": f"HTTP {r.status_code}"}
+        return {"status": "reset", **(r.json() if r.content else {})}
+    except Exception as exc:                       # noqa: BLE001 — 표면화만
+        return {"status": "unreachable", "detail": str(exc)[:160]}
+
+
+def _emu_urls() -> tuple[str, str]:
+    import os
+    return (os.environ.get("NICO_EMULATOR_URL", "http://127.0.0.1:9000"),
+            os.environ.get("AI_INFRA_URL", "http://127.0.0.1:9100"))
+
+
+@app.post("/api/v1/admin/reset/nico")
+def reset_nico() -> dict:
+    """NICo Emulator(:9000)만 초기화 (프록시 — 콘솔 CORS 회피)."""
+    nico, _ = _emu_urls()
+    return {"nico_emulator": _post_json(nico + "/emulator/v1/reset")}
+
+
+@app.post("/api/v1/admin/reset/ai-infra")
+def reset_ai_infra() -> dict:
+    """AI Infra Emulator(:9100)만 초기화 (프록시)."""
+    _, ai = _emu_urls()
+    return {"ai_infra": _post_json(ai + "/emulator/v1/reset")}
+
+
+@app.post("/api/v1/admin/reset-all")
+def reset_all(blueprints: str | None = None) -> dict:
+    """전체 스택 초기화 — NOCP 재시드 + NICo Emulator(cascade) + AI Infra.
+
+    NICo가 응답하면 그 캐스케이드가 AI Infra까지 초기화한다. NICo가 죽어
+    있으면 AI Infra를 직접 초기화해 남은 계층만이라도 정합시킨다."""
+    nocp = reseed(blueprints)
+    nico_url, ai_url = _emu_urls()
+    nico = _post_json(nico_url + "/emulator/v1/reset?cascade=true")
+    ai = nico.get("ai_infra")
+    if not ai or ai.get("status") != "reset":      # NICo 경유 실패 → 직접
+        ai = _post_json(ai_url + "/emulator/v1/reset")
+    nico.pop("ai_infra", None)
+    return {"nocp": nocp, "nico_emulator": nico, "ai_infra": ai}
+
+
 @app.get("/")
 def dashboard() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")

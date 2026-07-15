@@ -69,6 +69,26 @@ cd neocloud-consoles && bash run.sh
 Without `NOCP_NICO_URL`, NOCP still runs (Mode A adapter) and the consoles fall
 back to their built-in mocks — every layer degrades gracefully.
 
+## Reset the whole stack (cross-tier consistency)
+
+Every tier keeps independent in-memory state, so tenants can drift apart
+(e.g. the AI Infra DPU view showing tenants the ops console no longer has).
+The verification console's **전체 초기화** button — or the API below — resets
+all tiers in one cascade (NOCP reseed → NICo Emulator `?cascade=true` →
+AI Infra twin), and per-system resets are available too:
+
+```bash
+curl -sX POST http://127.0.0.1:8000/api/v1/admin/reset-all        # all tiers
+curl -sX POST http://127.0.0.1:8000/api/v1/admin/reset/nico       # :9000 only
+curl -sX POST http://127.0.0.1:8000/api/v1/admin/reset/ai-infra   # :9100 only
+curl -s     http://127.0.0.1:8000/api/v1/integration/consistency  # tenant drift report
+```
+
+`/flow` also carries a **데이터 정합성** panel comparing the tenant sets of
+NOCP / NICo Emulator / AI Infra and flagging orphans. Note: in Mode A the
+physical tiers never see NOCP orders by design — run Mode B for full-chain
+consistency (Managed K8s CP nodes work over the bridge as well).
+
 ## Stage demo data (after any NOCP restart)
 
 ```bash

@@ -230,7 +230,16 @@
     <div class="ctrl">
       <div class="panel">
         <div class="sec-h"><span class="tick"></span><span class="t">시나리오 컨트롤</span></div>
-        <button class="danger" style="width:100%" onclick="resetAll()">⟲ 전체 리셋 (재시드 — 테넌트·주문·NICo 초기화)</button>
+        <button class="danger" style="width:100%" onclick="resetAll()">⟲ 전체 초기화 (NOCP + NICo Emu + AI Infra — 전 계층 캐스케이드)</button>
+        <div class="seg" style="margin-top:6px">
+          <button class="ghost" onclick="resetOne('nico')">NICo Emu(:9000)만</button>
+          <button class="ghost" onclick="resetOne('ai-infra')">AI Infra(:9100)만</button>
+        </div>
+        <div id="reset-msg" class="muted small" style="margin-top:4px"></div>
+
+        <h3>데이터 정합성 <span class="muted">(계층 간 테넌트 비교)</span>
+          <button class="ghost" style="float:right;padding:2px 8px" onclick="checkConsistency()">점검</button></h3>
+        <div id="consist" class="small"><span class="muted">점검 전</span></div>
 
         <h3>테넌트</h3>
         <div class="row">
@@ -798,8 +807,13 @@ async function stageOrphan(){
   await refreshPools();
 }
 async function resetAll(){
-  if(!confirm("전체 상태를 초기화할까요? (테넌트·주문·노드·NICo 재시드)"))return;
-  await call("POST","/api/v1/admin/reseed");
+  if(!confirm("전체 스택을 초기화할까요?\n(NOCP 재시드 + NICo Emulator(:9000) + AI Infra 물리 트윈(:9100) 캐스케이드)"))return;
+  const r=await call("POST","/api/v1/admin/reset-all");
+  const st=x=>x&&x.status==="reset"?'<b style="color:var(--g)">초기화</b>'
+    :(x&&x.status==="unreachable"?'<b style="color:var(--amber,#e8c66a)">미기동</b>'
+    :'<b style="color:var(--red)">오류</b>');
+  $("#reset-msg").innerHTML=
+    `NOCP <b style="color:var(--g)">초기화</b> · NICo Emu ${st(r.nico_emulator)} · AI Infra ${st(r.ai_infra)}`;
   ghostSeq=0;lastJob=null;
   drawTrack("new",[]);
   $("#evt").innerHTML='<span class="muted">초기화됨 — 주문을 실행하면 이벤트가 재생됩니다.</span>';
@@ -807,7 +821,35 @@ async function resetAll(){
   $("#o-msg").textContent="";$("#m-msg").textContent="";
   document.querySelectorAll(".mod").forEach(m=>m.classList.remove("on","err"));
   await loadTenants();await refreshPools();await refreshManual();
-  await refreshDetail();
+  await refreshDetail();await loadK8s();await checkConsistency();
+}
+async function resetOne(which){
+  const label=which==="nico"?"NICo Emulator(:9000)":"AI Infra 물리 트윈(:9100)";
+  if(!confirm(label+"만 초기화할까요?"))return;
+  const r=await call("POST","/api/v1/admin/reset/"+which);
+  const x=r.nico_emulator||r.ai_infra;
+  $("#reset-msg").innerHTML=`${label} → <b style="color:${x.status==="reset"?"var(--g)":"var(--red)"}">${x.status==="reset"?"초기화":"미기동/오류"}</b>`;
+  await checkConsistency();
+}
+/* ── 데이터 정합성 점검 — NOCP vs NICo Emu vs AI Infra 테넌트 비교 ── */
+async function checkConsistency(){
+  const box=$("#consist");if(!box)return;
+  try{
+    const c=await qget("/api/v1/integration/consistency");
+    const t=c.tenants;
+    const fmt=v=>v===null?'<span class="muted">미응답</span>':(v.length?v.join(", "):'<span class="muted">없음</span>');
+    const rows=(c.findings||[]).map(f=>{
+      const col=f.severity==="fail"?"var(--red)":(f.severity==="warn"?"var(--amber,#e8c66a)":"var(--muted)");
+      return `<div style="color:${col};margin-top:3px">${f.severity==="fail"?"✗":(f.severity==="warn"?"⚠":"ℹ")} ${esc(f.message)}</div>`;
+    }).join("");
+    box.innerHTML=`<div style="display:flex;gap:8px;align-items:center">
+        <b style="color:${c.ok?"var(--g)":"var(--red)"}">${c.ok?"✓ 정합":"✗ 불일치"}</b>
+        <span class="muted small">어댑터: ${c.adapter==="http"?"NICo 브리지(Mode B)":"인프로세스(Mode A)"}</span></div>
+      <div class="small" style="margin-top:5px;line-height:1.8">
+        <span class="muted">NOCP</span> ${fmt(t.nocp)}<br>
+        <span class="muted">NICo Emu</span> ${fmt(t.nico_emulator)}<br>
+        <span class="muted">AI Infra</span> ${fmt(t.ai_infra)}</div>${rows}`;
+  }catch(e){box.innerHTML='<span class="muted">점검 실패 — '+esc(e.message)+'</span>';}
 }
 async function stageMismatch(){
   const nodes=await call("GET","/api/v1/nodes?state=in_service");
@@ -890,6 +932,7 @@ async function mReport(){
   await refreshManual();
   await refreshDetail();
   await loadK8s();
+  await checkConsistency();
 })();
 
 // ---- 시스템 연결 관계 (Digital Twin · NICo · Control-Plane · Consoles) --------
