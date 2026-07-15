@@ -32,6 +32,15 @@ Rubin**). Two NVIDIA reference documents are codified into its data model and AP
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed design and roadmap.
 
+## End-to-End Stack
+
+NOCP is one tier of a four-tier local stack — consoles (:8090) → **NOCP (:8000)**
+→ [NICo Emulator](https://github.com/cscw95/NICo-Emulator) (:9000, `/nico-bridge`)
+→ [AI Infra Emulator](https://github.com/cscw95/AI-Infra-Emulator) (:9100, VR NVL72
+physical twin). See **[docs/E2E_RUNBOOK.md](docs/E2E_RUNBOOK.md)** for the full
+bring-up order, demo staging and verification commands
+(`scripts/e2e_full_chain.py` — 12 PASS across the chain).
+
 ## Quick Start
 
 ```bash

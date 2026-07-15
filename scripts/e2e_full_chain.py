@@ -11,6 +11,7 @@ import sys, time, httpx
 
 NOCP = "http://127.0.0.1:8000/api/v1"
 NICO = "http://127.0.0.1:9000"
+AI   = "http://127.0.0.1:9100"   # 물리 트윈은 AI Infra Emulator 소유
 c = httpx.Client(timeout=15)
 ok = fail = 0
 def check(label, cond, extra=""):
@@ -35,13 +36,13 @@ check("topology graph complete (twin/nico/cp/consoles)",
       all(k in nodes for k in ("twin", "nico", "cp", "customer", "ops", "biz")))
 
 # 2) NICo emulator = full cluster + per-site controllers
-twin = c.get(NICO + "/emulator/v1/twin").json()
-check("NICo twin = full VR NVL72 cluster (140 racks / 10,080 GPU)",
+twin = c.get(AI + "/emulator/v1/twin").json()
+check("AI Infra twin = full VR NVL72 cluster (140 racks / 10,080 GPU)",
       twin["racks"] == 140 and twin["gpus"] == 10080, f"{twin['racks']}r/{twin['gpus']}g")
 srv = c.get(NICO + "/emulator/v1/sites").json()["sites"]
-check("NICo per-site controllers (gasan+ansan)",
-      len(srv) == 2 and all(s["service_total"] == 16 for s in srv),
-      f"{[s['nico_instance'] for s in srv]}")
+check("NICo per-site controllers (gasan+ansan, all services healthy)",
+      len(srv) == 2 and all(s["service_ok"] == s["service_total"] for s in srv),
+      f"{[(s['nico_instance'], s['service_ok'], s['service_total']) for s in srv]}")
 hosts = c.get(NICO + "/nico-bridge/hosts?limit=5000").json()
 check("NICo bridge exposes full fleet to NOCP (2,520 hosts)", len(hosts) == 2520)
 
