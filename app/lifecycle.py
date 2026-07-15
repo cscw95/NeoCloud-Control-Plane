@@ -607,6 +607,10 @@ def _stage_isolating(order: ServiceOrder, adapter: ComputeAdapter) -> None:
 
             # ① Ethernet: 테넌트 VPC(network segment) — DPU HBN이 강제
             ni = s.netiso[tenant.id]
+            # UFM P_Key는 테넌트당 1개 — 세그먼트 생성 전에 확정해 물리
+            # 계층(NICo→AI Infra IB 파티션)까지 동일 값으로 전파한다
+            pkey = ni.ib_pkey or (0x8000 + s.next_seq("pkey"))
+            ni.ib_pkey = pkey
             emit("NeoCloudOS.D2", "NICo.APIService", "REST", "POST /segments",
                  f"테넌트 VPC 생성 요청 — VRF {ni.vrf}, L3VNI "
                  f"{ni.compute_l3vni}, 대상 host {len(nodes)}대",
@@ -618,12 +622,11 @@ def _stage_isolating(order: ServiceOrder, adapter: ComputeAdapter) -> None:
             seg = adapter.create_segment(
                 tenant.id, ni.vrf, ni.compute_l3vni, ni.converged_vni,
                 [n.nico_host_id for n in nodes],
-                allocation_id=order.allocation_ids[0])
+                allocation_id=order.allocation_ids[0], ib_pkey=pkey)
             order.segment_id = seg.segment_id
 
-            # ② InfiniBand: UFM P_Key 파티션 (scale-out E-W)
-            pkey = ni.ib_pkey or (0x8000 + s.next_seq("pkey"))
-            ni.ib_pkey = pkey          # 테넌트당 1개 유지 (확장 시 재사용)
+            # ② InfiniBand: UFM P_Key 파티션 (scale-out E-W) — 위에서 확정한
+            #    테넌트 P_Key 재사용 (확장 시에도 동일 값)
             emit("NeoCloudOS.D2", "UFM", "UFM",
                  "POST /ufmRest/resources/pkeys",
                  f"IB 파티션 — P_Key {hex(pkey)}에 테넌트 포트 GUID 바인딩 "

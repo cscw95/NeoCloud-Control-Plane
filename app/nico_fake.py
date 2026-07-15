@@ -100,6 +100,7 @@ class NicoSegment(BaseModel):
     vrf_dataplane: str = ""           # HBN 실측 VRF — vpc_<l3vni>
     host_ids: list[str] = Field(default_factory=list)
     allocation_id: Optional[str] = None
+    ib_pkey: Optional[int] = None     # NOCP 부여 테넌트 P_Key (UFM 정본 전파)
     state: str = "active"
 
 
@@ -454,13 +455,14 @@ class FakeNico:
     #   ④ BGP summary 검증 — ToR·routeserver peer / 테넌트 경로 광고 (hbn.rs)
     def create_segment(self, tenant_ref: str, vrf: str, l3vni: int,
                        converged_vni: int, host_ids: list,
-                       allocation_id: Optional[str] = None) -> NicoSegment:
+                       allocation_id: Optional[str] = None,
+                       ib_pkey: Optional[int] = None) -> NicoSegment:
         self._seq += 1
         dp_vrf = f"vpc_{l3vni}"           # HBN 데이터플레인 VRF 명명 규칙
         seg = NicoSegment(
             segment_id=f"seg-{self._seq}", tenant_ref=tenant_ref, vrf=vrf,
             l3vni=l3vni, converged_vni=converged_vni,
-            vrf_dataplane=dp_vrf,
+            vrf_dataplane=dp_vrf, ib_pkey=ib_pkey,
             host_ids=list(host_ids), allocation_id=allocation_id)
         self.segments[seg.segment_id] = seg
         emit("NICo.APIService(carbide)", "NICo.NetworkStore", "internal",
@@ -740,6 +742,7 @@ class _SegmentBody(BaseModel):
     converged_vni: int
     host_ids: list[str] = Field(default_factory=list)
     allocation_id: Optional[str] = None
+    ib_pkey: Optional[int] = None
 
 
 @router.get("/segments", response_model=list[NicoSegment])
@@ -751,7 +754,7 @@ def list_segments() -> list[NicoSegment]:
 def create_segment(body: _SegmentBody) -> NicoSegment:
     return FAKE_NICO.create_segment(
         body.tenant_ref, body.vrf, body.l3vni, body.converged_vni,
-        body.host_ids, body.allocation_id)
+        body.host_ids, body.allocation_id, body.ib_pkey)
 
 
 @router.delete("/segments/{segment_id}", response_model=NicoSegment)

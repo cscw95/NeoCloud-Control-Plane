@@ -41,7 +41,8 @@ class ComputeAdapter(Protocol):
     def cordon(self, host_id: str, reason: str = "") -> NicoHost: ...
     def create_segment(self, tenant_ref: str, vrf: str, l3vni: int,
                        converged_vni: int, host_ids: list,
-                       allocation_id: Optional[str] = None) -> NicoSegment: ...
+                       allocation_id: Optional[str] = None,
+                       ib_pkey: Optional[int] = None) -> NicoSegment: ...
     def delete_segment(self, segment_id: str) -> NicoSegment: ...
     def list_segments(self) -> list: ...
     def attach_hosts(self, segment_id: str, host_ids: list,
@@ -113,9 +114,11 @@ class LocalNicoAdapter:
 
     def create_segment(self, tenant_ref: str, vrf: str, l3vni: int,
                        converged_vni: int, host_ids: list,
-                       allocation_id: Optional[str] = None) -> NicoSegment:
+                       allocation_id: Optional[str] = None,
+                       ib_pkey: Optional[int] = None) -> NicoSegment:
         return self._nico.create_segment(tenant_ref, vrf, l3vni,
-                                         converged_vni, host_ids, allocation_id)
+                                         converged_vni, host_ids,
+                                         allocation_id, ib_pkey)
 
     def delete_segment(self, segment_id: str) -> NicoSegment:
         return self._nico.delete_segment(segment_id)
@@ -210,11 +213,12 @@ class NicoHttpAdapter:
 
     def create_segment(self, tenant_ref: str, vrf: str, l3vni: int,
                        converged_vni: int, host_ids: list,
-                       allocation_id: Optional[str] = None) -> NicoSegment:
+                       allocation_id: Optional[str] = None,
+                       ib_pkey: Optional[int] = None) -> NicoSegment:
         return NicoSegment(**self._unwrap(self._c.post("/segments", json={
             "tenant_ref": tenant_ref, "vrf": vrf, "l3vni": l3vni,
             "converged_vni": converged_vni, "host_ids": host_ids,
-            "allocation_id": allocation_id})))
+            "allocation_id": allocation_id, "ib_pkey": ib_pkey})))
 
     def delete_segment(self, segment_id: str) -> NicoSegment:
         return NicoSegment(**self._unwrap(
