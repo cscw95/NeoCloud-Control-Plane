@@ -419,6 +419,41 @@ class TrayEmulator:
                        for f in (open_ + resolved)[-limit:][::-1]],
         }
 
+    def inject_fault(self, tray_id: str, gpu: int = 0, xid: int = 79,
+                     ttl_ticks: int = 30) -> dict:
+        """GPU XID 장애 수동 주입 — 기존 XID 에피소드 경로(fault_log +
+        DCGM→NVSentinel 트레이스) 재사용. R6 fault→quarantine 시나리오의
+        트리거로 사용하며, TTL 경과 시 기존 로직대로 자동 복구된다."""
+        self.sync_from_store()          # 인도 직후에도 tenant 바인딩 반영
+        with self._lock:
+            rt = self.trays.get(tray_id)
+            if not rt:
+                raise HTTPException(404, f"emu: tray '{tray_id}' not found")
+            if not rt.gpus or not (0 <= gpu < len(rt.gpus)):
+                raise HTTPException(422, f"emu: gpu index {gpu} out of range")
+            g = rt.gpus[gpu]
+            g.xid_events.append(xid)
+            g.fault_ttl = max(1, min(ttl_ticks, 300))
+            g.state = "fault"
+            episode = {
+                "tray_id": rt.tray_id, "host_id": rt.host_id,
+                "gpu": g.index, "xid": xid, "tenant_id": rt.tenant_id,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "started_step": self.step,
+                "action": "NVSentinel — cordon/drain 지정 후 복구 절차",
+                "detail": f"XID {xid} 수동 주입 (fault-injection)",
+                "tta_s": self.TICK_S,
+                "resolved_at": None, "ttr_s": None, "state": "open"}
+            self.fault_log.append(episode)
+        emit(f"DCGM({tray_id})", "NVSentinel", "internal",
+             f"XID {xid} 감지 (주입)",
+             f"GPU{gpu} — cordon/drain 후보, fault_ttl {ttl_ticks}틱 "
+             "(수동 주입 — TTL 경과 시 자동 복구)",
+             payload={"tray": tray_id, "gpu": gpu, "xid": xid,
+                      "tenant": rt.tenant_id, "injected": True},
+             host_id=rt.host_id)
+        return episode
+
     def seed_sample_faults(self) -> None:
         """리셋/시드 직후 장애 메뉴가 비지 않도록 샘플 XID 에피소드 2건 주입.
 
@@ -523,6 +558,21 @@ def faults(tenant_id: Optional[str] = None, limit: int = 30) -> dict:
             recent.sort(key=lambda f: f.get("at") or "", reverse=True)
             out["recent"] = recent[:limit]
     return out
+
+
+class _FaultInjectBody(BaseModel):
+    tray_id: str
+    gpu: int = 0
+    xid: int = 79                   # 63 row-remap | 79 fallen off bus | 48 DBE
+    ttl_ticks: int = 30             # 2s 틱 기준 유지 시간 (기본 ≈60s)
+
+
+@router.post("/faults", status_code=201)
+def inject_fault(body: _FaultInjectBody) -> dict:
+    """GPU XID 장애 주입 — R6 데모 트리거: NVSentinel 헬스 이벤트 →
+    워커 노드 quarantine → hot-spare 교체 제안 경로를 구동한다."""
+    return EMULATOR.inject_fault(body.tray_id, body.gpu, body.xid,
+                                 body.ttl_ticks)
 
 
 @router.get("/status")

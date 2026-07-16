@@ -17,6 +17,8 @@ Guard rails:
 
 from __future__ import annotations
 
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -38,6 +40,7 @@ from .models import (
     HwState,
     IsolationTier,
     K8sCluster,
+    K8sInstall,
     LifecycleEvent,
     NodeInstance,
     NodeLifecycleState as NS,
@@ -762,218 +765,447 @@ def _rollback_k8s_cp(order: ServiceOrder, adapter: ComputeAdapter) -> None:
         cn.segment_id = None
 
 
-def _stage_k8s_install(order: ServiceOrder, adapter: ComputeAdapter) -> None:
-    """fulfillment 단계 래퍼 — 설치 실패 시 saga 보상(전체 원복)."""
+# ---------------------------------------------------------------------------
+# Managed K8s 설치 saga — R4 8단계 (NVIDIA DGX OS + NKD 가이드 정렬)
+#
+# 콘솔 개통 진행 화면이 2~3s 폴링으로 관찰하는 스테이지. Day-1(주문 옵션)·
+# Day-2(installs) 모두 동일하게 기록된다(K8sInstall + K8sCluster.stage_history).
+# 실체인(HTTP 어댑터) 기동 시 백그라운드 스레드가 스테이지당 지연을 두고
+# 진행하고, 인프로세스(FakeNico·pytest)에서는 지연 0의 완전 동기로 돌아
+# 기존 동작·테스트와 호환된다.
+# ---------------------------------------------------------------------------
+K8S_INSTALL_STAGES = [
+    ("cp-reserve",    "CP 노드 확보 — CPU 풀에서 3대 reserve"),
+    ("os-provision",  "OS 프로비저닝 — DPU Day-1(rshim BFB→Redfish→DHCP→PXE)"),
+    ("net-attach",    "Converged segment attach — purpose=k8s-control-plane"),
+    ("nkd-bootstrap", "NKD 부트스트랩 — kubeadm HA(kube-vip VIP)·워커 join"),
+    ("addons",        "관리형 애드온 — cilium→gpu-operator→network-operator"),
+    ("acceptance",    "Acceptance/burn-in — node Ready·NCCL·DCGM diag"),
+    ("telemetry",     "텔레메트리 전환 — DCGM OOB→in-band"),
+    ("active",        "delivered — 클러스터 Active·kubeconfig 발급 가능"),
+]
+
+# 선택(옵션) 애드온 카탈로그 — POST /k8s/clusters/{id}/addons 로 추가 설치
+K8S_OPTIONAL_ADDONS = [
+    {"name": "kube-prometheus-stack", "version": "68.4.0",
+     "role": "모니터링 — Prometheus·Grafana (DCGM 대시보드 포함)"},
+    {"name": "kueue", "version": "0.10.1",
+     "role": "배치 잡 큐잉 — GPU 쿼터·우선순위 스케줄링"},
+    {"name": "volcano", "version": "1.11.0",
+     "role": "갱 스케줄링 — 분산 학습 잡 동시 기동"},
+    {"name": "vast-csi", "version": "2.5.1",
+     "role": "VAST CSI — RWX PVC·GDS(GPUDirect Storage) 경로"},
+]
+
+_K8S_BG_ORDERS: set = set()           # 백그라운드 설치 saga 진행 중인 주문 id
+
+
+def _k8s_stage_delay() -> float:
+    """설치 saga 페이싱(스테이지당 초) — NOCP_K8S_STAGE_DELAY로 재정의.
+
+    기본: 실체인(NOCP_NICO_URL, HTTP 어댑터) 기동이면 2.5s(콘솔 라이브
+    스테퍼용), 인프로세스(FakeNico·pytest)면 0(완전 동기 — 기존 동작)."""
+    import os
+    raw = os.environ.get("NOCP_K8S_STAGE_DELAY")
+    if raw is not None:
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            return 0.0
+    return 2.5 if os.environ.get("NOCP_NICO_URL") else 0.0
+
+
+def _begin_k8s_install(order: ServiceOrder) -> K8sInstall:
+    """k8s_installing 진입 + 설치 기록(K8sInstall) 생성.
+
+    호출 전제: STORE.lock 보유. 페이싱 모드에서도 상태 전이는 요청 스레드
+    에서 동기로 일어나 응답에 즉시 반영된다."""
+    s = STORE
+    nodes = _ctx_nodes(order)
+    advance_order(order, OS.k8s_installing,
+                  f"Managed K8s {order.k8s_version} (NKD {K8S_NKD_VERSION}) "
+                  f"— CP {K8S_CP_NODES_PER_CLUSTER}노드 + GPU 워커 "
+                  f"{len(nodes)}대")
+    iid = f"k8i-{s.next_seq('k8s_install')}"
+    inst = K8sInstall(
+        install_id=iid, tenant_id=order.tenant_id,
+        allocation_id=(order.allocation_ids[0]
+                       if order.allocation_ids else None),
+        order_id=order.id, k8s_version=order.k8s_version,
+        stage=K8S_INSTALL_STAGES[0][0],
+        stages=[{"name": n, "status": "pending", "ts": None}
+                for n, _ in K8S_INSTALL_STAGES],
+        created_at=_now())
+    s.k8s_installs[iid] = inst
+    return inst
+
+
+def _k8s_mark(inst: K8sInstall, cluster: Optional[K8sCluster],
+              name: str, status: str) -> None:
+    """스테이지 상태 갱신 — 설치 기록 + 클러스터 파생 상태 동시 반영."""
+    ts = _now()
+    for st in inst.stages:
+        if st["name"] == name:
+            st["status"] = status
+            st["ts"] = ts
+    if status in ("running", "failed"):
+        inst.stage = name
+    if cluster is not None:
+        row = next((h for h in cluster.stage_history if h["name"] == name),
+                   None)
+        if row:
+            row.update(status=status, ts=ts)
+        else:
+            cluster.stage_history.append(
+                {"name": name, "status": status, "ts": ts})
+        if status in ("running", "failed"):
+            cluster.stage = name
+        done = sum(1 for h in cluster.stage_history if h["status"] == "done")
+        cluster.progress_pct = round(done / len(K8S_INSTALL_STAGES) * 100)
+
+
+# -- 스테이지 구현 (호출 전제: STORE.lock 보유 — 러너가 스테이지 단위로 획득) --
+def _k8s_st_cp_reserve(ctx: dict) -> None:
+    """① CP CPU 노드 3대 확보 — 풀 선택·NICo reserve + 클러스터 선생성."""
+    s, order, adapter = STORE, ctx["order"], ctx["adapter"]
+    tenant, oid = ctx["tenant"], ctx["order"].id
+    pool = sorted((c for c in s.cpu_nodes.values()
+                   if c.state == "pool_ready"), key=lambda c: c.id)
+    if len(pool) < K8S_CP_NODES_PER_CLUSTER:
+        _rollback_k8s_cp(order, adapter)
+        raise HTTPException(409, f"k8s install failed: CPU pool 부족 "
+                                 f"({len(pool)}/{K8S_CP_NODES_PER_CLUSTER})")
+    cp_nodes = pool[:K8S_CP_NODES_PER_CLUSTER]
+    ctx["cp_nodes"] = cp_nodes
+    emit("NeoCloudOS.M1", "NeoCloudOS.M4", "internal",
+         "Managed K8s CP 배치 결정",
+         f"CPU 노드 풀에서 컨트롤플레인 {K8S_CP_NODES_PER_CLUSTER}대 선택 "
+         f"— {[c.id for c in cp_nodes]} (기본 제공 {CPU_NODES_PER_TENANT}대 "
+         "외 추가분)",
+         payload={"cp_nodes": [c.id for c in cp_nodes],
+                  "role": "k8s_cp"}, order_id=oid)
+    # 클러스터 read-model 선생성 — 콘솔이 설치 스테퍼를 폴링으로 관찰
+    cid = f"k8s-{s.next_seq('k8s')}"
+    api_vip = f"10.250.1.{200 + int(cid.rsplit('-', 1)[1])}"
+    cluster = K8sCluster(
+        id=cid, tenant_id=tenant.id, order_id=oid,
+        allocation_id=(order.allocation_ids[0]
+                       if order.allocation_ids else None),
+        name=f"{tenant.id}-mk8s", version=order.k8s_version,
+        nkd_version=K8S_NKD_VERSION, api_vip=api_vip,
+        oidc_issuer=f"https://iam.neocloud.skt/realms/{tenant.id}",
+        cp_node_ids=[c.id for c in cp_nodes],
+        worker_node_ids=[n.id for n in ctx["nodes"]],
+        gpus_total=ctx["gpus_total"], created_at=_now(),
+        history=[LifecycleEvent(state="installing",
+                                detail=f"NKD {K8S_NKD_VERSION} bootstrap",
+                                at=_now())])
+    s.k8s_clusters[cid] = cluster
+    order.k8s_cluster_id = cid
+    ctx["cluster"] = cluster
+    ctx["inst"].cluster_id = cid
     try:
-        _install_k8s(order, adapter)
+        for cn in cp_nodes:
+            emit("NeoCloudOS.D1", "NICo.APIService", "gRPC", "ReserveHost",
+                 f"{cn.nico_host_id} 예약 (K8s CP, 주문 {oid})",
+                 payload={"host_id": cn.nico_host_id, "order_ref": oid,
+                          "role": "k8s_cp"},
+                 order_id=oid, host_id=cn.nico_host_id)
+            adapter.reserve(cn.nico_host_id)
+            # 롤백 추적 + 재선점 방지 — 스테이지 간 락 해제 창에서도 안전
+            cn.order_id = oid
+            cn.role = "k8s_cp"
+            cn.state = "reserved"
     except HTTPException as exc:
-        _compensate(order, _ctx_nodes(order), adapter, str(exc.detail))
+        _rollback_k8s_cp(order, adapter)
+        raise HTTPException(502, f"k8s cp node setup failed: {exc.detail}")
+
+
+def _k8s_st_os_provision(ctx: dict) -> None:
+    """② CP OS 프로비저닝 — DPU Day-1 경로(BMC→DPU-DHCP→PXE→cloud-init)
+    후 AllocateInstance로 테넌트 귀속."""
+    order, adapter, tenant = ctx["order"], ctx["adapter"], ctx["tenant"]
+    oid = order.id
+    try:
+        for cn in ctx["cp_nodes"]:
+            emit("NeoCloudOS.D1", "NICo.APIService", "REST",
+                 f"POST /hosts/{cn.nico_host_id}/provision",
+                 f"CP 노드 베어메탈 프로비저닝 — image={K8S_CP_IMAGE} "
+                 "(BMC→DPU-DHCP→PXE→cloud-init은 NICo가 오케스트레이션)",
+                 payload={"host_id": cn.nico_host_id,
+                          "image_ref": K8S_CP_IMAGE,
+                          "cloud_init": ["static-ip", "ssh-key",
+                                         "containerd", "kubeadm-prereq"]},
+                 order_id=oid, host_id=cn.nico_host_id)
+            job = wait_job(adapter, adapter.provision(
+                cn.nico_host_id, K8S_CP_IMAGE))
+            if job.state != "succeeded":
+                raise HTTPException(502,
+                                    f"cp provision failed: {job.detail}")
+            emit("NeoCloudOS.D1", "NICo.APIService", "gRPC",
+                 "AllocateInstance",
+                 f"{cn.nico_host_id} → 테넌트 {tenant.id} CP 인스턴스",
+                 payload={"host_id": cn.nico_host_id,
+                          "tenant_ref": tenant.id,
+                          "instance_type": "cpu-epyc", "role": "k8s_cp"},
+                 order_id=oid, host_id=cn.nico_host_id)
+            host = adapter.allocate(cn.nico_host_id, tenant.id)
+            cn.tenant_id = tenant.id
+            cn.state = "allocated"
+            # http 브리지는 host_ip를 주지 않는다 — CPU 대역으로 결정적 보정
+            cn.host_ip = (host.host_ip
+                          or f"10.250.1.{int(cn.id.rsplit('-', 1)[1]) + 100}")
+            cn.segment_id = order.segment_id
+    except HTTPException as exc:
+        _rollback_k8s_cp(order, adapter)
+        raise HTTPException(502, f"k8s cp node setup failed: {exc.detail}")
+
+
+def _k8s_st_net_attach(ctx: dict) -> None:
+    """③ Converged Network attach — CP ↔ GPU 워커 east-west."""
+    order, adapter = ctx["order"], ctx["adapter"]
+    try:
+        adapter.attach_hosts(order.segment_id,
+                             [c.nico_host_id for c in ctx["cp_nodes"]],
+                             purpose="k8s-control-plane")
+        for cn in ctx["cp_nodes"]:
+            cn.segment_id = order.segment_id
+    except HTTPException as exc:
+        _rollback_k8s_cp(order, adapter)
+        raise HTTPException(502, f"k8s cp node setup failed: {exc.detail}")
+
+
+def _k8s_st_nkd_bootstrap(ctx: dict) -> None:
+    """④ NKD 부트스트랩 — kubeadm init(HA·kube-vip VIP) → CP join ×2 →
+    GPU 워커 join."""
+    s, order, cluster = STORE, ctx["order"], ctx["cluster"]
+    cp_nodes, nodes, oid = ctx["cp_nodes"], ctx["nodes"], ctx["order"].id
+    cid, api_vip = cluster.id, cluster.api_vip
+    first = cp_nodes[0]
+    emit("NeoCloudOS.M6(K8sMgr)", f"NKD({first.id})", "K8s",
+         "kubeadm init — 컨트롤플레인 부트스트랩",
+         f"CP #1 {first.id}({first.host_ip}) — stacked etcd·"
+         f"kube-vip API VIP {api_vip}(Converged Network L2) · "
+         f"K8s {order.k8s_version}",
+         payload={"cluster": cid, "cp": first.id, "api_vip": api_vip,
+                  "etcd": "stacked", "version": order.k8s_version,
+                  "pod_cidr": "172.24.0.0/16",
+                  "svc_cidr": "172.28.0.0/20"},
+         order_id=oid, host_id=first.nico_host_id)
+    for cn in cp_nodes[1:]:
+        emit("NeoCloudOS.M6(K8sMgr)", f"NKD({cn.id})", "K8s",
+             "kubeadm join --control-plane",
+             f"CP 추가 {cn.id}({cn.host_ip}) — etcd 멤버 합류 "
+             f"(정족수 {K8S_CP_NODES_PER_CLUSTER}) · HA SLA {K8S_CP_SLA}",
+             payload={"cluster": cid, "cp": cn.id,
+                      "etcd_quorum": K8S_CP_NODES_PER_CLUSTER},
+             order_id=oid, host_id=cn.nico_host_id)
+    cluster.history.append(LifecycleEvent(
+        state="installing",
+        detail=f"control plane HA up — VIP {api_vip}", at=_now()))
+
+    for node in nodes:
+        emit("NeoCloudOS.M6(K8sMgr)", f"NKD({node.tray_id})", "K8s",
+             "kubeadm join — GPU 워커",
+             f"{node.tray_id} 워커 join — GPU "
+             f"{len(s.trays[node.tray_id].gpu_ids) if node.tray_id in s.trays else 4}기 "
+             "· containerd·NVIDIA driver는 GPU Operator가 관리",
+             payload={"cluster": cid, "node": node.tray_id,
+                      "labels": {"nvidia.com/gpu.present": "true",
+                                 "neocloud.skt/rack": node.rack_id}},
+             order_id=oid, host_id=node.nico_host_id)
+    # 노드별 K8s 버전 기록 — 업그레이드 saga가 노드 단위로 전이시킨다
+    for cn in cp_nodes:
+        cluster.node_versions[cn.id] = order.k8s_version
+    for node in nodes:
+        cluster.node_versions[node.tray_id] = order.k8s_version
+
+
+def _k8s_st_addons(ctx: dict) -> None:
+    """⑤ 관리형 애드온 설치 — NKD 번들 버전 고정 (cilium→gpu-operator→…)."""
+    cluster, oid = ctx["cluster"], ctx["order"].id
+    for addon in K8S_MANAGED_ADDONS:
+        emit("NeoCloudOS.M6(K8sMgr)", f"K8s({cluster.id})", "K8s",
+             f"addon install — {addon['name']} {addon['version']}",
+             f"{addon['role']}",
+             payload={"cluster": cluster.id, **addon}, order_id=oid)
+        cluster.addons.append({**addon, "status": "running",
+                               "channel": "nkd-bundle"})
+
+
+def _k8s_st_acceptance(ctx: dict) -> None:
+    """⑥ Acceptance/burn-in — node Ready·NCCL·DCGM diag. 결과는
+    cluster.conditions(기존)·cluster.acceptance(콘솔 리포트)로 보존."""
+    s, order, cluster = STORE, ctx["order"], ctx["cluster"]
+    nodes, ni, oid = ctx["nodes"], ctx["ni"], ctx["order"].id
+    cid, api_vip, gpus_total = cluster.id, cluster.api_vip, cluster.gpus_total
+    checks = [
+        ("nodes-ready", f"kubectl get nodes — {K8S_CP_NODES_PER_CLUSTER}"
+         f" CP + {len(nodes)} 워커 전부 Ready"),
+        ("gpu-allocatable", f"nvidia.com/gpu allocatable 합계 "
+         f"{gpus_total} == 물리 GPU 수"),
+        ("rdma-resources", "rdma/ib 리소스 노출 · IPoIB P_Key "
+         f"{hex(ni.ib_pkey) if ni and ni.ib_pkey else '-'} secondary 인터페이스"),
+        ("nccl-smoke", "NCCL all-reduce smoke job (2노드·8GPU) — "
+         "busbw 기준치 통과"),
+        ("dcgm-diag", "dcgm diag -r 2 — 전 워커 PASS (burn-in)"),
+        ("api-vip-ha", f"kube-vip {api_vip} failover 시험 — CP 1대 "
+         "격리 시 VIP 절체"),
+    ]
+    for check, msg in checks:
+        emit("NeoCloudOS.M6(K8sMgr)", f"K8s({cid})", "K8s",
+             f"verify:{check} → PASS", msg,
+             payload={"cluster": cid, "check": check, "result": "PASS"},
+             order_id=oid)
+        cluster.conditions.append(
+            {"check": check, "result": "PASS", "at": _now(),
+             "detail": msg})
+    # 콘솔 Acceptance 탭 리포트 — node-ready·nccl-allreduce·dcgm-diag·
+    # storage-mount 4종 (계약 스키마)
+    views = [s.storage_allocs[i].view_path for i in order.storage_ids
+             if i in s.storage_allocs]
+    total = K8S_CP_NODES_PER_CLUSTER + len(nodes)
+    cluster.acceptance = {
+        "status": "pass", "report_ts": _now(),
+        "checks": [
+            {"name": "node-ready", "status": "pass",
+             "detail": f"CP {K8S_CP_NODES_PER_CLUSTER} + 워커 {len(nodes)} "
+                       "전부 Ready", "value": f"{total}/{total}"},
+            {"name": "nccl-allreduce", "status": "pass",
+             "detail": "all-reduce smoke (2노드·8GPU) busbw 기준치 통과",
+             "value": "742 GB/s"},
+            {"name": "dcgm-diag", "status": "pass",
+             "detail": "dcgm diag -r 2 — 전 워커 PASS",
+             "value": f"{len(nodes)}/{len(nodes)}"},
+            {"name": "storage-mount", "status": "pass",
+             "detail": "VAST NFSoRDMA 뷰 mount + GDS 경로 검증",
+             "value": views[0] if views else "-"},
+        ]}
+
+
+def _k8s_st_telemetry(ctx: dict) -> None:
+    """⑦ DCGM 텔레메트리 전환 — OOB(Redfish) → in-band(exporter)."""
+    cluster, nodes, oid = ctx["cluster"], ctx["nodes"], ctx["order"].id
+    cid, gpus_total = cluster.id, cluster.gpus_total
+    emit(f"dcgm-exporter({cid})", "NeoCloudOS.M5(Telemetry)", "K8s",
+         "DCGM in-band agent 활성 — 수집 경로 전환",
+         f"GPU 텔레메트리 {gpus_total}기: OOB(BMC/Redfish 폴링) → "
+         f"in-band(DCGM exporter DaemonSet, {len(nodes)}노드) — "
+         "프로파일링 메트릭(DCP)·XID를 K8s 메트릭 파이프라인으로 수집",
+         payload={"cluster": cid, "mode": "in-band",
+                  "daemonset": "dcgm-exporter", "port": 9400,
+                  "metrics": ["DCGM_FI_DEV_GPU_UTIL",
+                              "DCGM_FI_PROF_PIPE_TENSOR_ACTIVE",
+                              "DCGM_FI_DEV_XID_ERRORS"],
+                  "fallback": "OOB Redfish (클러스터 장애 시)"},
+         order_id=oid)
+    cluster.dcgm_mode = "in-band"
+
+
+def _k8s_st_active(ctx: dict) -> None:
+    """⑧ 클러스터 Active — 검증 요약·감사 기록·kubeconfig 발급 준비."""
+    order, cluster, inst = ctx["order"], ctx["cluster"], ctx["inst"]
+    nodes = ctx["nodes"]
+    cluster.state = "running"
+    cluster.stage = "active"
+    cluster.history.append(LifecycleEvent(
+        state="running",
+        detail=f"install verified — {len(cluster.conditions)} checks PASS · "
+               f"addons {len(cluster.addons)}", at=_now()))
+    inst.state = "succeeded"
+    # kubeconfig 발급 준비 (OIDC — 실발급은 access package에서)
+    SHARED.audit("neocloud-os", "k8s.cluster.install", cluster.id,
+                 tenant_ref=order.tenant_id)
+    order.history[-1].detail = (
+        f"Managed K8s {order.k8s_version} — 클러스터 {cluster.id} · "
+        f"CP {K8S_CP_NODES_PER_CLUSTER}노드(Converged) · "
+        f"워커 {len(nodes)}대/GPU {cluster.gpus_total}기 · "
+        f"애드온 {len(cluster.addons)}종 · 검증 {len(cluster.conditions)}건 "
+        "PASS · DCGM in-band 전환")
+
+
+_K8S_STAGE_FNS = [
+    _k8s_st_cp_reserve, _k8s_st_os_provision, _k8s_st_net_attach,
+    _k8s_st_nkd_bootstrap, _k8s_st_addons, _k8s_st_acceptance,
+    _k8s_st_telemetry, _k8s_st_active,
+]
+
+
+def _run_k8s_install(order: ServiceOrder, adapter: ComputeAdapter,
+                     inst: K8sInstall, delay: float) -> None:
+    """8단계 순차 실행 — delay>0이면 스테이지 간 sleep(콘솔 라이브 폴링용).
+
+    스테이지 단위로만 락을 잡아 폴링 API가 진행 중에도 응답한다. 실패 시
+    스테이지·기록을 failed로 남기고 HTTPException을 다시 올린다(호출측이
+    saga 보상 또는 Day-2 원복을 결정 — CP 노드는 스테이지가 이미 롤백)."""
+    with STORE.lock:
+        tenant = STORE.tenants[order.tenant_id]
+        nodes = _ctx_nodes(order)
+        gpus_total = sum(
+            len(STORE.trays[n.tray_id].gpu_ids) for n in nodes
+            if n.tray_id in STORE.trays)
+        ctx = {"order": order, "adapter": adapter, "tenant": tenant,
+               "nodes": nodes, "gpus_total": gpus_total,
+               "ni": STORE.netiso.get(tenant.id), "inst": inst,
+               "cluster": None, "cp_nodes": []}
+    for (name, _), fn in zip(K8S_INSTALL_STAGES, _K8S_STAGE_FNS):
+        if delay > 0:
+            time.sleep(delay)
+        with STORE.lock:
+            _k8s_mark(inst, ctx["cluster"], name, "running")
+            try:
+                fn(ctx)
+            except HTTPException as exc:
+                _k8s_mark(inst, ctx["cluster"], name, "failed")
+                inst.state = "failed"
+                if ctx["cluster"] is not None:
+                    ctx["cluster"].state = "failed"
+                    ctx["cluster"].history.append(LifecycleEvent(
+                        state="failed", detail=str(exc.detail), at=_now()))
+                raise
+            _k8s_mark(inst, ctx["cluster"], name, "done")
+
+
+def _stage_k8s_install(order: ServiceOrder, adapter: ComputeAdapter) -> None:
+    """fulfillment 단계 래퍼 — 설치 실패 시 saga 보상(전체 원복).
+
+    페이싱 모드(실체인)면 백그라운드 스레드로 스테이지를 진행시키고
+    delivered 전이까지 스레드가 마무리한다 — run_new_order는 즉시 반환."""
+    delay = _k8s_stage_delay()
+    if delay <= 0 or order.approval_mode:   # 동기 — 기존 동작(승인 게이트 포함)
+        try:
+            _install_k8s(order, adapter)
+        except HTTPException as exc:
+            _compensate(order, _ctx_nodes(order), adapter, str(exc.detail))
+        return
+    with STORE.lock:
+        inst = _begin_k8s_install(order)
+    _K8S_BG_ORDERS.add(order.id)
+
+    def _bg() -> None:
+        try:
+            _run_k8s_install(order, adapter, inst, delay)
+            _stage_delivered(order, adapter)
+        except HTTPException as exc:
+            with STORE.lock:
+                _compensate(order, _ctx_nodes(order), adapter,
+                            str(exc.detail))
+        finally:
+            _K8S_BG_ORDERS.discard(order.id)
+
+    threading.Thread(target=_bg, name=f"k8s-install-{order.id}",
+                     daemon=True).start()
 
 
 def _install_k8s(order: ServiceOrder, adapter: ComputeAdapter) -> None:
-    """Managed K8s 설치 코어 — BMaaS 개통 위에 K8s를 설치한다.
+    """Managed K8s 설치 코어(동기) — BMaaS 개통 위에 K8s를 설치한다.
 
     실패 시 CP CPU 노드를 자체 롤백한 뒤 HTTPException을 올린다 — 호출측이
     saga 보상(신규 주문) 또는 애드온 원복(Day-2, BMaaS 자원 유지)을 결정.
-
-    ① CP CPU 노드 3대를 AI Infra Emulator(NICo) 풀에서 확보 — GPU 트레이와
-       동일한 DPU 기반 Day1 경로(rshim BFB→BMC Redfish→DPU-DHCP→PXE→
-       cloud-init→AllocateInstance)로 IP·OS 설치 후 테넌트에 할당.
-    ② 테넌트 VPC 세그먼트에 CP 노드를 Converged Network(VNI)로 attach.
-    ③ NKD로 K8s 부트스트랩: CP HA(3노드·stacked etcd·kube-vip VIP) →
-       GPU 워커 join → 관리형 애드온(CNI·GPU/Network Operator·DCGM exporter).
-    ④ 설치 검증(burn-in): node Ready·GPU 자원 노출·NCCL smoke·DCGM diag.
-    ⑤ DCGM 텔레메트리 수집 경로를 OOB(Redfish)→in-band(exporter)로 전환.
-    """
-    s = STORE
-    with s.lock:
-        oid = order.id
-        tenant = s.tenants[order.tenant_id]
-        nodes = _ctx_nodes(order)
-        ni = s.netiso[tenant.id]
-        gpus_total = sum(
-            len(s.trays[n.tray_id].gpu_ids) for n in nodes
-            if n.tray_id in s.trays)
-        advance_order(order, OS.k8s_installing,
-                      f"Managed K8s {order.k8s_version} (NKD {K8S_NKD_VERSION}) "
-                      f"— CP {K8S_CP_NODES_PER_CLUSTER}노드 + GPU 워커 "
-                      f"{len(nodes)}대")
-
-        # ① CP CPU 노드 확보 — NICo(DPU isolation) 경유 Day1 전체 경로
-        pool = sorted((c for c in s.cpu_nodes.values()
-                       if c.state == "pool_ready"), key=lambda c: c.id)
-        if len(pool) < K8S_CP_NODES_PER_CLUSTER:
-            _rollback_k8s_cp(order, adapter)
-            raise HTTPException(409, f"k8s install failed: CPU pool 부족 "
-                                     f"({len(pool)}/{K8S_CP_NODES_PER_CLUSTER})")
-        cp_nodes = pool[:K8S_CP_NODES_PER_CLUSTER]
-        emit("NeoCloudOS.M1", "NeoCloudOS.M4", "internal",
-             "Managed K8s CP 배치 결정",
-             f"CPU 노드 풀에서 컨트롤플레인 {K8S_CP_NODES_PER_CLUSTER}대 선택 "
-             f"— {[c.id for c in cp_nodes]} (기본 제공 {CPU_NODES_PER_TENANT}대 "
-             "외 추가분)",
-             payload={"cp_nodes": [c.id for c in cp_nodes],
-                      "role": "k8s_cp"}, order_id=oid)
-        try:
-            for cn in cp_nodes:
-                emit("NeoCloudOS.D1", "NICo.APIService", "gRPC", "ReserveHost",
-                     f"{cn.nico_host_id} 예약 (K8s CP, 주문 {oid})",
-                     payload={"host_id": cn.nico_host_id, "order_ref": oid,
-                              "role": "k8s_cp"},
-                     order_id=oid, host_id=cn.nico_host_id)
-                adapter.reserve(cn.nico_host_id)
-                emit("NeoCloudOS.D1", "NICo.APIService", "REST",
-                     f"POST /hosts/{cn.nico_host_id}/provision",
-                     f"CP 노드 베어메탈 프로비저닝 — image={K8S_CP_IMAGE} "
-                     "(BMC→DPU-DHCP→PXE→cloud-init은 NICo가 오케스트레이션)",
-                     payload={"host_id": cn.nico_host_id,
-                              "image_ref": K8S_CP_IMAGE,
-                              "cloud_init": ["static-ip", "ssh-key",
-                                             "containerd", "kubeadm-prereq"]},
-                     order_id=oid, host_id=cn.nico_host_id)
-                job = wait_job(adapter, adapter.provision(
-                    cn.nico_host_id, K8S_CP_IMAGE))
-                if job.state != "succeeded":
-                    raise HTTPException(502,
-                                        f"cp provision failed: {job.detail}")
-                emit("NeoCloudOS.D1", "NICo.APIService", "gRPC",
-                     "AllocateInstance",
-                     f"{cn.nico_host_id} → 테넌트 {tenant.id} CP 인스턴스",
-                     payload={"host_id": cn.nico_host_id,
-                              "tenant_ref": tenant.id,
-                              "instance_type": "cpu-epyc", "role": "k8s_cp"},
-                     order_id=oid, host_id=cn.nico_host_id)
-                host = adapter.allocate(cn.nico_host_id, tenant.id)
-                cn.tenant_id = tenant.id
-                cn.order_id = oid
-                cn.role = "k8s_cp"
-                cn.state = "allocated"
-                cn.host_ip = host.host_ip
-                cn.segment_id = order.segment_id
-
-            # ② Converged Network attach — CP ↔ GPU 워커 east-west
-            adapter.attach_hosts(order.segment_id,
-                                 [c.nico_host_id for c in cp_nodes],
-                                 purpose="k8s-control-plane")
-            for cn in cp_nodes:
-                cn.segment_id = order.segment_id
-        except HTTPException as exc:
-            _rollback_k8s_cp(order, adapter)
-            raise HTTPException(502,
-                                f"k8s cp node setup failed: {exc.detail}")
-
-        # ③ K8s 부트스트랩 (NKD) — CP HA → 워커 join → 관리형 애드온
-        cid = f"k8s-{s.next_seq('k8s')}"
-        api_vip = f"10.250.1.{200 + int(cid.rsplit('-', 1)[1])}"
-        cluster = K8sCluster(
-            id=cid, tenant_id=tenant.id, order_id=oid,
-            allocation_id=(order.allocation_ids[0]
-                           if order.allocation_ids else None),
-            name=f"{tenant.id}-mk8s", version=order.k8s_version,
-            nkd_version=K8S_NKD_VERSION, api_vip=api_vip,
-            oidc_issuer=f"https://iam.neocloud.skt/realms/{tenant.id}",
-            cp_node_ids=[c.id for c in cp_nodes],
-            worker_node_ids=[n.id for n in nodes],
-            gpus_total=gpus_total, created_at=_now(),
-            history=[LifecycleEvent(state="installing",
-                                    detail=f"NKD {K8S_NKD_VERSION} bootstrap",
-                                    at=_now())])
-        s.k8s_clusters[cid] = cluster
-        order.k8s_cluster_id = cid
-
-        first = cp_nodes[0]
-        emit("NeoCloudOS.M6(K8sMgr)", f"NKD({first.id})", "K8s",
-             "kubeadm init — 컨트롤플레인 부트스트랩",
-             f"CP #1 {first.id}({first.host_ip}) — stacked etcd·"
-             f"kube-vip API VIP {api_vip}(Converged Network L2) · "
-             f"K8s {order.k8s_version}",
-             payload={"cluster": cid, "cp": first.id, "api_vip": api_vip,
-                      "etcd": "stacked", "version": order.k8s_version,
-                      "pod_cidr": "172.24.0.0/16",
-                      "svc_cidr": "172.28.0.0/20"},
-             order_id=oid, host_id=first.nico_host_id)
-        for cn in cp_nodes[1:]:
-            emit("NeoCloudOS.M6(K8sMgr)", f"NKD({cn.id})", "K8s",
-                 "kubeadm join --control-plane",
-                 f"CP 추가 {cn.id}({cn.host_ip}) — etcd 멤버 합류 "
-                 f"(정족수 {K8S_CP_NODES_PER_CLUSTER}) · HA SLA {K8S_CP_SLA}",
-                 payload={"cluster": cid, "cp": cn.id,
-                          "etcd_quorum": K8S_CP_NODES_PER_CLUSTER},
-                 order_id=oid, host_id=cn.nico_host_id)
-        cluster.history.append(LifecycleEvent(
-            state="installing",
-            detail=f"control plane HA up — VIP {api_vip}", at=_now()))
-
-        for node in nodes:
-            emit("NeoCloudOS.M6(K8sMgr)", f"NKD({node.tray_id})", "K8s",
-                 "kubeadm join — GPU 워커",
-                 f"{node.tray_id} 워커 join — GPU "
-                 f"{len(s.trays[node.tray_id].gpu_ids) if node.tray_id in s.trays else 4}기 "
-                 "· containerd·NVIDIA driver는 GPU Operator가 관리",
-                 payload={"cluster": cid, "node": node.tray_id,
-                          "labels": {"nvidia.com/gpu.present": "true",
-                                     "neocloud.skt/rack": node.rack_id}},
-                 order_id=oid, host_id=node.nico_host_id)
-
-        # 관리형 애드온 카탈로그 설치 (버전 고정 — NKD 번들)
-        for addon in K8S_MANAGED_ADDONS:
-            emit("NeoCloudOS.M6(K8sMgr)", f"K8s({cid})", "K8s",
-                 f"addon install — {addon['name']} {addon['version']}",
-                 f"{addon['role']}",
-                 payload={"cluster": cid, **addon}, order_id=oid)
-            cluster.addons.append({**addon, "status": "running"})
-
-        # ⑤ DCGM in-band 전환 — 텔레메트리 수집 경로 변경
-        emit(f"dcgm-exporter({cid})", "NeoCloudOS.M5(Telemetry)", "K8s",
-             "DCGM in-band agent 활성 — 수집 경로 전환",
-             f"GPU 텔레메트리 {gpus_total}기: OOB(BMC/Redfish 폴링) → "
-             f"in-band(DCGM exporter DaemonSet, {len(nodes)}노드) — "
-             "프로파일링 메트릭(DCP)·XID를 K8s 메트릭 파이프라인으로 수집",
-             payload={"cluster": cid, "mode": "in-band",
-                      "daemonset": "dcgm-exporter", "port": 9400,
-                      "metrics": ["DCGM_FI_DEV_GPU_UTIL",
-                                  "DCGM_FI_PROF_PIPE_TENSOR_ACTIVE",
-                                  "DCGM_FI_DEV_XID_ERRORS"],
-                      "fallback": "OOB Redfish (클러스터 장애 시)"},
-             order_id=oid)
-
-        # ④ 설치 검증 (burn-in) — 결과는 cluster.conditions로 보존
-        checks = [
-            ("nodes-ready", f"kubectl get nodes — {K8S_CP_NODES_PER_CLUSTER}"
-             f" CP + {len(nodes)} 워커 전부 Ready"),
-            ("gpu-allocatable", f"nvidia.com/gpu allocatable 합계 "
-             f"{gpus_total} == 물리 GPU 수"),
-            ("rdma-resources", "rdma/ib 리소스 노출 · IPoIB P_Key "
-             f"{hex(ni.ib_pkey) if ni.ib_pkey else '-'} secondary 인터페이스"),
-            ("nccl-smoke", "NCCL all-reduce smoke job (2노드·8GPU) — "
-             "busbw 기준치 통과"),
-            ("dcgm-diag", "dcgm diag -r 2 — 전 워커 PASS (burn-in)"),
-            ("api-vip-ha", f"kube-vip {api_vip} failover 시험 — CP 1대 "
-             "격리 시 VIP 절체"),
-        ]
-        for check, msg in checks:
-            emit("NeoCloudOS.M6(K8sMgr)", f"K8s({cid})", "K8s",
-                 f"verify:{check} → PASS", msg,
-                 payload={"cluster": cid, "check": check, "result": "PASS"},
-                 order_id=oid)
-            cluster.conditions.append(
-                {"check": check, "result": "PASS", "at": _now(),
-                 "detail": msg})
-
-        cluster.state = "running"
-        cluster.history.append(LifecycleEvent(
-            state="running",
-            detail=f"install verified — {len(checks)} checks PASS · "
-                   f"addons {len(cluster.addons)}", at=_now()))
-        # kubeconfig 발급 준비 (OIDC — 실발급은 access package에서)
-        SHARED.audit("neocloud-os", "k8s.cluster.install", cid,
-                     tenant_ref=tenant.id)
-        order.history[-1].detail = (
-            f"Managed K8s {order.k8s_version} — 클러스터 {cid} · "
-            f"CP {K8S_CP_NODES_PER_CLUSTER}노드(Converged) · "
-            f"워커 {len(nodes)}대/GPU {gpus_total}기 · "
-            f"애드온 {len(cluster.addons)}종 · 검증 {len(checks)}건 PASS · "
-            "DCGM in-band 전환")
+    스테이지 명세는 K8S_INSTALL_STAGES(R4 8단계) 참조."""
+    with STORE.lock:
+        inst = _begin_k8s_install(order)
+    _run_k8s_install(order, adapter, inst, 0.0)
 
 
 def _stage_delivered(order: ServiceOrder, adapter: ComputeAdapter) -> None:
@@ -1111,6 +1343,8 @@ def run_new_order(body: OrderCreate, adapter: ComputeAdapter) -> ServiceOrder:
         stage_fn(order, adapter)
         if order.state in (OS.rejected, OS.failed):
             return order
+        if order.id in _K8S_BG_ORDERS:     # K8s 설치가 백그라운드 saga로 계속
+            return order                   # — delivered 전이는 스레드가 수행
     return order
 
 
@@ -1603,6 +1837,33 @@ def install_k8s_addon(body: _K8sAddonBody) -> ServiceOrder:
              payload={"tenant_id": body.tenant_id,
                       "allocation_id": body.allocation_id,
                       "k8s_version": body.k8s_version}, order_id=src.id)
+        delay = _k8s_stage_delay()
+        if delay > 0:                  # 라이브 페이싱 — 진행은 폴링으로 관찰
+            inst = _begin_k8s_install(src)     # delivered → k8s_installing
+
+            def _bg() -> None:
+                try:
+                    _run_k8s_install(src, adapter, inst, delay)
+                    with STORE.lock:
+                        advance_order(src, OS.delivered,
+                                      "Managed K8s add-on 설치 완료 — "
+                                      f"{src.k8s_cluster_id}")
+                        cluster = STORE.k8s_clusters.get(
+                            src.k8s_cluster_id or "")
+                        if src.access_package is not None and cluster:
+                            src.access_package["managed_k8s"] = \
+                                _k8s_access_entry(cluster)
+                except HTTPException as exc:
+                    with STORE.lock:   # CP 노드는 스테이지가 이미 롤백
+                        src.managed_k8s = False
+                        src.k8s_version = ""
+                        advance_order(src, OS.delivered,
+                                      "k8s add-on 실패 원복 (BMaaS 자원 "
+                                      f"유지): {exc.detail}")
+
+            threading.Thread(target=_bg, name=f"k8s-install-{src.id}",
+                             daemon=True).start()
+            return src                 # state=k8s_installing — 콘솔이 폴링
         try:
             _install_k8s(src, adapter)     # delivered → k8s_installing
         except HTTPException as exc:
@@ -1646,6 +1907,9 @@ def k8s_spec() -> dict:
             "cp_nodes_per_cluster": K8S_CP_NODES_PER_CLUSTER,
             "cp_sla": K8S_CP_SLA, "cp_image": K8S_CP_IMAGE,
             "managed_addons": K8S_MANAGED_ADDONS,
+            "optional_addons": K8S_OPTIONAL_ADDONS,
+            "install_stages": [{"name": n, "detail": d}
+                               for n, d in K8S_INSTALL_STAGES],
             "dcgm_mode": "in-band (dcgm-exporter DaemonSet — OOB Redfish 폴백)"}
 
 

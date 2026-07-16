@@ -390,8 +390,60 @@ class K8sCluster(BaseModel):
     addons: list[dict] = Field(default_factory=list)          # {name,version,status}
     dcgm_mode: str = "in-band"        # in-band(DCGM exporter) | oob(Redfish)
     conditions: list[dict] = Field(default_factory=list)      # 설치 검증 결과
+    # 설치 saga 관찰용 파생 상태 (R4) — 콘솔 스테퍼가 폴링으로 소비
+    stage: str = ""                   # 현재 설치 스테이지 (8단계)
+    stage_history: list[dict] = Field(default_factory=list)   # {name,status,ts}
+    progress_pct: int = 0             # 설치 진행률 (완료 스테이지 / 8)
+    acceptance: Optional[dict] = None  # burn-in 리포트 {status,report_ts,checks}
+    quarantined_nodes: list[str] = Field(default_factory=list)  # 격리 워커 tray
+    node_versions: dict = Field(default_factory=dict)          # 노드별 K8s 버전
     created_at: str = ""
     history: list[LifecycleEvent] = Field(default_factory=list)
+
+
+class K8sInstall(BaseModel):
+    """Managed K8s 설치 기록 — Day-1(주문 옵션)·Day-2(installs) 공통.
+
+    설치 saga의 스테이지 진행을 축적해 콘솔 '요청·작업' 보드가 소비한다."""
+    install_id: str
+    cluster_id: Optional[str] = None  # 스테이지 1(cp-reserve)에서 확정
+    tenant_id: str
+    allocation_id: Optional[str] = None
+    order_id: Optional[str] = None
+    k8s_version: str = ""
+    state: str = "running"            # running | succeeded | failed
+    stage: str = ""                   # 현재 스테이지 이름
+    stages: list[dict] = Field(default_factory=list)  # {name,status,ts}
+    created_at: str = ""
+
+
+class K8sKubeconfig(BaseModel):
+    """kubeconfig 발급 이력 — 가짜 PKI(시리얼)·TTL·폐기(revoke) 관리."""
+    kubeconfig_id: str
+    cluster_id: str
+    tenant_id: str
+    serial: str = ""                  # 모의 PKI 인증서 시리얼 (hex)
+    role: str = "edit"                # RBAC 템플릿 (admin | edit | view …)
+    ttl_h: int = 12
+    issued_at: str = ""
+    expires_at: str = ""
+    revoked: bool = False
+    revoked_at: Optional[str] = None
+    kubeconfig_yaml: str = ""         # 모의 kubeconfig 본문
+
+
+class K8sUpgrade(BaseModel):
+    """클러스터 업그레이드 saga — 노드별 cordon→drain→upgrade→uncordon."""
+    upgrade_id: str
+    cluster_id: str
+    tenant_id: str = ""
+    from_version: str = ""
+    target_version: str = ""
+    state: str = "running"            # running | succeeded | failed
+    current_node: Optional[str] = None
+    node_progress: dict = Field(default_factory=dict)   # {done,total}
+    events: list[dict] = Field(default_factory=list)    # {ts,node,step}
+    created_at: str = ""
 
 
 class StorageAllocation(BaseModel):

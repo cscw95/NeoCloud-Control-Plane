@@ -25,6 +25,9 @@ from .models import (
     DeploymentUnit,
     GPU,
     K8sCluster,
+    K8sInstall,
+    K8sKubeconfig,
+    K8sUpgrade,
     NetworkIsolation,
     NodeInstance,
     NVLinkPartition,
@@ -66,6 +69,9 @@ class Store:
         self.tickets: dict[str, Ticket] = {}
         self.cpu_nodes: dict[str, CpuNode] = {}
         self.k8s_clusters: dict[str, K8sCluster] = {}   # Managed K8s (옵션)
+        self.k8s_installs: dict[str, K8sInstall] = {}   # 설치 saga 기록 (Day-1/2)
+        self.k8s_kubeconfigs: dict[str, K8sKubeconfig] = {}  # kubeconfig 발급
+        self.k8s_upgrades: dict[str, K8sUpgrade] = {}   # 업그레이드 saga
         # monotonic counters for generated ids
         self._counters: dict[str, int] = {}
 
@@ -84,6 +90,7 @@ class Store:
                 self.tenants, self.allocations, self.partitions, self.netiso,
                 self.node_instances, self.orders, self.storage_allocs,
                 self.tickets, self.cpu_nodes, self.k8s_clusters,
+                self.k8s_installs, self.k8s_kubeconfigs, self.k8s_upgrades,
             ):
                 d.clear()
             self._counters.clear()

@@ -22,6 +22,7 @@ from . import (
     business,
     fabric,
     integration,
+    k8s_api,
     lifecycle,
     metrics,
     nico_fake,
@@ -73,6 +74,7 @@ app = FastAPI(
 app.include_router(topology.router)
 app.include_router(tenancy.router)
 app.include_router(lifecycle.router)
+app.include_router(k8s_api.router)
 app.include_router(trace.router)
 app.include_router(business.router)
 app.include_router(fabric.router)
