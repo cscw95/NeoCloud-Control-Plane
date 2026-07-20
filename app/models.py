@@ -486,6 +486,10 @@ class Ticket(BaseModel):
     body: str = ""
     severity: str = "medium"          # low | medium | high | critical
     status: str = "open"              # open | in_progress | resolved
+    type: str = "tech"                # tech | change | billing_dispute
+    routed_to: str = "ops"            # ops(tech/change) | biz(billing_dispute·계약)
+    change_scope: Optional[str] = None  # change 티켓: in_contract | contract_amendment
+    policy: Optional[str] = None      # billing_dispute: 청구 이의 처리 원칙 안내
     ref: Optional[str] = None         # 관련 리소스 (node/cluster/order)
     created_at: str = ""
     updated_at: str = ""
@@ -497,6 +501,8 @@ class TicketCreate(BaseModel):
     subject: str
     body: str = ""
     severity: str = "medium"
+    type: str = "tech"                # tech | change | billing_dispute
+    change_scope: Optional[str] = None  # change 티켓 범위 (계약 내 / 계약 변경)
     ref: Optional[str] = None
 
 

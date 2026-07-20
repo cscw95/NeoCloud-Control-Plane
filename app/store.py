@@ -72,6 +72,13 @@ class Store:
         self.k8s_installs: dict[str, K8sInstall] = {}   # 설치 saga 기록 (Day-1/2)
         self.k8s_kubeconfigs: dict[str, K8sKubeconfig] = {}  # kubeconfig 발급
         self.k8s_upgrades: dict[str, K8sUpgrade] = {}   # 업그레이드 saga
+        # service scenario (고객 라이프사이클 — scenario_api)
+        self.acceptances: dict[str, dict] = {}      # order_id -> 검수 레코드
+        self.terminations: dict[str, dict] = {}     # termination_id -> 종료 워크플로우
+        self.incidents: dict[str, dict] = {}        # incident_id -> status page 인시던트
+        self.rcas: dict[str, dict] = {}             # rca_id -> RCA 리포트
+        self.sla_credits: dict[str, dict] = {}      # credit_id -> service credit
+        self.inquiries: dict[str, dict] = {}        # inquiry_id -> 공개 상품 문의
         # monotonic counters for generated ids
         self._counters: dict[str, int] = {}
 
@@ -91,6 +98,8 @@ class Store:
                 self.node_instances, self.orders, self.storage_allocs,
                 self.tickets, self.cpu_nodes, self.k8s_clusters,
                 self.k8s_installs, self.k8s_kubeconfigs, self.k8s_upgrades,
+                self.acceptances, self.terminations, self.incidents,
+                self.rcas, self.sla_credits, self.inquiries,
             ):
                 d.clear()
             self._counters.clear()

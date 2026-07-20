@@ -38,6 +38,13 @@ HOURS_PER_MONTH = 720
 
 TICKET_STATUSES = ("open", "in_progress", "resolved")
 TICKET_SEVERITIES = ("low", "medium", "high", "critical")
+# 티켓 유형·라우팅 (CP-005/006/009) — tech/change → 운영(ops),
+# billing_dispute(청구 이의)·계약 → 사업(biz)
+TICKET_TYPES = ("tech", "change", "billing_dispute")
+TICKET_ROUTING = {"tech": "ops", "change": "ops", "billing_dispute": "biz"}
+CHANGE_SCOPES = ("in_contract", "contract_amendment")
+BILLING_DISPUTE_POLICY = ("납기 유지·차기 청구 조정 원칙"
+                          "(명백한 금액 오류만 재발행)")
 
 
 def _now() -> str:
@@ -55,11 +62,24 @@ def create_ticket(body: TicketCreate) -> Ticket:
             raise HTTPException(404, f"tenant '{body.tenant_id}' not found")
         if body.severity not in TICKET_SEVERITIES:
             raise HTTPException(422, f"severity must be one of {TICKET_SEVERITIES}")
+        if body.type not in TICKET_TYPES:
+            raise HTTPException(422, f"type must be one of {TICKET_TYPES}")
+        if body.change_scope is not None:
+            if body.type != "change":
+                raise HTTPException(422, "change_scope는 type='change' 티켓 전용")
+            if body.change_scope not in CHANGE_SCOPES:
+                raise HTTPException(422,
+                                    f"change_scope must be one of {CHANGE_SCOPES}")
         tid = f"tck-{s.next_seq('ticket')}"
         now = _now()
         ticket = Ticket(
             id=tid, tenant_id=body.tenant_id, subject=body.subject,
             body=body.body, severity=body.severity, ref=body.ref,
+            type=body.type, routed_to=TICKET_ROUTING[body.type],
+            change_scope=(body.change_scope
+                          or ("in_contract" if body.type == "change" else None)),
+            policy=(BILLING_DISPUTE_POLICY
+                    if body.type == "billing_dispute" else None),
             created_at=now, updated_at=now)
         s.tickets[tid] = ticket
         return ticket
@@ -67,12 +87,18 @@ def create_ticket(body: TicketCreate) -> Ticket:
 
 @router.get("/tickets")
 def list_tickets(tenant_id: Optional[str] = None,
-                 status: Optional[str] = None) -> list:
+                 status: Optional[str] = None,
+                 type: Optional[str] = None,
+                 routed_to: Optional[str] = None) -> list:
     out = list(STORE.tickets.values())
     if tenant_id:
         out = [t for t in out if t.tenant_id == tenant_id]
     if status:
         out = [t for t in out if t.status == status]
+    if type:
+        out = [t for t in out if t.type == type]
+    if routed_to:
+        out = [t for t in out if t.routed_to == routed_to]
     return sorted(out, key=lambda t: t.id, reverse=True)
 
 

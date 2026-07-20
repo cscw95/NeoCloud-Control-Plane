@@ -26,6 +26,7 @@ from . import (
     lifecycle,
     metrics,
     nico_fake,
+    scenario_api,
     shared_services,
     tenancy,
     topology,
@@ -77,6 +78,7 @@ app.include_router(lifecycle.router)
 app.include_router(k8s_api.router)
 app.include_router(trace.router)
 app.include_router(business.router)
+app.include_router(scenario_api.router)
 app.include_router(fabric.router)
 app.include_router(tray_emu.router)
 app.include_router(nico_fake.router)
