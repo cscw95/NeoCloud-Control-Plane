@@ -79,6 +79,13 @@ class Store:
         self.rcas: dict[str, dict] = {}             # rca_id -> RCA 리포트
         self.sla_credits: dict[str, dict] = {}      # credit_id -> service credit
         self.inquiries: dict[str, dict] = {}        # inquiry_id -> 공개 상품 문의
+
+        # 고객면 운영 API (실 에뮬레이터 연동)
+        self.storage_volumes: dict[str, dict] = {}  # vol_id -> VAST 볼륨(뷰)
+        self.storage_snapshots: dict[str, dict] = {}  # snap_id -> 스냅샷
+        self.api_keys: dict[str, dict] = {}         # key_id -> 테넌트 API 키
+        self.members: dict[str, dict] = {}          # member_id -> 조직 멤버
+        self.node_ops: dict[str, dict] = {}         # op_id -> 노드 재기동/교체 작업
         # monotonic counters for generated ids
         self._counters: dict[str, int] = {}
 
@@ -100,6 +107,8 @@ class Store:
                 self.k8s_installs, self.k8s_kubeconfigs, self.k8s_upgrades,
                 self.acceptances, self.terminations, self.incidents,
                 self.rcas, self.sla_credits, self.inquiries,
+                self.storage_volumes, self.storage_snapshots,
+                self.api_keys, self.members, self.node_ops,
             ):
                 d.clear()
             self._counters.clear()
