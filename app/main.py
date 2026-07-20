@@ -87,6 +87,14 @@ app.include_router(integration.router)
 app.include_router(shared_services.router)
 
 
+# 고객면 테넌트 격리·RBAC — X-Tenant-Id/X-Tenant-Role 헤더 기반 가드.
+# 헤더가 없는 요청(운영/사업 콘솔·기존 테스트)은 완전 무개입.
+# CORS보다 먼저 add → CORS가 바깥층이 되어 가드의 403에도 CORS 헤더가 붙는다
+# (고객 콘솔 :8090이 403 본문을 읽어야 함).
+from .tenancy_guard import TenancyGuardMiddleware  # noqa: E402
+
+app.add_middleware(TenancyGuardMiddleware)
+
 # NeoCloud 3대 콘솔(별도 오리진 :8090)에서의 API 연동 허용
 app.add_middleware(
     CORSMiddleware,
