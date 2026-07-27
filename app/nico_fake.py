@@ -39,8 +39,8 @@ from .trace import emit
 def _ips_for_tray(tray_id: str) -> Optional[dict]:
     """Deterministic management-plane addressing per tray.
 
-    OOB(BMC)와 DPU 언더레이는 Day 0에 고정, 호스트 IP는 프로비저닝 시
-    DPU-측 DHCP가 /30로 할당한다 (테넌트 트래픽의 언더레이 유출 차단)."""
+    OOB(BMC) and the DPU underlay are fixed at Day 0; the host IP is assigned
+    by DPU-side DHCP as a /30 at provisioning time (blocks tenant traffic from leaking onto the underlay)."""
     m = re.match(r"su-(\d+)-rack-(\d+)-tray-(\d+)", tray_id)
     if not m:
         return None
@@ -70,7 +70,7 @@ class NicoHost(BaseModel):
     host_id: str
     tray_id: str = ""                 # physical mapping (LLDP/serial match)
     sku: str = ""                     # blueprint key
-    site: str = ""                    # 소속 사이트(팩토리) — NICo 인스턴스 단위
+    site: str = ""                    # Owning site (factory) — one per NICo instance
     state: NicoHostState = NicoHostState.pool_ready
     firmware_ok: bool = True
     attested: bool = True
@@ -78,29 +78,29 @@ class NicoHost(BaseModel):
     instance_id: Optional[str] = None
     tenant_ref: Optional[str] = None
     image_ref: Optional[str] = None
-    bmc_ip: str = ""                  # OOB — Day 0 고정
-    dpu_ip: str = ""                  # DPU 언더레이 — Day 0 고정
-    host_ip: str = ""                 # 프로비저닝 시 DPU-DHCP 할당, 소거 시 회수
-    segment_id: Optional[str] = None  # 소속 VPC(network segment)
+    bmc_ip: str = ""                  # OOB — fixed at Day 0
+    dpu_ip: str = ""                  # DPU underlay — fixed at Day 0
+    host_ip: str = ""                 # Assigned by DPU-DHCP at provisioning, reclaimed on sanitize
+    segment_id: Optional[str] = None  # Owning VPC (network segment)
 
 
 class NicoSegment(BaseModel):
-    """Tenant VPC — L3 VXLAN/EVPN 격리 도메인 (DPU HBN이 강제).
+    """Tenant VPC — L3 VXLAN/EVPN isolation domain (enforced by the DPU HBN).
 
-    실 NICo(infra-controller) 대응: VPC virtualizer는 FNN(L3 EVPN, 신규) 또는
-    ETV(legacy Ethernet Virtualizer) — crates/agent/src/nvue.rs의
-    VpcVirtualizationType. 데이터플레인 VRF 명명은 `vpc_<vni>`
+    Real-NICo (infra-controller) counterpart: the VPC virtualizer is FNN (L3 EVPN, new) or
+    ETV (legacy Ethernet Virtualizer) — VpcVirtualizationType in
+    crates/agent/src/nvue.rs. Dataplane VRF naming is `vpc_<vni>`
     (templates/tests/full_nvue_startup_fnn_l3.yaml.expected)."""
     segment_id: str
     tenant_ref: str
-    vrf: str                          # NeoCloud OS 논리 VRF 이름 (VRF-<tenant>)
+    vrf: str                          # NeoCloud OS logical VRF name (VRF-<tenant>)
     l3vni: int
     converged_vni: int
     virtualizer: str = "fnn"          # fnn(L3 EVPN) | etv(legacy)
-    vrf_dataplane: str = ""           # HBN 실측 VRF — vpc_<l3vni>
+    vrf_dataplane: str = ""           # Actual HBN VRF — vpc_<l3vni>
     host_ids: list[str] = Field(default_factory=list)
     allocation_id: Optional[str] = None
-    ib_pkey: Optional[int] = None     # NOCP 부여 테넌트 P_Key (UFM 정본 전파)
+    ib_pkey: Optional[int] = None     # NOCP-assigned tenant P_Key (propagated to the UFM source of truth)
     state: str = "active"
 
 
@@ -149,7 +149,7 @@ class FakeNico:
         self.sanitize_reports.clear()
         self._fail_flags.clear()
         self._seq = 0
-        # SU → 사이트(팩토리) 매핑 — 사이트별 별개 NICo 인스턴스 표현용
+        # SU → site (factory) mapping — to represent a separate NICo instance per site
         su_site = {}
         for f in store.factories.values():
             for bid in f.block_ids:
@@ -168,9 +168,9 @@ class FakeNico:
                 state=NicoHostState.pool_ready,
                 bmc_ip=ips.get("bmc_ip", ""), dpu_ip=ips.get("dpu_ip", ""),
             )
-        # 범용 CPU 노드 풀 — AI Infra Emulator 인벤토리에 호스트로 등록.
-        # GPU 트레이와 동일한 Day1 경로(rshim BFB → BMC Redfish → DPU-DHCP →
-        # PXE → cloud-init)로 프로비저닝되고 DPU isolation으로 테넌트에 할당.
+        # General-purpose CPU node pool — registered as hosts in the AI Infra Emulator inventory.
+        # Provisioned via the same Day1 path as GPU trays (rshim BFB → BMC Redfish → DPU-DHCP →
+        # PXE → cloud-init) and allocated to tenants via DPU isolation.
         for cn in store.cpu_nodes.values():
             host_id = cn.nico_host_id or f"nh-{cn.id}"
             idx = int(cn.id.rsplit("-", 1)[1])
@@ -274,7 +274,7 @@ class FakeNico:
                 host.state = NicoHostState.pool_ready
                 host.attested = True
                 host.image_ref = None
-                host.host_ip = ""      # DHCP 임대 회수
+                host.host_ip = ""      # Reclaim DHCP lease
             else:
                 job.state, job.detail = "failed", "re-attestation failed"
                 host.state = NicoHostState.rma
@@ -308,10 +308,10 @@ class FakeNico:
         return host
 
     def provision(self, host_id: str, image_ref: str) -> NicoJob:
-        """Day 1 프로비저닝 — DPU provisioning → BMC 제어 → DPU-DHCP → PXE
+        """Day 1 provisioning — DPU provisioning → BMC control → DPU-DHCP → PXE
         → cloud-init.
 
-        각 서브스텝을 실제 메시지 페이로드와 함께 trace로 기록한다."""
+        Records each substep to the trace along with the actual message payload."""
         host = self._host(host_id)
         self._require(host, NicoHostState.reserved)
         host.state = NicoHostState.provisioning
@@ -319,9 +319,9 @@ class FakeNico:
         ips = _ips_for_tray(host.tray_id) or {}
         bmc = f"BMC({host.bmc_ip or host.host_id})"
 
-        # 0. DPU provisioning — 호스트 부트 전제: DPU OS(BFB)·agent·부트 서비스
-        #    (실 NICo: rshim으로 BFB 푸시, forge-dpu-agent systemd, 테넌트 간
-        #     재프로비저닝은 admin-cli dpu/reprovision — 멱등 검증 후 스킵)
+        # 0. DPU provisioning — prerequisite for host boot: DPU OS(BFB)·agent·boot services
+        #    (real NICo: push BFB via rshim, forge-dpu-agent systemd; cross-tenant
+        #     reprovisioning is admin-cli dpu/reprovision — skipped after idempotency check)
         emit("NICo.APIService", f"DPU-BMC({host.bmc_ip or host.host_id})",
              "rshim",
              "DPU provisioning — BFB 이미지 푸시·검증",
@@ -341,7 +341,7 @@ class FakeNico:
                       "boot_proxy": "iPXE relay → NICo.PXE",
                       "hbn": "container healthy"}, host_id=host_id)
 
-        # 1. BMC(Redfish): PXE 원스부트 설정 + 강제 재시작 (DPU 경유 부트)
+        # 1. BMC(Redfish): set PXE one-shot boot + force restart (boot via DPU)
         emit("NICo.APIService", bmc, "Redfish",
              "PATCH /redfish/v1/Systems/Self",
              "부트소스 오버라이드 — 다음 1회 PXE (DPU 인터페이스 경유)",
@@ -354,8 +354,8 @@ class FakeNico:
              "호스트 강제 재시작 — PXE 부트 개시",
              payload={"ResetType": "ForceRestart"}, host_id=host_id)
 
-        # 2. DPU-측 DHCP: 호스트 IP 할당 (per-host DHCP, 언더레이 차단)
-        #    CPU 노드(트레이 아님)는 전용 대역 10.250.1.x/30에서 임대
+        # 2. DPU-side DHCP: assign host IP (per-host DHCP, underlay blocked)
+        #    CPU nodes (not trays) lease from the dedicated range 10.250.1.x/30
         if host.sku == "cpu-epyc":
             host.host_ip = f"10.250.1.{int(host.tray_id.rsplit('-', 1)[1])}"
         else:
@@ -371,7 +371,7 @@ class FakeNico:
                       "next-server": "nico-pxe.mgmt", "filename": "boot.ipxe"},
              host_id=host_id)
 
-        # 3. PXE/iPXE: 부트 아티팩트 서빙 + OS 이미지 설치
+        # 3. PXE/iPXE: serve boot artifacts + install OS image
         emit(f"Host({host.tray_id})", "NICo.PXE", "PXE",
              "GET /boot.ipxe → kernel/initrd → 이미지 스트리밍",
              f"테넌트 OS 이미지 '{image_ref}' 설치 (HTTP, DPU 경유)",
@@ -379,7 +379,7 @@ class FakeNico:
                       ["vmlinuz", "initrd.img", f"{image_ref}.rootfs.img"]},
              host_id=host_id)
 
-        # 4. cloud-init: 호스트 IP 고정·잠금(lockdown)
+        # 4. cloud-init: pin host IP·lockdown
         emit("NICo.PXE", f"Host({host.tray_id})", "cloud-init",
              "cloud-init meta/user-data 적용",
              "호스트 IP 고정(netplan) · SSH 키 주입 · UEFI 잠금 · "
@@ -445,20 +445,20 @@ class FakeNico:
         host.cordoned = True
         return host
 
-    # -- network segments (tenant VPC, DPU HBN 강제) ---------------------------
-    # 실 NICo(NVIDIA/infra-controller) DPU isolation 동작을 재현:
-    #   ① API(carbide)가 VPC/network-segment 생성 — virtualizer FNN(L3 EVPN)
-    #   ② 각 BlueField의 dpu-agent(periodic_config_fetcher)가 gRPC로
-    #      ManagedHostNetworkConfigResponse 폴링 (crates/agent/src/main_loop.rs)
-    #   ③ agent가 NVUE 템플릿(nvue_startup_fnn.conf) 렌더 → HBN 컨테이너에
-    #      적용: nv config apply → ifreload -a → neighmgr 재시작 (hbn.rs)
-    #   ④ BGP summary 검증 — ToR·routeserver peer / 테넌트 경로 광고 (hbn.rs)
+    # -- network segments (tenant VPC, enforced by DPU HBN) ---------------------------
+    # Reproduces the real-NICo (NVIDIA/infra-controller) DPU isolation behavior:
+    #   ① API(carbide) creates the VPC/network-segment — virtualizer FNN(L3 EVPN)
+    #   ② Each BlueField's dpu-agent(periodic_config_fetcher) polls
+    #      ManagedHostNetworkConfigResponse over gRPC (crates/agent/src/main_loop.rs)
+    #   ③ The agent renders the NVUE template(nvue_startup_fnn.conf) → applies it to
+    #      the HBN container: nv config apply → ifreload -a → neighmgr restart (hbn.rs)
+    #   ④ BGP summary verification — ToR·routeserver peer / tenant route advertisement (hbn.rs)
     def create_segment(self, tenant_ref: str, vrf: str, l3vni: int,
                        converged_vni: int, host_ids: list,
                        allocation_id: Optional[str] = None,
                        ib_pkey: Optional[int] = None) -> NicoSegment:
         self._seq += 1
-        dp_vrf = f"vpc_{l3vni}"           # HBN 데이터플레인 VRF 명명 규칙
+        dp_vrf = f"vpc_{l3vni}"           # HBN dataplane VRF naming convention
         seg = NicoSegment(
             segment_id=f"seg-{self._seq}", tenant_ref=tenant_ref, vrf=vrf,
             l3vni=l3vni, converged_vni=converged_vni,
@@ -488,7 +488,7 @@ class FakeNico:
                                   "network_security_groups",
                                   "interface_routing_profiles",
                                   "instance_metadata(FMDS)"]})
-        # ③ 각 DPU: NVUE 렌더 → HBN 적용 (호스트당 1 이벤트 — 카운트 규약 유지)
+        # ③ Each DPU: render NVUE → apply to HBN (one event per host — preserves the count convention)
         for hid in host_ids:
             host = self.hosts.get(hid)
             if not host:
@@ -527,7 +527,7 @@ class FakeNico:
                      "apply": "HBN 컨테이너: nv config apply → ifreload -a → "
                               "neighmgr 재시작 · forge-arp-accept 정책"},
                  host_id=hid)
-        # ④ 적용 후 BGP 수렴 검증 (세그먼트당 1회 — 대표 요약)
+        # ④ Verify BGP convergence after apply (once per segment — representative summary)
         emit("DPU-Agent(fleet)", "HBN(vtysh)", "internal",
              "BGP summary 수렴 검증",
              f"ToR peers Established · routeserver l2vpn-evpn Established · "
@@ -540,11 +540,11 @@ class FakeNico:
 
     def attach_hosts(self, segment_id: str, host_ids: list,
                      purpose: str = "converged") -> NicoSegment:
-        """기존 테넌트 VPC에 호스트 추가 — Managed K8s CP(CPU) 노드를
-        Converged Network(VNI)로 GPU 워커와 묶는 경로.
+        """Add hosts to an existing tenant VPC — the path that binds Managed K8s CP(CPU) nodes
+        with GPU workers over the Converged Network(VNI).
 
-        create_segment와 동일한 선언적 수렴: carbide desired state 갱신 →
-        DPU agent 폴링 감지 → 호스트별 NVUE 렌더/HBN 적용 → BGP 수렴 검증."""
+        Same declarative convergence as create_segment: update carbide desired state →
+        DPU agent poll detection → per-host NVUE render/HBN apply → BGP convergence verification."""
         seg = self.segments.get(segment_id)
         if not seg:
             raise HTTPException(404, f"nico: segment '{segment_id}' not found")
@@ -581,9 +581,9 @@ class FakeNico:
         return seg
 
     def delete_segment(self, segment_id: str) -> NicoSegment:
-        """VPC 해체 — 개통(create_segment)과 대칭인 4단계를 그대로 밟는다:
-        carbide 기록 → agent 폴링 감지 → 호스트별 NVUE 재렌더/DHCP 회수 →
-        EVPN withdraw 확인."""
+        """Tear down the VPC — follows the same 4 steps, symmetric to turn-up (create_segment):
+        carbide record → agent poll detection → per-host NVUE re-render/DHCP reclaim →
+        EVPN withdraw verification."""
         seg = self.segments.pop(segment_id, None)
         if not seg:
             raise HTTPException(404, f"nico: segment '{segment_id}' not found")
@@ -667,8 +667,8 @@ class _InjectBody(BaseModel):
 
 @router.get("/hosts", response_model=list[NicoHost])
 def list_hosts() -> list[NicoHost]:
-    # 활성 어댑터 경유 — http 모드면 실개통이 반영된 에뮬레이터 브리지를,
-    # local 모드면 in-process FakeNico를 읽는다(자산 인벤토리 정합).
+    # Via the active adapter — in http mode, read the emulator bridge that reflects the real turn-up;
+    # in local mode, read the in-process FakeNico (asset inventory consistency).
     from .lifecycle import get_adapter
     try:
         return get_adapter().list_hosts()
@@ -769,7 +769,7 @@ class _AttachBody(BaseModel):
 
 @router.patch("/segments/{segment_id}/hosts", response_model=NicoSegment)
 def attach_hosts(segment_id: str, body: _AttachBody) -> NicoSegment:
-    """세그먼트에 호스트 추가 — Managed K8s CP 노드의 Converged 바인딩."""
+    """Add hosts to a segment — Converged binding of Managed K8s CP nodes."""
     return FAKE_NICO.attach_hosts(segment_id, body.host_ids, body.purpose)
 
 
@@ -781,7 +781,7 @@ def inject(host_id: str, body: _InjectBody) -> dict:
 
 # ---------------------------------------------------------------------------
 # NICo read API surface — site / catalog / instances / leases / per-host
-# drill-down (hardware, health, attestation). /nico 대시보드가 소비한다.
+# drill-down (hardware, health, attestation). Consumed by the /nico dashboard.
 # ---------------------------------------------------------------------------
 _FIRMWARE = {
     "vr-nvl72":    {"bios": "VR01.04", "bmc": "3.02", "cpld": "0x21",
@@ -824,7 +824,7 @@ def site_info() -> dict:
         {"name": "Site Agent", "proto": "Temporal", "state": "ok",
          "detail": "중앙 NICo REST 연동 워커"},
     ]
-    # 사이트별 별개 NICo 인스턴스 — 가산·안산은 독립 클러스터(패브릭·컨트롤러)
+    # Separate NICo instance per site — Gasan·Ansan are independent clusters (fabric·controller)
     sites = []
     for name in sorted({h.site for h in FAKE_NICO.hosts.values() if h.site}):
         hs = [h for h in FAKE_NICO.hosts.values() if h.site == name]
@@ -914,9 +914,9 @@ def host_hardware(host_id: str) -> dict:
 
 
 def _health_payload(host: NicoHost) -> dict:
-    """BMC(Redfish) 센서 뷰 — 활성 트레이는 에뮬레이터 텔레메트리를 반영."""
+    """BMC(Redfish) sensor view — active trays reflect emulator telemetry."""
     from .tray_emu import EMULATOR
-    if host.sku == "cpu-epyc":            # CPU 노드 — GPU 센서 없음(공랭)
+    if host.sku == "cpu-epyc":            # CPU node — no GPU sensors (air-cooled)
         active = host.state == NicoHostState.allocated
         return {"host_id": host.host_id, "tray_id": host.tray_id,
                 "tenant_ref": host.tenant_ref, "instance_id": host.instance_id,
@@ -951,9 +951,9 @@ def _health_payload(host: NicoHost) -> dict:
 @router.get("/health")
 def bulk_health(tenant_ref: Optional[str] = None,
                 limit: int = 600) -> list:
-    """벌크 BMC 센서 — Hardware Health 서비스의 사이트 집계 뷰.
+    """Bulk BMC sensors — site aggregate view of the Hardware Health service.
 
-    운영 포털의 테넌트 Observability가 NICo REST를 직접 소비한다."""
+    The operations portal's tenant Observability consumes NICo REST directly."""
     hosts = [h for h in FAKE_NICO.hosts.values()
              if tenant_ref is None or h.tenant_ref == tenant_ref]
     return [_health_payload(h) for h in

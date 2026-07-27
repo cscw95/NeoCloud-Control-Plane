@@ -1,21 +1,22 @@
-"""NeoCloud 서비스 시나리오 북바운드 API — 고객 라이프사이클.
+"""NeoCloud service-scenario northbound API — customer lifecycle.
 
-고객 포털(neocloud-consoles)이 소비하는 계약 표면:
+Contract surface consumed by the customer portal (neocloud-consoles):
 
-  CP-004          Acceptance — 검수 리포트 제공·고객 승인/반려·간주(deemed) 승인
-                  (승인 시 청구 개시 = billing_start_date 확정)
-  CP-012/BP-016/  종료 워크플로우 — 백업 확인 게이트(시스템 차단) → 회수 saga
-  OP-011          (drain→release→7단계 소거) → Secure Wipe 증명서 → 정산 마감
-  CP-005/006/009  티켓 유형·라우팅 — app/business.py (tech/change→ops,
+  CP-004          Acceptance — deliver report · customer approve/reject · deemed
+                  approval (billing starts on approval = billing_start_date set)
+  CP-012/BP-016/  Termination workflow — backup-confirm gate (system block) → reclaim
+  OP-011          saga (drain→release→7-step wipe) → Secure Wipe cert → billing close-out
+  CP-005/006/009  Ticket type · routing — app/business.py (tech/change→ops,
                   billing_dispute→biz)
-  CP-011          Status Page + RCA — 컴포넌트 상태·인시던트는 /emu/faults
-                  (트레이 에뮬레이터 + NICo 에뮬레이터 피드)에서 도출
-  BP-006          SLA 리포트 + Service Credit — 월별 가용률·표준 크레딧 테이블
-  CP-016          공개 상품 문의 (비인증)
+  CP-011          Status Page + RCA — component state · incidents derived from
+                  /emu/faults (tray emulator + NICo emulator feed)
+  BP-006          SLA report + Service Credit — monthly availability · standard credit table
+  CP-016          Public product inquiry (unauthenticated)
 
-페이싱: 종료 소거 saga는 NOCP_TERMINATION_STAGE_DELAY(초/단계)로 진행 속도를
-제어한다 — 실체인(NOCP_NICO_URL) 기동 시 기본 1.5s(콘솔 라이브 폴링용),
-인프로세스(pytest)는 0(완전 동기).
+Pacing: the termination-wipe saga controls its progress speed via
+NOCP_TERMINATION_STAGE_DELAY (seconds/stage) — defaults to 1.5s when the real
+chain (NOCP_NICO_URL) is up (for console live polling), 0 in-process
+(pytest, fully synchronous).
 """
 
 from __future__ import annotations
@@ -58,15 +59,15 @@ def _iso_plus(ts: str, **delta) -> str:
 
 
 # ===========================================================================
-# 1) Acceptance (CP-004) — 고객 승인/반려/간주(deemed)
+# 1) Acceptance (CP-004) — customer approve/reject/deemed
 # ===========================================================================
-ACCEPTANCE_DEEMED_DAYS = 7      # 리포트 제공 후 무응답 시 간주 승인 기한
+ACCEPTANCE_DEEMED_DAYS = 7      # deemed-approval deadline on no response after report delivery
 
 
 def _deemed_days() -> float:
-    """간주 승인 기한(일) — NOCP_ACCEPTANCE_DEEMED_DAYS로 재정의 (데모 페이싱).
+    """Deemed-approval deadline (days) — overridden by NOCP_ACCEPTANCE_DEEMED_DAYS (demo pacing).
 
-    계약 기본값 7일. pytest/실서버 모두 env 미설정 시 7일 유지."""
+    Contract default is 7 days. Both pytest and the live server keep 7 days when env is unset."""
     raw = os.environ.get("NOCP_ACCEPTANCE_DEEMED_DAYS")
     if raw is not None:
         try:
@@ -82,7 +83,7 @@ class AcceptanceDecision(BaseModel):
 
 
 def _build_acceptance_report(order: ServiceOrder, report_ts: str) -> dict:
-    """검수 리포트 — 기존 acceptance 게이트(격리 검증)·burn-in 데이터 합성."""
+    """Acceptance report — synthesizes the existing acceptance-gate (isolation verification) and burn-in data."""
     n = len(order.node_ids)
     gbps = sum(sa.qos_gbps for sa in STORE.storage_allocs.values()
                if sa.order_id == order.id)
@@ -109,9 +110,9 @@ def _build_acceptance_report(order: ServiceOrder, report_ts: str) -> dict:
 
 
 def _ensure_acceptance_locked(order: ServiceOrder) -> Optional[dict]:
-    """acceptance 게이트 도달 시 검수 레코드 생성(1회). 전제: STORE.lock 보유.
+    """Create the acceptance record (once) when the acceptance gate is reached. Precondition: STORE.lock held.
 
-    반환 None = 아직 acceptance 단계 이전(리포트 미제공)."""
+    Returns None = still before the acceptance stage (report not yet delivered)."""
     if order.kind != OrderKind.new:
         raise HTTPException(409, "acceptance는 신규 개통 주문 전용")
     rec = STORE.acceptances.get(order.id)
@@ -128,7 +129,7 @@ def _ensure_acceptance_locked(order: ServiceOrder) -> Optional[dict]:
         "status": "pending",            # pending | approved | rejected | deemed
         "report": _build_acceptance_report(order, report_ts),
         "deemed_deadline": _iso_plus(report_ts, days=_deemed_days()),
-        "billing_start_date": None,     # 승인(또는 deemed) 후 확정
+        "billing_start_date": None,     # confirmed after approval (or deemed)
         "reject_reason": None,
         "decided_at": None,
         "decided_by": None,
@@ -149,11 +150,11 @@ def _acceptance_view(order_id: str, rec: Optional[dict]) -> dict:
 
 
 def _finalize_delivery(order: ServiceOrder, adapter) -> None:
-    """acceptance 게이트에서 대기/반려 중인 주문을 delivered로 진행.
+    """Advance an order waiting/rejected at the acceptance gate to delivered.
 
-    전제: STORE.lock 미보유 (하위 stage 함수가 자체적으로 락을 잡는다).
-    approval_mode 주문은 ops 승인 큐의 남은 게이트를 연속 실행한다 —
-    고객/운영자 중 먼저 승인한 쪽이 유효."""
+    Precondition: STORE.lock NOT held (the lower-level stage functions take the lock themselves).
+    approval_mode orders run the remaining gates of the ops approval queue in sequence —
+    whichever of customer/operator approves first wins."""
     if order.state == OS.delivered:
         return
     if order.approval_mode and order.pending_stage:
@@ -162,8 +163,8 @@ def _finalize_delivery(order: ServiceOrder, adapter) -> None:
             lifecycle.approve_next_stage(order.id, adapter)
         return
     if order.state == OS.acceptance:
-        # 재테스트 루프(고객 반려 후) 재승인 — 노드는 이미 in_service일 수
-        # 있으므로 상태 보존 전이로 delivered 복귀
+        # retest-loop re-approval (after customer reject) — nodes may already be
+        # in_service, so return to delivered via a state-preserving transition
         with STORE.lock:
             for nid in order.node_ids:
                 node = STORE.node_instances.get(nid)
@@ -177,13 +178,13 @@ def _finalize_delivery(order: ServiceOrder, adapter) -> None:
 
 
 def _maybe_deem(order: ServiceOrder, adapter) -> None:
-    """리포트 제공 후 +7일 무응답 시 간주(deemed) 승인 — GET 호출 시 판정."""
+    """Deemed approval when no response for +7 days after report delivery — evaluated on GET call."""
     with STORE.lock:
         rec = STORE.acceptances.get(order.id)
         if not rec or rec["status"] not in ("pending", "rejected"):
             return
         if order.state not in (OS.acceptance, OS.k8s_installing, OS.delivered):
-            return                     # failed/reclaimed 주문은 간주 승인 제외
+            return                     # failed/reclaimed orders are excluded from deemed approval
         deadline = rec["deemed_deadline"]
         if datetime.now(timezone.utc) < datetime.fromisoformat(deadline):
             return
@@ -241,7 +242,7 @@ def decide_acceptance(order_id: str, body: AcceptanceDecision) -> dict:
                                      "검수 재실행 불가")
 
     if body.decision == "approve":
-        _finalize_delivery(order, adapter)     # ops 큐와 공존 — 선승인 유효
+        _finalize_delivery(order, adapter)     # coexists with ops queue — earlier approval wins
         with STORE.lock:
             now = _now()
             rec.update(status="approved", billing_start_date=now,
@@ -258,16 +259,16 @@ def decide_acceptance(order_id: str, body: AcceptanceDecision) -> dict:
                  order_id=order_id)
             return _acceptance_view(order_id, rec)
 
-    # -- reject: 재테스트 루프 (acceptance 재실행 상태, 청구 미개시) ----------
+    # -- reject: retest loop (acceptance re-run state, billing not started) ------
     with STORE.lock:
         now = _now()
         if order.state == OS.delivered:
-            order.state = OS.acceptance        # 고객 반려 전용 역전이(재테스트)
+            order.state = OS.acceptance        # customer-reject-only reverse transition (retest)
         order.history.append(LifecycleEvent(
             state=OS.acceptance.value,
             detail=f"AcceptanceRejected — 고객 반려, acceptance 재실행: "
                    f"{body.reason}", at=now))
-        report_ts = _now()                     # 재테스트 리포트 재생성
+        report_ts = _now()                     # regenerate retest report
         rec.update(status="rejected", reject_reason=body.reason,
                    billing_start_date=None, decided_at=now,
                    decided_by="customer",
@@ -284,7 +285,7 @@ def decide_acceptance(order_id: str, body: AcceptanceDecision) -> dict:
 
 
 # ===========================================================================
-# 2) 종료 워크플로우 (CP-012/BP-016/OP-011)
+# 2) Termination workflow (CP-012/BP-016/OP-011)
 # ===========================================================================
 TERMINATION_CHECKLIST = [
     "테넌트 데이터 추출(export) 완료",
@@ -295,11 +296,11 @@ ERASE_METHOD = "NVMe crypto-erase + GPU/DDR wipe + TPM reset"
 
 
 class BackupConfirmBody(BaseModel):
-    checklist: list[dict]           # [{item, confirmed}] — 전부 true 필요
+    checklist: list[dict]           # [{item, confirmed}] — all must be true
 
 
 def _termination_stage_delay() -> float:
-    """종료 소거 saga 페이싱(단계당 초) — NOCP_TERMINATION_STAGE_DELAY."""
+    """Termination-wipe saga pacing (seconds per stage) — NOCP_TERMINATION_STAGE_DELAY."""
     raw = os.environ.get("NOCP_TERMINATION_STAGE_DELAY")
     if raw is not None:
         try:
@@ -362,8 +363,8 @@ def _term_progress(rec: dict, stage: str, done_units: int,
 
 
 def _run_termination_saga(rec: dict, adapter, delay: float) -> None:
-    """회수 saga — 할당별 drain→release→7단계 소거→풀 복귀. 완료 시 wiped +
-    Secure Wipe 증명서 발급. delay>0이면 단계별 sleep(콘솔 폴링용)."""
+    """Reclaim saga — per allocation drain→release→7-step wipe→pool return. On completion, wiped +
+    Secure Wipe certificate issued. If delay>0, sleeps per stage (for console polling)."""
     tenant_id = rec["tenant_id"]
     with STORE.lock:
         alloc_ids = [a.id for a in STORE.allocations.values()
@@ -383,9 +384,9 @@ def _run_termination_saga(rec: dict, adapter, delay: float) -> None:
             rack_ids = list(alloc.rack_ids) if alloc else []
             node_cnt = sum(len(STORE.racks[r].tray_ids)
                            for r in rack_ids if r in STORE.racks)
-        # 단계별 진행 표시(페이싱) — 실제 상태 전이는 기존 회수 saga
-        # (run_terminate_order)가 수행하며 노드 이력·NICo sanitizer 트레이스에
-        # 동일 7단계가 기록된다.
+        # per-stage progress display (pacing) — the actual state transitions are
+        # done by the existing reclaim saga (run_terminate_order), which records
+        # the same 7 steps in the node history and NICo sanitizer trace.
         for st in stage_names[:-1]:
             _term_progress(rec, f"{aid}: {st}", done, total)
             emit("NeoCloudOS.M1", "NICo.APIService", "internal",
@@ -465,7 +466,7 @@ def confirm_backup(tenant_id: str, body: BackupConfirmBody) -> dict:
              payload={"termination_id": rec["termination_id"]})
 
     delay = _termination_stage_delay()
-    if delay <= 0:                       # pytest/인프로세스 — 완전 동기
+    if delay <= 0:                       # pytest/in-process — fully synchronous
         _run_termination_saga(rec, adapter, 0.0)
     else:
         threading.Thread(target=_run_termination_saga,
@@ -503,7 +504,7 @@ def get_wipe_certificate(tenant_id: str) -> dict:
             raise HTTPException(409, f"소거 미완료 (state={rec['state']}) — "
                                      "증명서는 wiped 이후 수령 가능")
         cert = rec["wipe_certificate"]
-        if rec["state"] == "wiped":      # 수령 → 정산 마감(closed) 전환
+        if rec["state"] == "wiped":      # receipt → transition to billing close-out (closed)
             rec["state"] = "closed"
             rec["closed_at"] = _now()
             _term_progress(rec, "closed", 1, 1)
@@ -539,8 +540,8 @@ def _fault_component(f: dict) -> str:
 
 
 def _sync_incidents_locked() -> None:
-    """/emu/faults(트레이 XID) + NICo 에뮬레이터 장애 피드 → 인시던트
-    read-model 동기화. resolved P0/P1 인시던트는 RCA 1건 자동 생성."""
+    """/emu/faults (tray XID) + NICo emulator fault feed → incident
+    read-model sync. Resolved P0/P1 incidents auto-generate one RCA each."""
     feed = EMULATOR.faults(limit=500)["recent"]
     feed = feed + _emulator_reprov_faults(100)
     by_key = {i["key"]: i for i in STORE.incidents.values() if "key" in i}
@@ -590,7 +591,7 @@ def _sync_incidents_locked() -> None:
 
 
 def _publish_rca_locked(inc: dict) -> None:
-    """Major(P0/P1) resolved 인시던트 → RCA 자동 발행 (incident당 1건)."""
+    """Major (P0/P1) resolved incident → auto-publish RCA (one per incident)."""
     if any(r["incident_id"] == inc["id"] for r in STORE.rcas.values()):
         return
     rca_id = f"rca-{STORE.next_seq('rca')}"
@@ -616,7 +617,7 @@ def _publish_rca_locked(inc: dict) -> None:
 
 @router.get("/status")
 def status_page() -> dict:
-    """공개 Status Page (인증 무관) — 컴포넌트 상태 + 인시던트 + 90일 가용률."""
+    """Public Status Page (auth-agnostic) — component state + incidents + 90-day availability."""
     with STORE.lock:
         _sync_incidents_locked()
         open_sev: dict[str, list[str]] = {}
@@ -653,7 +654,7 @@ def status_page() -> dict:
 
 @router.get("/tenants/{tenant_id}/rca-reports")
 def rca_reports(tenant_id: str) -> list:
-    """Major(P0/P1) resolved 인시던트의 RCA — 테넌트 귀속 + 사이트 공통."""
+    """RCA for major (P0/P1) resolved incidents — tenant-scoped + site-wide."""
     with STORE.lock:
         if tenant_id not in STORE.tenants:
             raise HTTPException(404, f"tenant '{tenant_id}' not found")
@@ -669,10 +670,10 @@ def rca_reports(tenant_id: str) -> list:
 
 
 # ===========================================================================
-# 5) SLA 리포트 + Service Credit (BP-006)
+# 5) SLA report + Service Credit (BP-006)
 # ===========================================================================
 SLA_TARGET_PCT = 99.9
-# 표준 Service Credit 테이블 — 월 가용률 기준 (심한 위반 우선 매칭)
+# standard Service Credit table — by monthly availability (severe violations matched first)
 SLA_CREDIT_TABLE = [
     {"below_pct": 95.0, "credit_pct": 50},
     {"below_pct": 99.0, "credit_pct": 25},
@@ -700,10 +701,10 @@ def _tenant_monthly_usd_locked(tenant_id: str) -> float:
 @router.get("/tenants/{tenant_id}/sla-report")
 def sla_report(tenant_id: str, month: Optional[str] = None,
                synthesize_violation: bool = False) -> dict:
-    """월별 SLA 리포트 — fault 이력(인시던트) 연동 가용률·크레딧 산정.
+    """Monthly SLA report — availability and credit computed from fault history (incidents).
 
-    synthesize_violation=1 이면 데모용 합성 P1 장애(52분 다운타임)를 해당
-    월에 1건 추가해 위반→크레딧 산정 경로를 실증한다."""
+    If synthesize_violation=1, adds one demo synthetic P1 fault (52-min downtime) to the
+    given month to demonstrate the violation→credit computation path."""
     with STORE.lock:
         if tenant_id not in STORE.tenants:
             raise HTTPException(404, f"tenant '{tenant_id}' not found")
@@ -749,7 +750,7 @@ def sla_report(tenant_id: str, month: Optional[str] = None,
             inc_lines.append({"id": i["id"], "severity": i["severity"],
                               "downtime_min": round(dt_min, 2),
                               "mttr_min": i["mttr_min"]})
-        # 해당 월의 총 분 — 데모 단순화: 월 전체를 서비스 구간으로 본다
+        # total minutes in the month — demo simplification: treat the whole month as the service window
         next_month = (month_dt.replace(year=month_dt.year + 1, month=1)
                       if month_dt.month == 12
                       else month_dt.replace(month=month_dt.month + 1))
@@ -797,7 +798,7 @@ def sla_report(tenant_id: str, month: Optional[str] = None,
 
 
 # ===========================================================================
-# 6) 공개 상품 문의 (CP-016) — 비인증
+# 6) Public product inquiry (CP-016) — unauthenticated
 # ===========================================================================
 class InquiryBody(BaseModel):
     company: str
@@ -834,7 +835,7 @@ def create_inquiry(body: InquiryBody) -> dict:
 
 @router.get("/public/inquiries")
 def list_inquiries() -> list:
-    """사업 콘솔용 문의 목록 (데모 — 인증 게이트는 콘솔 계층에서)."""
+    """Inquiry list for the business console (demo — auth gate is at the console layer)."""
     with STORE.lock:
         return sorted(STORE.inquiries.values(),
                       key=lambda i: i["received_at"], reverse=True)

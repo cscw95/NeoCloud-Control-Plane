@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/v1/integration", tags=["integration"])
 _env = os.environ.get("NOCP_NICO_URL", "")
 NICO_BASE = (_env.rsplit("/nico-bridge", 1)[0] if _env else
              os.environ.get("NICO_EMULATOR_URL", "http://127.0.0.1:9000"))
-# AI Infra Emulator (:9100) — 물리 트윈/장비를 소유. NICo가 이를 드라이브.
+# AI Infra Emulator (:9100) — owns the physical twin/equipment. NICo drives it.
 AI_INFRA_BASE = os.environ.get("AI_INFRA_URL", "http://127.0.0.1:9100")
 CONSOLE_BASE = os.environ.get("NC_CONSOLE_URL", "http://127.0.0.1:8090")
 
@@ -48,10 +48,10 @@ def _probe(url: str, timeout: float = 1.2):
 def nico_status():
     """Live NICo Emulator integration status (server-side probe, no CORS).
 
-    분리 이후 물리 트윈(/emulator/v1/twin)은 :9100 소유 — NICo 측 값은
-    healthz(버전·AI Infra 도달성·규모)와 사이트 컨트롤러 오케스트레이션
-    (/emulator/v1/sites: managed hosts·jobs·tenants_served)에서 집계한다.
-    다이어그램 박스/우측 카드가 이 값을 그대로 표시하므로 여기가 싱크 기준."""
+    Since the split, the physical twin (/emulator/v1/twin) is owned by :9100 — the NICo-side
+    values are aggregated from healthz (version, AI Infra reachability, scale) and the site
+    controller orchestration (/emulator/v1/sites: managed hosts, jobs, tenants_served).
+    The diagram boxes / right-hand cards show these values verbatim, so this is the sync source of truth."""
     health = _probe(f"{NICO_BASE}/healthz")
     hb = health.get("body") or {}
     ai = hb.get("ai_infra") or {}
@@ -83,11 +83,11 @@ def nico_status():
 
 
 def _component_nodes(up: bool):
-    """트윈 하부 에뮬레이터 플레인(UFM·NetQ·DLC·VAST·Converged) 프로브."""
+    """Probe the emulator planes beneath the twin (UFM, NetQ, DLC, VAST, Converged)."""
     comps = []
 
     def add(cid, label, probe_path, describe, edge_label, twin_label):
-        # 물리 플레인은 AI Infra Emulator(:9100)에 있다 — 거기서 프로브.
+        # The physical plane lives in the AI Infra Emulator (:9100) — probe it there.
         st, detail = "down", "미기동"
         if up:
             p = _probe(f"{AI_INFRA_BASE}{probe_path}", timeout=0.9)
@@ -134,7 +134,7 @@ def _component_nodes(up: bool):
     return comps
 
 
-# 노드별 접속 화면 (다이어그램 클릭 시 새 창)
+# Per-node access screen (opens a new window when a diagram node is clicked)
 _AI = AI_INFRA_BASE
 NODE_URLS = {
     "customer": "http://127.0.0.1:8090/customer/",
@@ -156,7 +156,7 @@ def topology():
     """System connectivity graph for the verification console diagram."""
     nico = nico_status()
     up = nico["reachable"]
-    # 트윈 장애 상태 반영 — 전체 랙 Off 등 obs 요약을 노드 색·상세에 표시
+    # Reflect twin fault state — surface the obs summary (e.g. all racks Off) in node color/detail
     obs = _probe(f"{AI_INFRA_BASE}/emulator/v1/obs/summary", timeout=0.9) if up else None
     ob = (obs or {}).get("body") or {}
     racks_off = ob.get("racks_off") or 0
@@ -187,7 +187,7 @@ def topology():
          "kind": "control", "status": "up",
          "detail": f"v{__version__} · adapter: {nico['adapter_mode']}"},
     ]
-    # 콘솔 3종 — 하드코딩 금지: :8090 정적 서버를 실제 프로브해 상태 반영
+    # The three consoles — no hardcoding: probe the :8090 static server for real to reflect status
     con = _probe(f"{CONSOLE_BASE}/ops/", timeout=0.8)
     con_up = con["reachable"]
     for cid, label, detail in (
@@ -211,7 +211,7 @@ def topology():
         {"from": "nico", "to": "twin",
          "label": "drive (:9100 REST)", "status": "up" if up else "down"},
     ]
-    # 물리 구성 정합 엣지: 패브릭→랙, CDU→랙(액랭), 랙→converged→스토리지
+    # Physical-topology consistency edges: fabric→rack, CDU→rack (liquid cooling), rack→converged→storage
     plane_edge = {
         "ufm": ("twin", "IB XDR rail"),
         "netq": ("twin", "Spectrum-X Eth"),
@@ -241,19 +241,19 @@ def topology():
 
 @router.get("/consistency")
 def consistency():
-    """계층 간 데이터 정합성 점검 — 테넌트 집합 비교.
+    """Cross-layer data consistency check — comparing tenant sets.
 
-    NOCP(주문/할당 보유 테넌트) vs NICo Emulator 브리지(세그먼트 tenant_ref)
-    vs AI Infra 물리 트윈(DPU attachment 테넌트)을 비교해 고아(orphan —
-    물리에만 존재)·미반영(missing — NOCP에만 존재)을 보고한다.
-    /flow 검증 콘솔의 '데이터 정합성' 패널이 소비한다."""
+    Compares NOCP (tenants holding orders/allocations) vs the NICo Emulator bridge (segment
+    tenant_ref) vs the AI Infra physical twin (DPU-attachment tenants), and reports orphans
+    (orphan — exist only in the physical layer) and missing entries (missing — exist only in NOCP).
+    Consumed by the 'data consistency' panel of the /flow verification console."""
     from .store import STORE
 
     with STORE.lock:
         nocp = sorted({a.tenant_id for a in STORE.allocations.values()}
                       | {c.tenant_id for c in STORE.cpu_nodes.values()
                          if c.tenant_id})
-    # 리셋/테스트 시 오버라이드 가능하도록 호출 시점에 env를 읽는다
+    # Read env at call time so it can be overridden on reset/test
     env = os.environ.get("NOCP_NICO_URL", "")
     nico_base = (env.rsplit("/nico-bridge", 1)[0] if env else
                  os.environ.get("NICO_EMULATOR_URL", "http://127.0.0.1:9000"))
@@ -300,12 +300,12 @@ def consistency():
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
 
 
-# 실시간 API 호출 집계 + 주요 상태 — /flow 모듈 아키텍처 라이브 배지가 소비.
+# Real-time API call counts + key status — consumed by the /flow module-architecture live badge.
 _twin_cache: dict = {"at": 0.0, "data": None}
 
 
 def _twin_summary(now: float):
-    """AI Infra(:9100) obs 요약 best-effort 프로브 — 5초 캐시(폴링 오버헤드 방지)."""
+    """Best-effort probe of the AI Infra (:9100) obs summary — 5-second cache (avoids polling overhead)."""
     if now - _twin_cache["at"] < 5.0:
         return _twin_cache["data"]
     data = None
@@ -321,7 +321,7 @@ def _twin_summary(now: float):
 
 
 def _trace_supplement(now: float):
-    """순수 내부 모듈(트레이스만 방출) 보조 카운트 — src→module 매핑 집계."""
+    """Supplementary count for purely internal modules (trace-only emitters) — aggregated by src→module mapping."""
     counts: dict = defaultdict(int)
     last: dict = {}
     for ev in trace.TRACER.query(limit=2000):
@@ -338,12 +338,12 @@ def _trace_supplement(now: float):
 
 @router.get("/module-stats")
 def module_stats():
-    """모듈별 실시간 API 호출 건수·EPS·최근 활동 + 주요 상태 총계.
+    """Per-module real-time API call counts, EPS, recent activity + key status totals.
 
-    14개 Control-Plane 모듈(cp-* + d-*)의 누적 호출·초당 호출(60s sliding)·
-    마지막 활동(초)을 미들웨어 카운터에서 도출하고, 순수 내부 모듈은 파이프
-    라인 트레이스로 보조 카운트한다. totals는 lifecycle/tenancy store에서 진행
-    중 주문·job·테넌트·파이프라인 이벤트 수를 집계한다."""
+    Derives cumulative calls, calls-per-second (60s sliding), and last activity (seconds) for the
+    14 Control-Plane modules (cp-* + d-*) from the middleware counters, and supplements purely
+    internal modules with pipeline traces. totals aggregates the number of in-flight orders, jobs,
+    tenants, and pipeline events from the lifecycle/tenancy store."""
     from .models import OrderState
     from .store import STORE
 

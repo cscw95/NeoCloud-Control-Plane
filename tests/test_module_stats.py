@@ -1,6 +1,7 @@
-"""실시간 API 호출 집계 — 미들웨어 카운터 + module-stats 엔드포인트 + 모듈 매핑.
+"""Real-time API call aggregation — middleware counter + module-stats endpoint + module mapping.
 
-/flow 검증 콘솔의 '모듈 아키텍처' 라이브 배지가 소비하는 백엔드 계약을 검증한다.
+Verifies the backend contract consumed by the 'module architecture' live badges
+of the /flow verify console.
 """
 
 from app.metrics import MODULES, modules_for_path
@@ -32,7 +33,7 @@ def test_module_mapping_covers_key_prefixes():
 def test_module_stats_shape(client):
     s = client.get("/api/v1/integration/module-stats").json()
     ids = [m["id"] for m in s["modules"]]
-    assert ids == MODULES                       # 14개 · 고정 순서
+    assert ids == MODULES                       # 14 items, fixed order
     assert len(ids) == 14
     for m in s["modules"]:
         assert set(m) == {"id", "calls", "eps", "last_active_s"}
@@ -64,7 +65,7 @@ def test_middleware_counts_increment_per_module(client):
 
 
 def test_totals_reflect_control_plane_state(client):
-    # 개통 실행 → 활성 주문·테넌트가 totals에 반영
+    # Provisioning run → active orders/tenants reflected in totals
     client.post("/api/v1/tenants", json={"name": "metrics-co"})
     s = client.get("/api/v1/integration/module-stats").json()
     assert s["totals"]["calls"] > 0
@@ -74,7 +75,7 @@ def test_totals_reflect_control_plane_state(client):
 
 
 def test_module_stats_endpoint_is_observability(client):
-    # module-stats 호출 자체가 cp-obs(integration) 카운트를 올린다
+    # The module-stats call itself increments the cp-obs (integration) count
     def obs_calls():
         s = client.get("/api/v1/integration/module-stats").json()
         return {m["id"]: m["calls"] for m in s["modules"]}["cp-obs"]

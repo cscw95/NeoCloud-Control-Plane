@@ -42,8 +42,9 @@ def provision_scalable_unit(
 ) -> ScalableUnit:
     """Expand one SU from the given blueprint and register every entity.
 
-    `racks`로 SU 랙 수를 지정할 수 있다(기본 = 세대별 표준, VR은 NCP RD 기준
-    16랙) — 표준의 배수가 아닌 층은 표준 SU + 잔여 SU로 분할해 시드한다."""
+    `racks` can set the SU rack count (default = per-generation standard, VR is
+    16 racks per NCP RD) — a floor that is not a multiple of the standard is
+    seeded by splitting into standard SUs + a remainder SU."""
     bp = spec.get_blueprint(blueprint_key)
     cap_kw = bp.maxq_rack_kw if power_policy == "maxq" else bp.maxp_rack_kw
     rack_count = racks or bp.racks_per_su
@@ -117,8 +118,8 @@ def provision_scalable_unit(
     return su
 
 
-# Phase 1 실배치 계획 — 2개 사이트 × 각 2개 층, 전량 Vera Rubin NVL72
-#   STT 가산: 2,592 GPU (36랙) / IGIS 안산: 7,488 GPU (104랙) = 10,080 GPU
+# Phase 1 deployment plan — 2 sites × 2 floors each, all Vera Rubin NVL72
+#   STT Gasan: 2,592 GPU (36 racks) / IGIS Ansan: 7,488 GPU (104 racks) = 10,080 GPU
 PHASE1_SITES = [
     {"id": "aif-stt-gasan", "name": "STT 가산", "site": "Seoul · STT Gasan",
      "design_power_mw": 9.0,
@@ -136,9 +137,9 @@ PHASE1_SITES = [
 
 
 def _su_sizes(racks: int, per_su: int) -> list[int]:
-    """층 랙 수 → SU 분할 (표준 per_su + 잔여).
+    """Floor rack count → SU split (standard per_su + remainder).
 
-    VR = 16랙/SU (NCP RD): 24→[16,8], 54→[16,16,16,6], 50→[16,16,16,2]."""
+    VR = 16 racks/SU (NCP RD): 24→[16,8], 54→[16,16,16,6], 50→[16,16,16,2]."""
     sizes: list[int] = []
     while racks > per_su:
         sizes.append(per_su)
@@ -148,14 +149,14 @@ def _su_sizes(racks: int, per_su: int) -> list[int]:
 
 
 def seed_default(store: Store, *, blueprints: list[str] | None = None) -> None:
-    """Seed Phase 1 사이트 구성 (기본) 또는 단순 시드(blueprints 지정 시).
+    """Seed the Phase 1 site layout (default), or a simple seed (when blueprints given).
 
-    기본: PHASE1_SITES — STT 가산(1,728+864 GPU) + IGIS 안산(3,888+3,600 GPU)
-    = 140랙 / 2,520트레이 / 10,080 GPU, 전량 vr-nvl72 (IT MaxQ 28MW).
-    테스트는 conftest에서 blueprints 명시 시드(레거시 경로)를 사용한다."""
+    Default: PHASE1_SITES — STT Gasan (1,728+864 GPU) + IGIS Ansan (3,888+3,600 GPU)
+    = 140 racks / 2,520 trays / 10,080 GPU, all vr-nvl72 (IT MaxQ 28MW).
+    Tests use the explicit-blueprints seed from conftest (legacy path)."""
     store.reset()
 
-    if blueprints:                    # 레거시/테스트 경로 — 단일 팩토리
+    if blueprints:                    # legacy/test path — single factory
         factory = AIFactory(
             id="aif-skt-01", name="SKT NVL72 AI Factory 01",
             site="Seoul Metro (Gasan)", design_power_mw=250.0,
@@ -172,7 +173,7 @@ def seed_default(store: Store, *, blueprints: list[str] | None = None) -> None:
                 store, factory_id=factory.id, du_id=du.id, su_index=i,
                 blueprint_key=bp_key,
             )
-    else:                             # Phase 1 — 2사이트 × 2층, 전량 VR
+    else:                             # Phase 1 — 2 sites × 2 floors, all VR
         su_idx = 0
         blk_idx = 0
         for site in PHASE1_SITES:
@@ -203,9 +204,10 @@ def seed_default(store: Store, *, blueprints: list[str] | None = None) -> None:
                         racks=n_racks,
                     )
 
-    # 범용 CPU 노드 풀 (DPU 장착, 테넌트당 기본 5대 자동 제공 + Managed K8s
-    # 옵션 시 CP 3대 추가). AI Infra Emulator(NICo)에 호스트로 등록되어
-    # DPU 기반 isolation으로 IP·OS 설치 후 테넌트에 할당된다.
+    # general-purpose CPU node pool (DPU-equipped, 5 per tenant provided by
+    # default + 3 CP nodes added when the Managed K8s option is chosen).
+    # Registered as hosts in the AI Infra Emulator (NICo), assigned to a tenant
+    # after IP·OS installation via DPU-based isolation.
     from .models import CpuNode
     for n in range(1, 61):
         nid = f"cpu-node-{n:02d}"
@@ -214,14 +216,15 @@ def seed_default(store: Store, *, blueprints: list[str] | None = None) -> None:
 
 
 def seed_demo_samples(store: Store) -> None:
-    """데모 리셋/시드 직후 콘솔 메뉴(알림·인시던트·티켓)가 비지 않도록
-    샘플 데이터를 시드한다 — detail/body 의 "(sample)" 표기로 구분.
+    """Seed sample data so the console menus (alerts·incidents·tickets) are not
+    empty right after a demo reset/seed — distinguished by the "(sample)" marker
+    in detail/body.
 
-    - 트레이 에뮬레이터 fault_log: 샘플 XID 장애 2건 (resolved 1 / open 1)
-    - 티켓: 비어 있으면 샘플 2건 (open 1 / resolved 1)
+    - tray emulator fault_log: 2 sample XID faults (resolved 1 / open 1)
+    - tickets: if empty, 2 samples (open 1 / resolved 1)
 
-    기본(Phase-1) 데모 시드 경로에서만 호출된다 — 테스트의 blueprints 명시
-    시드는 결정적 상태를 위해 샘플 없이 시작한다."""
+    Called only on the default (Phase-1) demo seed path — the tests'
+    explicit-blueprints seed starts without samples for deterministic state."""
     from datetime import datetime, timezone
 
     from .models import Ticket

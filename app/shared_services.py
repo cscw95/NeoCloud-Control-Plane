@@ -1,21 +1,21 @@
-"""Fake Shared Services — 구성도 ⑦ Common Platform (IAM·Secrets·PAM·Audit).
+"""Fake Shared Services — diagram ⑦ Common Platform (IAM·Secrets·PAM·Audit).
 
-DSX 아키텍처의 Shared Services 플레인 대역(fake). 실제 배치에서는
-Keycloak(OIDC)·Vault·PAM 게이트웨이로 교체되며, 어댑터 경계는 이 모듈의
-SHARED 싱글턴 호출 지점이다.
+Stands in (fake) for the Shared Services plane of the DSX architecture. In a real
+deployment it is replaced by Keycloak(OIDC)·Vault·PAM gateways; the adapter
+boundary is this module's SHARED singleton call sites.
 
-NVIDIA BMaaS Requirements 매핑:
-  - SEC01  사용자 OIDC 인증 — 테넌트별 IAM realm + OIDC 클라이언트
-  - SEC04  최소권한 RBAC — realm 기본 롤 3종(tenant-admin/ops-operator/viewer)
-  - SEC07  관리자 인터페이스 MFA — tenant-portal 클라이언트 TOTP 강제
-  - SEC08  감사 로그 — 모든 IAM/Vault/PAM 동작을 audit 트레일로 보존
-  - SEC09/SEC10 자격증명 발급·회전·폐기 — 주문 saga와 동기화
+NVIDIA BMaaS Requirements mapping:
+  - SEC01  user OIDC authentication — per-tenant IAM realm + OIDC client
+  - SEC04  least-privilege RBAC — 3 realm default roles (tenant-admin/ops-operator/viewer)
+  - SEC07  admin interface MFA — TOTP enforced on the tenant-portal client
+  - SEC08  audit log — every IAM/Vault/PAM action preserved in the audit trail
+  - SEC09/SEC10 credential issuance·rotation·revocation — synced with the order saga
 
-파이프라인 연동:
-  - 테넌트 생성          → IAM realm + 기본 롤 + 포털 클라이언트
-  - 주문 acceptance      → 서비스 계정(OIDC client-credentials) + Vault 시크릿
-                           (스토리지 S3 키·OOB Redfish 자격증명) 발급
-  - 주문 terminate(회수) → 해당 주문의 서비스 계정 폐기 + 시크릿 파기
+Pipeline integration:
+  - tenant creation      → IAM realm + default roles + portal client
+  - order acceptance     → service account (OIDC client-credentials) + Vault secrets
+                           (storage S3 keys·OOB Redfish credentials) issued
+  - order terminate (reclaim) → revoke that order's service account + destroy secrets
 """
 
 from __future__ import annotations
@@ -41,9 +41,9 @@ class OidcClient(BaseModel):
     kind: str                              # portal | service-account
     scope: str = "openid profile"
     order_id: Optional[str] = None
-    mfa: bool = False                      # SEC07 — 관리자 인터페이스 TOTP
+    mfa: bool = False                      # SEC07 — admin interface TOTP
     tokens_issued: int = 0
-    secret_masked: str = ""                # 원본 secret은 딜리버리 패키지 1회 노출
+    secret_masked: str = ""                # raw secret exposed once in the delivery package
     state: str = "active"                  # active | revoked
     created_at: str = Field(default_factory=_now)
 
@@ -58,12 +58,12 @@ class IamRealm(BaseModel):
 
 
 class SecretEntry(BaseModel):
-    path: str                              # vault kv 경로
+    path: str                              # vault kv path
     kind: str                              # s3-access-key | redfish-cred | …
     tenant_ref: str
     order_id: Optional[str] = None
     version: int = 1
-    value_masked: str                      # 값은 마스킹만 노출 (SEC 준수)
+    value_masked: str                      # only the masked value is exposed (SEC compliance)
     created_at: str = Field(default_factory=_now)
 
 
@@ -89,14 +89,14 @@ class AuditEntry(BaseModel):
 
 
 class FakeSharedServices:
-    """IAM(OIDC)·Vault·PAM 시뮬레이터 + SEC08 감사 트레일."""
+    """IAM(OIDC)·Vault·PAM simulator + SEC08 audit trail."""
 
     def __init__(self) -> None:
         self.realms: dict[str, IamRealm] = {}
         self.secrets: dict[str, SecretEntry] = {}
         self.pam_sessions: dict[str, PamSession] = {}
         self.audit_log: list[AuditEntry] = []
-        self._sa_secrets: dict[str, str] = {}   # order_id → 원본 secret (1회 인출)
+        self._sa_secrets: dict[str, str] = {}   # order_id → raw secret (one-time retrieval)
         self._seq = 0
 
     def reset(self) -> None:
@@ -107,7 +107,7 @@ class FakeSharedServices:
         self._sa_secrets.clear()
         self._seq = 0
 
-    # -- SEC08: 감사 트레일 -------------------------------------------------
+    # -- SEC08: audit trail -------------------------------------------------
     def audit(self, actor: str, action: str, target: str,
               result: str = "success", tenant_ref: Optional[str] = None) -> None:
         self._seq += 1
@@ -146,7 +146,7 @@ class FakeSharedServices:
             order_id=order_id, secret_masked=f"nc_****{secret[-4:]}",
             scope="nodes:read storage:mount telemetry:write")
         realm.clients.append(client)
-        self._sa_secrets[order_id] = secret     # 딜리버리 패키지에서 1회 인출
+        self._sa_secrets[order_id] = secret     # retrieved once from the delivery package
         emit("NeoCloudOS.M1", "IAM(Keycloak)", "OIDC/IAM",
              f"POST /admin/realms/{tenant_id}/clients → sa-{order_id}",
              "인수(acceptance) 단계 — 클러스터 서비스 계정 발급 "
@@ -178,7 +178,7 @@ class FakeSharedServices:
                 "expires_in": 3600, "scope": client.scope}
 
     def pop_sa_secret(self, order_id: str) -> str:
-        """서비스 계정 원본 secret 1회 인출 — 딜리버리 패키지 전달용 (SEC09)."""
+        """One-time retrieval of a service account's raw secret — for the delivery package (SEC09)."""
         return self._sa_secrets.pop(order_id, f"nc_{_pysecrets.token_hex(16)}")
 
     def _find_client(self, client_id: str):
@@ -205,7 +205,7 @@ class FakeSharedServices:
                    tenant_ref=tenant_ref)
         return entry
 
-    # -- 회수: 주문 단위 자격증명 폐기 ---------------------------------------
+    # -- reclaim: revoke credentials per order ---------------------------------------
     def revoke_order_credentials(self, tenant_id: str, source_order_id: str,
                                  reclaim_order_id: str) -> dict:
         revoked, purged = [], []

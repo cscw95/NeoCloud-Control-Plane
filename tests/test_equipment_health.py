@@ -1,4 +1,4 @@
-"""장비 헬스 취합 API (운영 포털) — 집계·운영 조치·배치 제외 회귀."""
+"""Equipment health aggregation API (ops portal) — aggregation / operator action / placement-exclusion regression."""
 
 
 def _mk_tenant(client, name="eq-ai"):
@@ -20,7 +20,7 @@ def test_equipment_health_aggregation_and_operator_action(client):
     su = client.get("/api/v1/scalable-units/su-1").json()
     rack_id = su["rack_ids"][0]
 
-    # 장애 처리 → 집계·리스트 반영
+    # Fault handling → reflected in aggregation/list
     r = client.patch("/api/v1/equipment/state", json={
         "kind": "rack", "id": rack_id, "state": "faulted"})
     assert r.status_code == 200 and r.json()["state"] == "faulted"
@@ -30,7 +30,7 @@ def test_equipment_health_aggregation_and_operator_action(client):
                and e["state"] == "faulted" for e in h["faulted_equipment"])
     assert sum(fl["unhealthy"] for s in h["sites"] for fl in s["floors"]) == 1
 
-    # 정비 전환 후 복구 → 전 장비 정상
+    # After switching to maintenance then recovering → all equipment healthy
     client.patch("/api/v1/equipment/state", json={
         "kind": "rack", "id": rack_id, "state": "maintenance"})
     r = client.patch("/api/v1/equipment/state", json={
@@ -39,7 +39,7 @@ def test_equipment_health_aggregation_and_operator_action(client):
     h = client.get("/api/v1/health/equipment").json()
     assert h["totals"]["unhealthy_equipment"] == 0
 
-    # 검증: 잘못된 kind/state/id
+    # Validation: invalid kind/state/id
     assert client.patch("/api/v1/equipment/state", json={
         "kind": "rack", "id": rack_id, "state": "exploded"}).status_code == 422
     assert client.patch("/api/v1/equipment/state", json={
@@ -63,7 +63,7 @@ def test_faulted_rack_excluded_from_placement_and_restore(client):
     nodes = client.get(f"/api/v1/nodes?tenant_id={tid}").json()
     assert nodes and all(n["rack_id"] != bad_rack for n in nodes)
 
-    # 할당 중 랙을 faulted → ready 복구 시 allocated로 되돌아간다
+    # Faulting an allocated rack → on ready recovery it returns to allocated
     used_rack = nodes[0]["rack_id"]
     client.patch("/api/v1/equipment/state", json={
         "kind": "rack", "id": used_rack, "state": "faulted"})

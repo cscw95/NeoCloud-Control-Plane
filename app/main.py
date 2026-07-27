@@ -52,12 +52,12 @@ async def lifespan(app: FastAPI):
     vast_fake.FAKE_VAST.reset()
     shared_services.SHARED.reset()
     trace.TRACER.clear()
-    metrics.METRICS.reset()        # 실시간 API 호출 집계 초기화
+    metrics.METRICS.reset()        # reset real-time API call counters
     lifecycle.bootstrap_nodes()
-    # 컴퓨트 트레이 에뮬레이션 — 백그라운드 틱 (2s)
+    # compute-tray emulation — background tick (2s)
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()
-    if fresh:                      # 데모 시드에만 샘플 장애/티켓 포함
+    if fresh:                      # sample faults/tickets only in the demo seed
         seed_demo_samples(STORE)
     ticker = asyncio.create_task(tray_emu.EMULATOR.run_loop())
     yield
@@ -89,15 +89,15 @@ app.include_router(integration.router)
 app.include_router(shared_services.router)
 
 
-# 고객면 테넌트 격리·RBAC — X-Tenant-Id/X-Tenant-Role 헤더 기반 가드.
-# 헤더가 없는 요청(운영/사업 콘솔·기존 테스트)은 완전 무개입.
-# CORS보다 먼저 add → CORS가 바깥층이 되어 가드의 403에도 CORS 헤더가 붙는다
-# (고객 콘솔 :8090이 403 본문을 읽어야 함).
+# Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
+# Requests without those headers (ops/business consoles, existing tests) are left completely untouched.
+# Added before CORS → CORS becomes the outer layer, so CORS headers are attached even to the guard's 403
+# (the customer console :8090 needs to read the 403 body).
 from .tenancy_guard import TenancyGuardMiddleware  # noqa: E402
 
 app.add_middleware(TenancyGuardMiddleware)
 
-# NeoCloud 3대 콘솔(별도 오리진 :8090)에서의 API 연동 허용
+# Allow API integration from the three NeoCloud consoles (separate origin :8090)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:8090", "http://localhost:8090"],
@@ -108,18 +108,18 @@ app.add_middleware(
 
 @app.middleware("http")
 async def count_api_calls(request, call_next):
-    """경량 요청 카운터 — 경로를 Control-Plane 모듈로 매핑해 집계.
+    """Lightweight request counter — maps the path to a Control-Plane module and tallies it.
 
-    요청당 O(1)(카운터 증가 + 타임스탬프). /flow의 module-stats 배지가 소비한다."""
+    O(1) per request (counter increment + timestamp). Consumed by the /flow module-stats badge."""
     metrics.METRICS.record(request.url.path)
     return await call_next(request)
 
 
 @app.middleware("http")
 async def no_cache_pages(request, call_next):
-    """HTML·정적 자원 캐시 방지 — 데모 중 편집이 새로고침 즉시 반영되게.
+    """Prevent caching of HTML and static assets — so edits during a demo show up immediately on refresh.
 
-    (열어둔 탭은 JS만 주기 실행하므로 화면 개편 후엔 브라우저 새로고침 필요)"""
+    (An already-open tab only runs its JS periodically, so a browser refresh is needed after a UI overhaul)"""
     response = await call_next(request)
     ctype = response.headers.get("content-type", "")
     if ("text/html" in ctype or "javascript" in ctype or "text/css" in ctype):
@@ -144,17 +144,18 @@ def reseed(blueprints: str | None = None) -> dict:
     lifecycle.bootstrap_nodes()
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()
-    if bps is None:                # 기본(데모) 리시드에만 샘플 장애/티켓 포함
+    if bps is None:                # sample faults/tickets only on the default (demo) reseed
         seed_demo_samples(STORE)
     return {"reseeded": True, "scalable_units": len(STORE.sus),
             "gpus": len(STORE.gpus), "nodes": len(STORE.node_instances)}
 
 
-# ── 시스템별/전체 초기화 — 검증 콘솔(/flow)에서 사용 ─────────────────────
-# 각 계층은 인메모리 상태를 독립 보유하므로 리셋이 전파되지 않으면 계층 간
-# 데이터(테넌트 등)가 어긋난다. reset-all이 NOCP → NICo Emulator(:9000,
-# cascade=true) → AI Infra(:9100)까지 한 번에 초기화한다. 외부 계층은
-# best-effort(미기동이면 unreachable로 보고, 실패해도 로컬 리셋은 유지).
+# ── Per-system / full reset — used by the verification console (/flow) ──────────
+# Each layer holds its in-memory state independently, so if a reset does not
+# propagate, cross-layer data (tenants, etc.) drifts out of sync. reset-all resets
+# NOCP → NICo Emulator (:9000, cascade=true) → AI Infra (:9100) all at once. The
+# external layers are best-effort (reported as unreachable if not running; the
+# local reset is kept even on failure).
 def _post_json(url: str, timeout: float = 6.0) -> dict:
     import httpx
     try:
@@ -162,7 +163,7 @@ def _post_json(url: str, timeout: float = 6.0) -> dict:
         if r.status_code >= 400:
             return {"status": "error", "detail": f"HTTP {r.status_code}"}
         return {"status": "reset", **(r.json() if r.content else {})}
-    except Exception as exc:                       # noqa: BLE001 — 표면화만
+    except Exception as exc:                       # noqa: BLE001 — surface only
         return {"status": "unreachable", "detail": str(exc)[:160]}
 
 
@@ -174,29 +175,29 @@ def _emu_urls() -> tuple[str, str]:
 
 @app.post("/api/v1/admin/reset/nico")
 def reset_nico() -> dict:
-    """NICo Emulator(:9000)만 초기화 (프록시 — 콘솔 CORS 회피)."""
+    """Reset only the NICo Emulator (:9000) (proxy — avoids console CORS)."""
     nico, _ = _emu_urls()
     return {"nico_emulator": _post_json(nico + "/emulator/v1/reset")}
 
 
 @app.post("/api/v1/admin/reset/ai-infra")
 def reset_ai_infra() -> dict:
-    """AI Infra Emulator(:9100)만 초기화 (프록시)."""
+    """Reset only the AI Infra Emulator (:9100) (proxy)."""
     _, ai = _emu_urls()
     return {"ai_infra": _post_json(ai + "/emulator/v1/reset")}
 
 
 @app.post("/api/v1/admin/reset-all")
 def reset_all(blueprints: str | None = None) -> dict:
-    """전체 스택 초기화 — NOCP 재시드 + NICo Emulator(cascade) + AI Infra.
+    """Reset the entire stack — NOCP reseed + NICo Emulator (cascade) + AI Infra.
 
-    NICo가 응답하면 그 캐스케이드가 AI Infra까지 초기화한다. NICo가 죽어
-    있으면 AI Infra를 직접 초기화해 남은 계층만이라도 정합시킨다."""
+    If NICo responds, its cascade also resets AI Infra. If NICo is down,
+    AI Infra is reset directly so at least the remaining layers stay consistent."""
     nocp = reseed(blueprints)
     nico_url, ai_url = _emu_urls()
     nico = _post_json(nico_url + "/emulator/v1/reset?cascade=true")
     ai = nico.get("ai_infra")
-    if not ai or ai.get("status") != "reset":      # NICo 경유 실패 → 직접
+    if not ai or ai.get("status") != "reset":      # NICo path failed → reset directly
         ai = _post_json(ai_url + "/emulator/v1/reset")
     nico.pop("ai_infra", None)
     return {"nocp": nocp, "nico_emulator": nico, "ai_infra": ai}
@@ -209,37 +210,37 @@ def dashboard() -> FileResponse:
 
 @app.get("/flow")
 def flow_console() -> FileResponse:
-    """NeoCloud OS × Fake NICo 동작 검증 콘솔 (모듈별 API 흐름 시각화)."""
+    """NeoCloud OS × Fake NICo behavior verification console (per-module API flow visualization)."""
     return FileResponse(STATIC_DIR / "flow.html")
 
 
 @app.get("/nico")
 def nico_dashboard() -> FileResponse:
-    """NICo 운영 대시보드 — REST API 전체 탐색 + 클러스터 에뮬레이션 라이브."""
+    """NICo operations dashboard — full REST API explorer + live cluster emulation."""
     return FileResponse(STATIC_DIR / "nico.html")
 
 
 @app.get("/arch")
 def architecture_flow() -> FileResponse:
-    """플랫폼 아키텍처 플로우 — 주문 단계별 점등 + 하부 API 전체 리스트."""
+    """Platform architecture flow — per-order-stage highlighting + full list of underlying APIs."""
     return FileResponse(STATIC_DIR / "arch.html")
 
 
 @app.get("/ops")
 def operator_portal() -> FileResponse:
-    """운영 포털 — 인프라·인시던트·break-fix·티켓 처리."""
+    """Operations portal — infrastructure, incidents, break-fix, ticket handling."""
     return FileResponse(STATIC_DIR / "ops.html")
 
 
 @app.get("/customer")
 def customer_portal() -> FileResponse:
-    """고객 포털 — 테넌트 스코프 클러스터·SLA·셀프서비스."""
+    """Customer portal — tenant-scoped clusters, SLA, self-service."""
     return FileResponse(STATIC_DIR / "customer.html")
 
 
 @app.get("/biz")
 def business_portal() -> FileResponse:
-    """비즈 포털 — 고객·계약·서비스요청·사용량/과금."""
+    """Business portal — customers, contracts, service requests, usage/billing."""
     return FileResponse(STATIC_DIR / "biz.html")
 
 

@@ -121,7 +121,7 @@ def create_tenant(body: TenantCreate) -> Tenant:
             oob_vni=_alloc_vni("oob"),
             vrf=f"VRF-{_slug(body.name)}",
         )
-        # Shared Services(⑦): 테넌트 IAM realm + 기본 롤(RBAC) + 포털 클라이언트
+        # Shared Services(⑦): tenant IAM realm + default roles (RBAC) + portal client
         shared_services.SHARED.create_realm(tid, body.name)
         return tenant
 

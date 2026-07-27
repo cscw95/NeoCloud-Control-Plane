@@ -3,16 +3,16 @@
 def test_summary_counts_mixed_generation(client):
     s = client.get("/api/v1/inventory/summary").json()
     assert s["scalable_units"] == 2
-    assert s["racks"] == 30               # gb200 SU 14랙 + vr SU 16랙(NCP RD)
-    assert s["gpus"] == 2160              # 72/rack × 30랙
-    assert s["cpus"] == 1080              # 30랙 × 36
+    assert s["racks"] == 30               # gb200 SU 14 racks + vr SU 16 racks (NCP RD)
+    assert s["gpus"] == 2160              # 72/rack × 30 racks
+    assert s["cpus"] == 1080              # 30 racks × 36
     assert s["dpus"] == 540               # 30 x 18 trays
     # power differs by generation: GB200=120kW, VR(maxq)=200kW
     assert s["design_power_mw"] == 5.31   # 14×120 + 16×227 kW
-    assert s["capped_power_mw"] == 4.67   # 14×120 + 16×187 kW (MaxQ 확정)
+    assert s["capped_power_mw"] == 4.67   # 14×120 + 16×187 kW (MaxQ confirmed)
     # multi-generation aggregations
     assert s["gpus_by_arch"]["Blackwell (B200)"] == 1008
-    assert s["gpus_by_arch"]["Rubin"] == 1152    # vr SU 16랙
+    assert s["gpus_by_arch"]["Rubin"] == 1152    # vr SU 16 racks
     assert s["racks_by_generation"]["GB200 NVL72"] == 14
     assert s["racks_by_generation"]["Vera Rubin NVL72"] == 16
 
@@ -53,7 +53,7 @@ def test_provision_gb300_su(client):
     assert r["gpu_count"] == 1008
     s = client.get("/api/v1/inventory/summary").json()
     assert s["scalable_units"] == 3
-    assert s["racks"] == 44   # 30 + gb300 SU 14랙
+    assert s["racks"] == 44   # 30 + gb300 SU 14 racks
     assert s["gpus_by_arch"]["Blackwell Ultra (B300)"] == 1008
 
 
@@ -74,7 +74,7 @@ def test_power_policy_per_generation(client):
 
 
 def test_su_composition_hac_view(client):
-    """SU(HAC) 시스템 구성 — 컴퓨트·CMX·IB·Converged·CDU(DLC)·CPU 풀 (NCP RA)."""
+    """SU (HAC) system composition — compute / CMX / IB / Converged / CDU (DLC) / CPU pool (NCP RA)."""
     c = client.get("/api/v1/topology/su-composition?su_id=su-2").json()
     assert c["blueprint"] == "vr-nvl72" and c["hac_id"] == "su-2-hac"
     assert c["compute"]["racks"] == 16 and c["compute"]["gpus"] == 1152

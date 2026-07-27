@@ -1,9 +1,9 @@
-"""서비스 시나리오 API 계약 테스트 — 고객 라이프사이클 (scenario_api).
+"""Service-scenario API contract tests — customer lifecycle (scenario_api).
 
-- Acceptance(CP-004): 승인/반려/간주(deemed) + ops 승인 큐 공존
-- 종료 워크플로우(CP-012): 백업 확인 게이트(409 차단) → 소거 → Wipe 증명서
-- 티켓 유형·라우팅(CP-005/006/009), Status/RCA(CP-011), SLA 크레딧(BP-006),
-  공개 상품 문의(CP-016), reset cascade
+- Acceptance (CP-004): approve/reject/deemed + coexisting ops approval queue
+- Termination workflow (CP-012): backup-confirm gate (409 block) → wipe → Wipe certificate
+- Ticket types & routing (CP-005/006/009), Status/RCA (CP-011), SLA credit (BP-006),
+  public product inquiry (CP-016), reset cascade
 """
 
 from datetime import datetime, timedelta, timezone
@@ -30,7 +30,7 @@ def _new_order(client, tenant_id, racks=1, blueprint="vr-nvl72", **kw):
 
 
 # ---------------------------------------------------------------------------
-# 1) Acceptance — 고객 승인/반려/간주
+# 1) Acceptance — customer approve/reject/deemed
 # ---------------------------------------------------------------------------
 def test_acceptance_report_and_approve(client):
     tid = _mk_tenant(client)
@@ -41,13 +41,13 @@ def test_acceptance_report_and_approve(client):
     r = client.get(f"/api/v1/orders/{oid}/acceptance-report")
     assert r.status_code == 200
     body = r.json()
-    assert body["status"] == "pending"           # 고객 결정 전
+    assert body["status"] == "pending"           # before customer decision
     assert body["billing_start_date"] is None
     names = {c["name"] for c in body["report"]["checks"]}
     assert names == {"nccl-allreduce", "fio-storage", "burn-in", "node-ready"}
     assert all(c["status"] == "pass" for c in body["report"]["checks"])
     assert body["report"]["nodes_tested"] == TRAYS_PER_RACK
-    # deemed 기한 = 리포트 제공 + 7일
+    # deemed deadline = report delivery + 7 days
     rep_ts = datetime.fromisoformat(body["report"]["report_ts"])
     ddl = datetime.fromisoformat(body["deemed_deadline"])
     assert abs((ddl - rep_ts) - timedelta(days=7)) < timedelta(seconds=5)
@@ -57,11 +57,11 @@ def test_acceptance_report_and_approve(client):
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "approved"
-    assert body["billing_start_date"] is not None    # 청구 개시 확정
-    # trace: AcceptanceApproved=청구 개시
+    assert body["billing_start_date"] is not None    # billing start confirmed
+    # trace: AcceptanceApproved = billing start
     trace = client.get(f"/api/v1/trace?order_id={oid}&q=AcceptanceApproved")
     assert any("청구 개시" in e["detail"] for e in trace.json())
-    # 재결정 불가
+    # cannot re-decide
     r = client.post(f"/api/v1/orders/{oid}/acceptance",
                     json={"decision": "reject", "reason": "x"})
     assert r.status_code == 409
@@ -73,7 +73,7 @@ def test_acceptance_reject_requires_reason_and_retest_loop(client):
 
     r = client.post(f"/api/v1/orders/{oid}/acceptance",
                     json={"decision": "reject"})
-    assert r.status_code == 422                       # reason 필수
+    assert r.status_code == 422                       # reason required
 
     r = client.post(f"/api/v1/orders/{oid}/acceptance",
                     json={"decision": "reject", "reason": "NCCL 성능 미달"})
@@ -81,12 +81,12 @@ def test_acceptance_reject_requires_reason_and_retest_loop(client):
     body = r.json()
     assert body["status"] == "rejected"
     assert body["reject_reason"] == "NCCL 성능 미달"
-    assert body["billing_start_date"] is None         # 청구 미개시
-    # 주문은 acceptance 재실행 상태로 회귀
+    assert body["billing_start_date"] is None         # billing not started
+    # order reverts to the acceptance re-run state
     order = client.get(f"/api/v1/orders/{oid}").json()
     assert order["state"] == "acceptance"
 
-    # 재테스트 통과 후 고객 재승인 → delivered + 청구 개시
+    # after retest passes, customer re-approves → delivered + billing start
     r = client.post(f"/api/v1/orders/{oid}/acceptance",
                     json={"decision": "approve"})
     assert r.status_code == 200
@@ -98,21 +98,21 @@ def test_acceptance_reject_requires_reason_and_retest_loop(client):
 def test_acceptance_deemed_after_deadline(client):
     tid = _mk_tenant(client)
     oid = _new_order(client, tid, racks=1)["id"]
-    client.get(f"/api/v1/orders/{oid}/acceptance-report")   # 레코드 생성
-    # 기한 경과 시뮬레이션
+    client.get(f"/api/v1/orders/{oid}/acceptance-report")   # create record
+    # simulate deadline elapsed
     past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     with STORE.lock:
         STORE.acceptances[oid]["deemed_deadline"] = past
     body = client.get(f"/api/v1/orders/{oid}/acceptance-report").json()
     assert body["status"] == "deemed"
-    assert body["billing_start_date"] == past          # deadline 기준 청구 개시
+    assert body["billing_start_date"] == past          # billing starts at the deadline
 
 
 def test_acceptance_before_gate_is_pending_and_undecidable(client):
     tid = _mk_tenant(client)
     order = _new_order(client, tid, racks=1, approval_mode=True)
     oid = order["id"]
-    assert order["pending_stage"] == "validated"       # 승인 대기 — 게이트 이전
+    assert order["pending_stage"] == "validated"       # awaiting approval — before the gate
     body = client.get(f"/api/v1/orders/{oid}/acceptance-report").json()
     assert body == {"order_id": oid, "status": "pending", "report": None,
                     "deemed_deadline": None, "billing_start_date": None}
@@ -122,18 +122,18 @@ def test_acceptance_before_gate_is_pending_and_undecidable(client):
 
 
 def test_acceptance_customer_approve_completes_ops_queue_order(client):
-    """approval_mode 주문 — acceptance 게이트 도달 후 고객 승인이 잔여
-    단계를 완주시킨다 (ops/고객 중 선승인 유효)."""
+    """approval_mode order — after reaching the acceptance gate, customer approval
+    drives the remaining stages to completion (whichever of ops/customer approves first wins)."""
     tid = _mk_tenant(client)
     oid = _new_order(client, tid, racks=1, approval_mode=True)["id"]
-    # ops가 acceptance 단계까지 승인 (validated→…→acceptance 6게이트)
+    # ops approves up to the acceptance stage (validated→…→acceptance, 6 gates)
     for _ in range(6):
         r = client.post(f"/api/v1/orders/{oid}/approve")
         assert r.status_code == 200, r.text
     order = r.json()
     assert order["state"] == "acceptance"
     assert order["pending_stage"] == "delivered"
-    # 고객 승인 → delivered (ops의 마지막 게이트 승인 없이)
+    # customer approval → delivered (without ops' final gate approval)
     r = client.post(f"/api/v1/orders/{oid}/acceptance",
                     json={"decision": "approve"})
     assert r.status_code == 200
@@ -144,7 +144,7 @@ def test_acceptance_customer_approve_completes_ops_queue_order(client):
 
 
 # ---------------------------------------------------------------------------
-# 2) 종료 워크플로우 — 백업 게이트 → 소거 → Wipe 증명서 → closed
+# 2) Termination workflow — backup gate → wipe → Wipe certificate → closed
 # ---------------------------------------------------------------------------
 def test_termination_full_workflow(client):
     tid = _mk_tenant(client, name="term-corp")
@@ -158,7 +158,7 @@ def test_termination_full_workflow(client):
     assert len(body["checklist"]) == 3
     assert all(c["confirmed"] is False for c in body["checklist"])
 
-    # 백업 미확인 → 시스템 차단 (409)
+    # backup not confirmed → system blocks (409)
     partial = [dict(c, confirmed=(i == 0))
                for i, c in enumerate(body["checklist"])]
     r = client.post(f"/api/v1/tenants/{tid}/termination/backup-confirm",
@@ -168,7 +168,7 @@ def test_termination_full_workflow(client):
     assert client.get(f"/api/v1/tenants/{tid}/termination").json()[
         "state"] == "awaiting_backup"
 
-    # 전부 확인 → 소거 saga (pytest: delay 0 — 동기 완료)
+    # all confirmed → wipe saga (pytest: delay 0 — completes synchronously)
     confirmed = [dict(c, confirmed=True) for c in body["checklist"]]
     r = client.post(f"/api/v1/tenants/{tid}/termination/backup-confirm",
                     json={"checklist": confirmed})
@@ -182,9 +182,9 @@ def test_termination_full_workflow(client):
     assert len(cert["sha256"]) == 64
     assert cert["erase_method"] == "NVMe crypto-erase + GPU/DDR wipe + TPM reset"
     assert len(cert["allocations"]) == 1
-    assert len(cert["allocations"][0]["erase_steps"]) == 7   # 7단계 소거
+    assert len(cert["allocations"][0]["erase_steps"]) == 7   # 7-step wipe
 
-    # 자원은 실제로 회수됨 — 노드 풀 복귀 + terminate 주문 closed
+    # resources actually reclaimed — nodes back to pool + terminate order closed
     with STORE.lock:
         assert not [a for a in STORE.allocations.values()
                     if a.tenant_id == tid]
@@ -194,13 +194,13 @@ def test_termination_full_workflow(client):
     term_oid = cert["allocations"][0]["terminate_order_id"]
     assert client.get(f"/api/v1/orders/{term_oid}").json()["state"] == "closed"
 
-    # 증명서 수령 → 정산 마감 (closed)
+    # certificate received → settlement closed (closed)
     r = client.get(f"/api/v1/tenants/{tid}/termination/wipe-certificate")
     assert r.status_code == 200
     assert r.json()["wipe_certificate"]["cert_id"] == cert["cert_id"]
     assert client.get(f"/api/v1/tenants/{tid}/termination").json()[
         "state"] == "closed"
-    assert term_id  # 워크플로우 id 유지
+    assert term_id  # workflow id preserved
 
 
 def test_termination_certificate_blocked_before_wipe(client):
@@ -209,16 +209,16 @@ def test_termination_certificate_blocked_before_wipe(client):
     client.post(f"/api/v1/tenants/{tid}/termination")
     r = client.get(f"/api/v1/tenants/{tid}/termination/wipe-certificate")
     assert r.status_code == 409
-    # 진행 중 중복 종료 요청 차단
+    # duplicate termination request blocked while in progress
     assert client.post(f"/api/v1/tenants/{tid}/termination").status_code == 409
 
 
 # ---------------------------------------------------------------------------
-# 3) 티켓 유형·라우팅
+# 3) Ticket types & routing
 # ---------------------------------------------------------------------------
 def test_ticket_types_and_routing(client):
     tid = _mk_tenant(client, name="tix-corp")
-    # 기본값 tech → ops (하위 호환)
+    # default tech → ops (backward compatible)
     t = client.post("/api/v1/tickets", json={
         "tenant_id": tid, "subject": "GPU 점검"}).json()
     assert (t["type"], t["routed_to"]) == ("tech", "ops")
@@ -229,18 +229,18 @@ def test_ticket_types_and_routing(client):
         "change_scope": "contract_amendment"}).json()
     assert (t["type"], t["routed_to"]) == ("change", "ops")
     assert t["change_scope"] == "contract_amendment"
-    # billing_dispute → biz + 정책 안내
+    # billing_dispute → biz + policy guidance
     t = client.post("/api/v1/tickets", json={
         "tenant_id": tid, "subject": "청구 이의", "type": "billing_dispute"}).json()
     assert t["routed_to"] == "biz"
     assert t["policy"] == "납기 유지·차기 청구 조정 원칙(명백한 금액 오류만 재발행)"
-    # 유효성
+    # validation
     assert client.post("/api/v1/tickets", json={
         "tenant_id": tid, "subject": "x", "type": "nope"}).status_code == 422
     assert client.post("/api/v1/tickets", json={
         "tenant_id": tid, "subject": "x", "type": "tech",
         "change_scope": "in_contract"}).status_code == 422
-    # 라우팅 필터 (사업 콘솔용)
+    # routing filter (for the business console)
     biz = client.get("/api/v1/tickets?routed_to=biz").json()
     assert {x["type"] for x in biz} == {"billing_dispute"}
 
@@ -255,7 +255,7 @@ def test_status_page_operational_then_degraded_and_rca(client):
     assert all(c["state"] == "operational" for c in body["components"])
     assert body["history_90d"]["uptime_pct"] == 100.0
 
-    # 라이브 장애 연동 — 인도된 테넌트 트레이에 XID 79 주입 (P1)
+    # live-fault integration — inject XID 79 into the delivered tenant's tray (P1)
     tid = _mk_tenant(client, name="status-corp")
     oid = _new_order(client, tid, racks=1)["id"]
     with STORE.lock:
@@ -273,7 +273,7 @@ def test_status_page_operational_then_degraded_and_rca(client):
     assert inc["state"] == "investigating"
     assert inc["updates"]
 
-    # 복구(tick으로 TTL 소진) → resolved + P1 RCA 자동 발행
+    # recovery (TTL exhausted via tick) → resolved + P1 RCA auto-issued
     client.post("/api/v1/emu/tick?n=4")
     body = client.get("/api/v1/status").json()
     comp = {c["name"]: c["state"] for c in body["components"]}
@@ -290,7 +290,7 @@ def test_status_page_operational_then_degraded_and_rca(client):
 
 
 # ---------------------------------------------------------------------------
-# 5) SLA 리포트 + Service Credit
+# 5) SLA report + Service Credit
 # ---------------------------------------------------------------------------
 def test_sla_report_no_violation_then_synthesized_credit(client):
     tid = _mk_tenant(client, name="sla-corp")
@@ -300,9 +300,9 @@ def test_sla_report_no_violation_then_synthesized_credit(client):
     body = client.get(f"/api/v1/tenants/{tid}/sla-report?month={month}").json()
     assert body["target_pct"] == 99.9
     assert body["violated"] is False
-    assert body["credits"] == []                       # 미위반 → 크레딧 없음
+    assert body["credits"] == []                       # no violation → no credit
 
-    # 데모 합성 위반 1건 → 크레딧 산정 (10% 구간)
+    # demo synthetic violation ×1 → credit computed (10% tier)
     body = client.get(f"/api/v1/tenants/{tid}/sla-report?month={month}"
                       "&synthesize_violation=1").json()
     assert body["violated"] is True
@@ -314,7 +314,7 @@ def test_sla_report_no_violation_then_synthesized_credit(client):
     assert credit["status"] == "calculated"
     assert credit["amount_usd"] == round(
         body["monthly_amount_usd"] * 0.10, 2)
-    # 재조회 시 크레딧 idempotent (동일 credit_id)
+    # credit is idempotent on re-fetch (same credit_id)
     again = client.get(f"/api/v1/tenants/{tid}/sla-report?month={month}"
                        "&synthesize_violation=1").json()
     assert again["credits"][0]["credit_id"] == credit["credit_id"]
@@ -324,7 +324,7 @@ def test_sla_report_no_violation_then_synthesized_credit(client):
 
 
 # ---------------------------------------------------------------------------
-# 6) 공개 상품 문의 (비인증)
+# 6) Public product inquiry (unauthenticated)
 # ---------------------------------------------------------------------------
 def test_public_inquiries(client):
     r = client.post("/api/v1/public/inquiries", json={
@@ -348,7 +348,7 @@ def test_public_inquiries(client):
 
 
 # ---------------------------------------------------------------------------
-# reset cascade — 신규 컬렉션 전부 초기화
+# reset cascade — all new collections reset
 # ---------------------------------------------------------------------------
 def test_reset_cascade_clears_scenario_collections(client):
     tid = _mk_tenant(client, name="reset-corp")

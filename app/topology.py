@@ -126,7 +126,7 @@ def topology_tree() -> dict:
 # Entity listings
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# 장비 헬스 — NOCP 물리 계층(HwState) 취합 + 운영 조치 (운영 포털 소비)
+# equipment health — aggregates the NOCP physical layer (HwState) + operator actions (consumed by the ops portal)
 # ---------------------------------------------------------------------------
 _OPERATOR_STATES = {HwState.ready, HwState.faulted, HwState.maintenance}
 
@@ -140,11 +140,12 @@ class EquipmentStateUpdate(BaseModel):
 
 @router.get("/topology/su-composition")
 def su_composition(su_id: str) -> dict:
-    """SU(HAC) 단위 시스템 구성 — 컴퓨트·CMX·IB·Converged·CDU(DLC)·CPU 풀.
+    """Per-SU (HAC) system composition — compute·CMX·IB·Converged·CDU(DLC)·CPU pool.
 
-    NCP RA/RD 기준: 1 SU = 1 HAC(2열×8랙), CMX 2랙(32 CMS), IB 듀얼 패브릭
-    리프 32(망당 16)·스파인 랙 4(56kW), Converged spine 4 + leaf 12,
-    in-row CDU 2N. 사이트 공용 CPU 노드 풀은 참고 항목으로 병기."""
+    Per NCP RA/RD: 1 SU = 1 HAC (2 rows × 8 racks), CMX 2 racks (32 CMS), IB dual
+    fabric 32 leaves (16 per network)·4 spine racks (56kW), Converged spine 4 +
+    leaf 12, in-row CDU 2N. The site-shared CPU node pool is listed alongside for
+    reference."""
     s = STORE
     su = s.sus.get(su_id)
     if not su:
@@ -189,12 +190,12 @@ def su_composition(su_id: str) -> dict:
 
 @router.get("/inventory/sites")
 def inventory_sites() -> dict:
-    """사이트별 자원·유효 상태 집계 — 멀티사이트(N개) 일반화.
+    """Per-site resource·availability aggregation — generalized to multi-site (N).
 
-    사이트 간에는 IB/NVLink가 이어지지 않아 클러스터가 사이트를 넘을 수
-    없으므로, 판매 가능(유효) 용량·할당·비정상 상태는 사이트 단위로
-    분리 관리한다. factories를 순회하므로 사이트가 늘어나도 그대로 동작."""
-    from .lifecycle import _rack_sellable       # 함수 내 import — 순환 방지
+    Since IB/NVLink do not span sites, a cluster cannot cross sites, so sellable
+    (available) capacity·allocation·unhealthy state are managed separately per
+    site. It iterates over factories, so it keeps working as sites grow."""
+    from .lifecycle import _rack_sellable       # in-function import — avoids a circular dependency
     s = STORE
     with s.lock:
         dedicated = {t.id for t in s.tenants.values()
@@ -213,8 +214,8 @@ def inventory_sites() -> dict:
             allocated = [r for r in racks if r.tenant_id]
             unhealthy = [r for r in racks
                          if r.state in (HwState.faulted, HwState.maintenance)]
-            # 신규 계약 가능: dedicated 테넌트가 부분 점유한 SU의 잔여 랙은
-            # 격리 정책(양방향)으로 잠기므로 제외 — 유휴 ≠ 계약 가능
+            # contractable for new deals: leftover racks of an SU partly held by a
+            # dedicated tenant are locked by the (bidirectional) isolation policy — idle ≠ contractable
             contractable = 0
             for su in su_ids:
                 su_racks = s.racks_of_su(su)
@@ -226,8 +227,8 @@ def inventory_sites() -> dict:
             sites.append({
                 "factory_id": f.id, "name": f.name, "site": f.site,
                 "racks_total": len(racks),
-                "racks_sellable": len(sellable),      # 물리 유휴 (정상·미할당)
-                "racks_contractable": contractable,   # 신규 계약 가능 (격리 반영)
+                "racks_sellable": len(sellable),      # physically idle (healthy·unallocated)
+                "racks_contractable": contractable,   # contractable for new deals (isolation-aware)
                 "racks_locked_by_isolation": len(sellable) - contractable,
                 "racks_allocated": len(allocated),
                 "racks_unhealthy": len(unhealthy),
@@ -238,8 +239,8 @@ def inventory_sites() -> dict:
                 "nodes_by_state": dict(
                     Counter(n.state.value for n in nodes)),
                 "tenants": sorted({r.tenant_id for r in allocated}),
-                # 사이트 내 최대 단일 클러스터(신규 계약) 규모 — 스팬 불가 +
-                # dedicated SU 격리 반영
+                # largest single cluster (new deal) size within a site — no span +
+                # dedicated SU isolation applied
                 "max_single_cluster_racks": contractable,
                 "floors": [{"name": s.blocks[b].name,
                             "ready": s.blocks[b].ready,
@@ -256,7 +257,7 @@ def inventory_sites() -> dict:
 
 @router.get("/health/equipment")
 def equipment_health() -> dict:
-    """사이트/층별 장비(랙·트레이·GPU) HwState 집계 + 비정상 장비 리스트."""
+    """Per-site/floor equipment (rack·tray·GPU) HwState aggregation + list of unhealthy equipment."""
     s = STORE
     with s.lock:
         def count_states(items) -> dict:
@@ -312,9 +313,10 @@ def equipment_health() -> dict:
 
 @router.patch("/equipment/state")
 def set_equipment_state(body: EquipmentStateUpdate) -> dict:
-    """운영자 장비 조치 — 장애(faulted)/정비(maintenance)/복구(ready).
+    """Operator equipment action — faulted / maintenance / recovery (ready).
 
-    faulted/maintenance 랙은 M4 배치(_rack_sellable)에서 자동 제외된다."""
+    faulted/maintenance racks are automatically excluded from M4 placement
+    (_rack_sellable)."""
     s = STORE
     try:
         new_state = HwState(body.state)
@@ -329,7 +331,7 @@ def set_equipment_state(body: EquipmentStateUpdate) -> dict:
     if not item:
         raise HTTPException(404, f"{body.kind} '{body.id}' not found")
     with s.lock:
-        # 테넌트 할당 중인 장비를 ready로 되돌리면 allocated로 복원
+        # returning tenant-allocated equipment to ready restores it to allocated
         if new_state == HwState.ready and getattr(item, "tenant_id", None):
             item.state = HwState.allocated
         else:

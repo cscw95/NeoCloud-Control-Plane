@@ -1,12 +1,14 @@
-"""Business/Customer 포털 북바운드 (M5·M7-lite) — 티켓 · 사용량/과금 프리뷰.
+"""Business/Customer portal northbound (M5·M7-lite) — tickets · usage/billing preview.
 
-- 티켓: 고객 포털에서 생성, 운영/비즈 포털에서 상태 전이(open→in_progress→
-  resolved)와 코멘트를 관리한다.
-- 과금 프리뷰: 인도(delivered)된 신규 주문을 라인아이템으로, rack-hour 단가
-  (데모 단가)를 곱해 산출한다. 종료 시각은 해당 주문의 allocation 전부를
-  회수한 terminate 주문의 closed 시각(부분 회수는 데모 단순화로 미반영),
-  활성 라인은 현재 시각 기준 + 월 환산(projected monthly)을 함께 준다.
-  실구현은 M7 미디에이션(시간별 사용 레코드 → 요율 엔진)으로 대체된다.
+- Tickets: created in the customer portal; state transitions (open→in_progress→
+  resolved) and comments are managed from the ops/biz portals.
+- Billing preview: delivered new orders become line items, multiplied by the
+  rack-hour rate (demo rate). The end time is the closed time of the terminate
+  order that reclaimed all of the order's allocations (partial reclaim is not
+  reflected — a demo simplification); active lines also carry a current-time
+  basis + a monthly conversion (projected monthly).
+  The real implementation is replaced by M7 mediation (hourly usage records →
+  rate engine).
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ from .store import STORE
 
 router = APIRouter(prefix="/api/v1", tags=["business"])
 
-# 데모 단가 (USD / rack-hour) — 상용 요율은 계약별 요율 엔진에서 산출
+# demo rate (USD / rack-hour) — production rates come from the per-contract rate engine
 RACK_HOUR_RATE_USD = {
     "vr-nvl72": 980.0,
     "gb300-nvl72": 720.0,
@@ -38,8 +40,8 @@ HOURS_PER_MONTH = 720
 
 TICKET_STATUSES = ("open", "in_progress", "resolved")
 TICKET_SEVERITIES = ("low", "medium", "high", "critical")
-# 티켓 유형·라우팅 (CP-005/006/009) — tech/change → 운영(ops),
-# billing_dispute(청구 이의)·계약 → 사업(biz)
+# ticket type·routing (CP-005/006/009) — tech/change → ops,
+# billing_dispute (billing dispute)·contract → biz
 TICKET_TYPES = ("tech", "change", "billing_dispute")
 TICKET_ROUTING = {"tech": "ops", "change": "ops", "billing_dispute": "biz"}
 CHANGE_SCOPES = ("in_contract", "contract_amendment")
@@ -52,7 +54,7 @@ def _now() -> str:
 
 
 # ---------------------------------------------------------------------------
-# 티켓
+# Tickets
 # ---------------------------------------------------------------------------
 @router.post("/tickets", status_code=201, response_model=Ticket)
 def create_ticket(body: TicketCreate) -> Ticket:
@@ -119,7 +121,7 @@ def update_ticket(ticket_id: str, body: TicketUpdate) -> Ticket:
 
 
 # ---------------------------------------------------------------------------
-# 사용량 · 과금 프리뷰
+# Usage · billing preview
 # ---------------------------------------------------------------------------
 @router.get("/billing/rates")
 def billing_rates() -> dict:
@@ -131,7 +133,7 @@ def billing_rates() -> dict:
 def billing_usage(tenant_id: Optional[str] = None) -> dict:
     s = STORE
     now = datetime.now(timezone.utc)
-    # allocation → 회수 시각 (terminate closed)
+    # allocation → reclaim time (terminate closed)
     end_by_alloc: dict[str, str] = {}
     for o in s.orders.values():
         if (o.kind == OrderKind.terminate and o.state == OrderState.closed
@@ -141,7 +143,7 @@ def billing_usage(tenant_id: Optional[str] = None) -> dict:
     lines = []
     for o in sorted(s.orders.values(), key=lambda x: x.id):
         if o.kind != OrderKind.new or o.state != OrderState.delivered:
-            continue                       # failed/rejected 주문은 과금 없음
+            continue                       # failed/rejected orders are not billed
         if tenant_id and o.tenant_id != tenant_id:
             continue
         start = next((e.at for e in o.history if e.state == "delivered"), None)

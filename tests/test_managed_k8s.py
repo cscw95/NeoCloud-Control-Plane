@@ -1,12 +1,13 @@
-"""Managed K8s 옵션 — fulfillment 파이프라인·CPU CP 노드·Converged attach·
-DCGM in-band 전환·회수까지의 회귀 테스트.
+"""Managed K8s option — regression tests covering the fulfillment pipeline,
+CPU CP nodes, Converged attach, DCGM in-band switchover, and reclaim.
 
-설계 근거:
-- CP CPU 노드 3대는 AI Infra Emulator(FakeNico) 인벤토리의 실제 호스트로,
-  GPU 트레이와 동일한 DPU 기반 Day1 경로(reserve→provision→allocate)로
-  IP·OS 설치 후 테넌트에 할당된다.
-- CP 노드는 테넌트 VPC 세그먼트에 Converged Network(VNI)로 attach 된다.
-- Managed K8s 제공 시 DCGM 수집은 in-band(dcgm-exporter)로 전환된다.
+Design rationale:
+- The 3 CP CPU nodes are real hosts in the AI Infra Emulator (FakeNico)
+  inventory; they are allocated to the tenant after IP/OS install via the
+  same DPU-based Day1 path (reserve->provision->allocate) as the GPU trays.
+- CP nodes are attached to the tenant VPC segment via Converged Network (VNI).
+- When Managed K8s is provided, DCGM collection switches to in-band
+  (dcgm-exporter).
 """
 from collections import Counter
 
@@ -34,18 +35,18 @@ def test_managed_k8s_full_lifecycle(client):
     assert o["state"] == "delivered", o.get("error")
     assert o["managed_k8s"] is True and o["k8s_cluster_id"]
 
-    # ── 상태머신: acceptance → k8s_installing → delivered ────────────────
+    # ── State machine: acceptance → k8s_installing → delivered ───────────
     states = [h["state"] for h in o["history"]]
     assert "k8s_installing" in states
     assert states.index("acceptance") < states.index("k8s_installing") \
         < states.index("delivered")
 
-    # ── K8s 클러스터 read-model ──────────────────────────────────────────
+    # ── K8s cluster read-model ───────────────────────────────────────────
     c = client.get(f"/api/v1/k8s/clusters/{o['k8s_cluster_id']}").json()
     assert c["state"] == "running" and c["version"] == "v1.32.4"
-    assert len(c["cp_node_ids"]) == 3            # CP 3대 (HA·etcd 정족수)
+    assert len(c["cp_node_ids"]) == 3            # 3 CP nodes (HA / etcd quorum)
     assert c["dcgm_mode"] == "in-band"
-    assert c["gpus_total"] == 72                 # VR NVL72 1랙
+    assert c["gpus_total"] == 72                 # VR NVL72 1 rack
     addons = {a["name"] for a in c["addons"]}
     assert {"cilium", "gpu-operator", "network-operator",
             "dcgm-exporter", "kube-vip"} <= addons
@@ -54,46 +55,46 @@ def test_managed_k8s_full_lifecycle(client):
                            "dcgm-diag", "api-vip-ha"}
     assert all(v == "PASS" for v in checks.values())
 
-    # ── CPU 노드: 기본 5(general) + K8s CP 3(k8s_cp) ─────────────────────
+    # ── CPU nodes: 5 default (general) + 3 K8s CP (k8s_cp) ───────────────
     cpus = client.get(f"/api/v1/cpu-nodes?tenant_id={tid}").json()
     roles = Counter(cn["role"] for cn in cpus)
     assert roles == {"general": 5, "k8s_cp": 3}
 
-    # ── CP 노드는 NICo(DPU isolation) 경유로 실제 할당되어야 한다 ────────
+    # ── CP nodes must be actually allocated via NICo (DPU isolation) ─────
     cp = [cn for cn in cpus if cn["role"] == "k8s_cp"]
     for cn in cp:
         h = client.get(f"/fake-nico/hosts/{cn['nico_host_id']}").json()
         assert h["state"] == "allocated" and h["tenant_ref"] == tid
-        assert h["host_ip"].startswith("10.250.1.")   # DPU-DHCP CPU 대역
-        assert h["instance_id"]                        # AllocateInstance 완료
+        assert h["host_ip"].startswith("10.250.1.")   # DPU-DHCP CPU range
+        assert h["instance_id"]                        # AllocateInstance done
         assert cn["order_id"] == o["id"]
 
-    # ── Converged Network: CP 노드가 테넌트 세그먼트에 attach ────────────
+    # ── Converged Network: CP nodes attach to the tenant segment ────────
     seg = next(s for s in client.get("/fake-nico/segments").json()
                if s["tenant_ref"] == tid)
     for cn in cp:
         assert cn["nico_host_id"] in seg["host_ids"]
 
-    # ── DCGM in-band 전환 (에뮬레이션 지표) ──────────────────────────────
+    # ── DCGM in-band switchover (emulation metric) ───────────────────────
     f = client.get(f"/api/v1/emu/faults?tenant_id={tid}").json()
     assert f["dcgm_source"].startswith("in-band")
 
-    # ── 접속 패키지: kubeconfig(OIDC) 섹션 ───────────────────────────────
+    # ── Access package: kubeconfig (OIDC) section ────────────────────────
     mk = o["access_package"]["managed_k8s"]
     assert mk["cluster_id"] == c["id"]
     assert mk["api_server"] == f"https://{c['api_vip']}:6443"
     assert "OIDC" in mk["kubeconfig"]
 
-    # ── /flow: k8s_installing 버킷에 K8s 채널 이벤트 ─────────────────────
+    # ── /flow: K8s channel events in the k8s_installing bucket ──────────
     flow = client.get(f"/api/v1/orders/{o['id']}/flow").json()
     stage = next(st for st in flow["stages"]
                  if st["state"] == "k8s_installing")
-    assert stage["by_channel"].get("K8s", 0) >= 10   # 부트스트랩+애드온+검증
-    assert stage["by_channel"].get("rshim", 0) >= 3  # CP 3대 BFB (DPU 경로)
+    assert stage["by_channel"].get("K8s", 0) >= 10   # bootstrap+addons+verify
+    assert stage["by_channel"].get("rshim", 0) >= 3  # 3 CP BFB (DPU path)
     ops = " ".join(a["op"] for a in stage["apis"])
     assert "kubeadm init" in ops and "DCGM in-band" in ops
 
-    # ── 회수: 클러스터 해체 + CP 노드 NICo 반납 ──────────────────────────
+    # ── Reclaim: cluster teardown + CP nodes returned to NICo ────────────
     r = client.post("/api/v1/orders", json={
         "tenant_id": tid, "kind": "terminate",
         "allocation_id": o["allocation_ids"][0]})
@@ -104,7 +105,7 @@ def test_managed_k8s_full_lifecycle(client):
         h = client.get(f"/fake-nico/hosts/{cn['nico_host_id']}").json()
         assert h["state"] == "pool_ready" and h["tenant_ref"] is None
     cpus_after = client.get(f"/api/v1/cpu-nodes?tenant_id={tid}").json()
-    assert cpus_after == []                       # 마지막 회수 — 전량 반납
+    assert cpus_after == []                       # final reclaim — all returned
     assert f_dcgm_oob(client, tid)
 
 
@@ -121,7 +122,7 @@ def test_managed_k8s_invalid_version_rejected(client):
 
 
 def test_managed_k8s_approval_gates_include_k8s_stage(client):
-    """승인 모드 — K8s 옵션 주문은 게이트가 8개(k8s_installing 포함)."""
+    """Approval mode — K8s-option orders have 8 gates (incl. k8s_installing)."""
     tid = _mk_tenant(client)
     o = _k8s_order(client, tid, approval_mode=True).json()
     visited = []
@@ -136,7 +137,7 @@ def test_managed_k8s_approval_gates_include_k8s_stage(client):
 
 
 def test_plain_order_pipeline_unchanged(client):
-    """비옵션 주문은 기존 7단계 그대로 — k8s_installing 미출현."""
+    """Non-option orders keep the original 7 stages — no k8s_installing."""
     tid = _mk_tenant(client)
     o = client.post("/api/v1/orders", json={
         "tenant_id": tid, "kind": "new", "blueprint_key": "vr-nvl72",
@@ -152,26 +153,26 @@ def test_plain_order_pipeline_unchanged(client):
 
 
 def test_k8s_cp_provision_failure_compensates(client):
-    """CP 노드 프로비저닝 실패 — saga 보상으로 GPU 노드·CPU 노드 원복."""
+    """CP node provisioning failure — saga compensation reverts GPU/CPU nodes."""
     tid = _mk_tenant(client)
-    # 첫 pool_ready CPU 노드가 CP 후보 1번 — provision 실패 주입
+    # First pool_ready CPU node is CP candidate #1 — inject provision failure
     first_free = sorted(
         h.host_id for h in FAKE_NICO.hosts.values()
-        if h.sku == "cpu-epyc")[5]     # 앞 5대는 기본 제공분이 선점
+        if h.sku == "cpu-epyc")[5]     # first 5 are taken by the default set
     FAKE_NICO.inject_failure(first_free, "provision")
     o = _k8s_order(client, tid).json()
     assert o["state"] == "failed"
     assert "k8s cp node setup failed" in o["error"]
-    # CPU 노드 전량 반납 확인 (k8s_cp 잔존 없음)
+    # Verify all CPU nodes returned (no k8s_cp left)
     cpus = client.get("/api/v1/cpu-nodes").json()
     assert all(cn["role"] != "k8s_cp" for cn in cpus)
-    # GPU 노드도 보상으로 풀 복귀
+    # GPU nodes also returned to the pool by compensation
     nodes = client.get(f"/api/v1/nodes?tenant_id={tid}").json()
     assert nodes == []
 
 
 def test_managed_k8s_day2_addon_on_existing_bmaas(client):
-    """이미 BMaaS로 개통된 테넌트에 K8s 추가 설치 (Day-2 애드온)."""
+    """Add K8s to a tenant already provisioned via BMaaS (Day-2 addon)."""
     tid = _mk_tenant(client)
     o = client.post("/api/v1/orders", json={
         "tenant_id": tid, "kind": "new", "blueprint_key": "vr-nvl72",
@@ -185,7 +186,7 @@ def test_managed_k8s_day2_addon_on_existing_bmaas(client):
     o2 = r.json()
     assert o2["state"] == "delivered" and o2["k8s_cluster_id"]
     states = [h["state"] for h in o2["history"]]
-    assert states.count("delivered") == 2        # 개통 + 애드온 완료
+    assert states.count("delivered") == 2        # provisioning + addon done
     assert "k8s_installing" in states
 
     c = client.get(f"/api/v1/k8s/clusters/{o2['k8s_cluster_id']}").json()
@@ -193,11 +194,11 @@ def test_managed_k8s_day2_addon_on_existing_bmaas(client):
     assert o2["access_package"]["managed_k8s"]["cluster_id"] == c["id"]
     cpus = client.get(f"/api/v1/cpu-nodes?tenant_id={tid}").json()
     assert Counter(cn["role"] for cn in cpus) == {"general": 5, "k8s_cp": 3}
-    # 중복 설치 거절
+    # Reject duplicate install
     r = client.post("/api/v1/k8s/installs", json={
         "tenant_id": tid, "allocation_id": o["allocation_ids"][0]})
     assert r.status_code == 409
-    # 회수 시 클러스터·CP 동반 해체
+    # On reclaim, cluster and CP are torn down together
     r = client.post("/api/v1/orders", json={
         "tenant_id": tid, "kind": "terminate",
         "allocation_id": o["allocation_ids"][0]})

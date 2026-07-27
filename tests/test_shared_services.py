@@ -1,4 +1,4 @@
-"""Shared Services ⑦ (IAM·Vault·PAM·Audit) — 파이프라인 연동·REST 검증."""
+"""Shared Services ⑦ (IAM/Vault/PAM/Audit) — pipeline integration / REST verification."""
 
 
 def _mk_tenant(client, name="iam-ai"):
@@ -39,12 +39,12 @@ def test_acceptance_issues_service_account_and_secrets(client):
     secrets = client.get(f"/fake-shared/secrets?tenant_ref={tid}").json()
     kinds = {e["kind"] for e in secrets}
     assert {"s3-access-key", "redfish-cred"} <= kinds
-    assert all(e["value_masked"].count("*") >= 4 for e in secrets)  # 값 마스킹
+    assert all(e["value_masked"].count("*") >= 4 for e in secrets)  # value masking
 
-    # acceptance 버킷에 IAM/Vault 하부 호출이 잡혀야 한다
+    # IAM/Vault sub-calls must be captured in the acceptance bucket
     flow = client.get(f"/api/v1/orders/{oid}/flow").json()
     by = {st["state"]: st["by_channel"] for st in flow["stages"]}
-    assert by["acceptance"].get("OIDC/IAM", 0) >= 2      # SA 생성 + 토큰
+    assert by["acceptance"].get("OIDC/IAM", 0) >= 2      # SA creation + token
     assert by["acceptance"].get("Vault", 0) == 2         # s3 + redfish
 
 
@@ -92,7 +92,7 @@ def test_terminate_revokes_service_account_and_purges_secrets(client):
 
 
 def test_delivery_includes_access_package(client):
-    """딜리버리 시 접속정보 + 보안 인증 패키지(1회 노출 secret) 제공."""
+    """On delivery, provide access info + security credential package (one-time-exposed secret)."""
     tid = _mk_tenant(client, "pkg-ai")
     order = _deliver(client, tid)
     p = order["access_package"]
@@ -100,15 +100,15 @@ def test_delivery_includes_access_package(client):
     assert {"ssh_bastion", "api", "console", "storage", "network"} <= set(p)
     assert p["ssh_bastion"]["user"] == tid and "MFA" in p["ssh_bastion"]["auth"]
     assert p["api"]["client_id"] == f"sa-{order['id']}"
-    assert p["api"]["client_secret"].startswith("nc_")       # 원본 1회 노출
+    assert p["api"]["client_secret"].startswith("nc_")       # original shown once
     assert p["storage"] and p["storage"][0]["mount"].startswith("vast-vip")
     assert p["network"]["vrf"] and p["network"]["ib_pkey"]
 
-    # IAM 쪽에는 마스킹된 secret만 남는다
+    # On the IAM side, only the masked secret remains
     realm = client.get(f"/fake-shared/iam/realms/{tid}").json()
     sa = next(c for c in realm["clients"] if c["client_id"] == f"sa-{order['id']}")
     assert "****" in sa["secret_masked"]
     assert p["api"]["client_secret"] not in str(realm)
-    # 발급 이벤트가 감사 로그·주문 flow에 기록
+    # Issuance event is recorded in the audit log and order flow
     audit = client.get(f"/fake-shared/audit?tenant_ref={tid}").json()
     assert any(a["action"] == "delivery.access-package.issue" for a in audit)

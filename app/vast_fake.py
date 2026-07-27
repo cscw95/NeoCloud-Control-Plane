@@ -1,15 +1,16 @@
 """Fake VAST Data Platform — VMS(VAST Management System) API simulator.
 
-D4 StorageAdapter의 대역(fake). 실제 VAST VMS REST API(v3)의 개념 모델을
-단순화해 시뮬레이션한다:
+Stands in (fake) for the D4 StorageAdapter. Simulates a simplified conceptual
+model of the real VAST VMS REST API (v3):
 
-  - View        : NFS/S3 export 경로 (테넌트별 네임스페이스) — /api/v3/views
-  - View Policy : 접근 제어 — 테넌트 VPC(VRF) 서브넷에만 export
-  - Quota       : 용량 하드리밋 — /api/v3/quotas
-  - QoS Policy  : 대역폭/IOPS 상한 — /api/v3/qospolicies
+  - View        : NFS/S3 export path (per-tenant namespace) — /api/v3/views
+  - View Policy : access control — export only to the tenant VPC(VRF) subnet
+  - Quota       : capacity hard limit — /api/v3/quotas
+  - QoS Policy  : bandwidth/IOPS ceiling — /api/v3/qospolicies
 
-각 호출과 VMS 내부 동작(CNode export 활성화, 스냅샷 파기 등)을 trace로
-기록한다. 실제 연동 시 LocalVastAdapter를 VMS REST 어댑터로 교체한다.
+Each call and its internal VMS actions (CNode export activation, snapshot
+destruction, etc.) are recorded to trace. For real integration, replace
+LocalVastAdapter with a VMS REST adapter.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ class VastView(BaseModel):
     capacity_tb: float = 0
     qos_gbps: float = 0
     qos_iops_k: float = 0
-    export_subnet: str = ""            # 테넌트 VRF 측 서브넷만 접근 허용
+    export_subnet: str = ""            # allow access only from the tenant VRF-side subnet
     state: str = "active"
 
 

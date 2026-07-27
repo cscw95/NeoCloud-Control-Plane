@@ -1,15 +1,16 @@
-"""고객면 운영 API — 각 콘솔 메뉴 액션을 실제 에뮬레이터/모델 상태에 연동.
+"""Customer-plane operations API — wires each console menu action to real emulator/model state.
 
-계약: 테넌트 격리·RBAC는 TenancyGuardMiddleware(X-Tenant-Id/X-Tenant-Role)가
-담당한다. 여기 핸들러는 헤더의 테넌트로 소유를 확정하고, 물리 효과는 실제
-에뮬레이터로 위임한다:
-  - 노드 재기동/교체 → AI Infra Emulator `/emulator/v1/trayops/*`
+Contract: tenant isolation·RBAC is handled by TenancyGuardMiddleware
+(X-Tenant-Id/X-Tenant-Role). Handlers here confirm ownership via the header
+tenant and delegate physical effects to the real emulators:
+  - node reboot/replace → AI Infra Emulator `/emulator/v1/trayops/*`
     (power_cycle → post → nico_discovery → dhcp_ip → boot → … → tenant rejoin)
-  - 스토리지 볼륨/스냅샷/QoS → VAST 뷰 모델(초기 시드는 `/vast/v1/views`)
-  - API 키 / 조직 멤버 → 테넌트 IAM 실렘(shared_services)
+  - storage volumes/snapshots/QoS → VAST view model (initial seed from `/vast/v1/views`)
+  - API keys / organization members → tenant IAM realm (shared_services)
 
-목록 GET은 헤더 테넌트로 자체 필터하며(미들웨어 필터 대상 외 신규 경로),
-변경 메서드의 viewer 차단·타 테넌트 차단은 미들웨어가 이미 수행한다.
+List GETs self-filter by the header tenant (new paths outside the middleware
+filter set); viewer blocking and cross-tenant blocking on mutating methods are
+already performed by the middleware.
 """
 from __future__ import annotations
 
@@ -62,12 +63,12 @@ def _ai_get(path: str, timeout: float = 4.0):
 
 
 def _tray_of(node_id: str) -> str:
-    """콘솔 node_id(nh-… / host_id) → AI Infra tray_id."""
+    """Console node_id (nh-… / host_id) → AI Infra tray_id."""
     return node_id[3:] if node_id.startswith("nh-") else node_id
 
 
 def _owns_node(node_id: str, tid: str) -> bool:
-    """해당 노드가 테넌트 소유인지 확인 — NICo 브리지 호스트의 tenant_ref 기준."""
+    """Check whether the node is owned by the tenant — based on the NICo bridge host's tenant_ref."""
     from .lifecycle import get_adapter
     tray = _tray_of(node_id)
     try:
@@ -79,12 +80,12 @@ def _owns_node(node_id: str, tid: str) -> bool:
                 return ref == tid
     except Exception:
         pass
-    # 보조: store 노드 인스턴스
+    # fallback: store node instances
     n = STORE.node_instances.get(node_id) or STORE.node_instances.get(f"nh-{tray}")
     return bool(n and getattr(n, "tenant_id", None) == tid)
 
 
-# ── 노드 재기동 / 하드웨어 교체 (AI Infra trayops 실 라이프사이클) ──────────
+# ── node reboot / hardware replace (AI Infra trayops live lifecycle) ──────────
 @router.post("/nodes/{node_id}/reboot")
 def node_reboot(node_id: str, x_tenant_id: Optional[str] = Header(None)):
     tid = _tenant(x_tenant_id)
@@ -127,9 +128,9 @@ def node_lifecycle(node_id: str, x_tenant_id: Optional[str] = Header(None)):
             "ops": mine[:10]}
 
 
-# ── 스토리지: 볼륨 / 스냅샷 / QoS (VAST 뷰 모델) ───────────────────────────
+# ── storage: volume / snapshot / QoS (VAST view model) ───────────────────────────
 def _seed_volumes(tid: str) -> None:
-    """테넌트 볼륨이 비어 있으면 VAST 실 뷰에서 1회 시드."""
+    """If the tenant has no volumes, seed once from the live VAST views."""
     if any(v["tenant_id"] == tid for v in STORE.storage_volumes.values()):
         return
     views = _ai_get("/vast/v1/views") or []
@@ -239,7 +240,7 @@ def create_snapshot(body: _SnapBody, x_tenant_id: Optional[str] = Header(None)):
     return s
 
 
-# ── IAM: API 키 / 조직 멤버 ────────────────────────────────────────────────
+# ── IAM: API keys / organization members ────────────────────────────────────────────────
 class _ApiKeyBody(BaseModel):
     name: str
     scope: str = "read-write"
@@ -248,7 +249,7 @@ class _ApiKeyBody(BaseModel):
 @router.get("/api-keys")
 def list_api_keys(x_tenant_id: Optional[str] = Header(None)):
     tid = _tenant(x_tenant_id)
-    # 시크릿은 목록에서 제외(발급 시 1회만 노출)
+    # exclude secret from the listing (exposed only once at issuance)
     return [{k: v for k, v in a.items() if k != "secret"}
             for a in STORE.api_keys.values() if a["tenant_id"] == tid]
 
@@ -267,7 +268,7 @@ def create_api_key(body: _ApiKeyBody, x_tenant_id: Optional[str] = Header(None))
         STORE.api_keys[kid] = a
     _emit("customer", "iam", "shared", "apikey.issue",
                f"{body.name} 발급", None)
-    return a  # 발급 시에만 secret 포함(1회 노출)
+    return a  # secret included only at issuance (one-time exposure)
 
 
 @router.delete("/api-keys/{kid}", status_code=204)

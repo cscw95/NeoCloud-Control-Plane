@@ -139,13 +139,13 @@ class DeploymentUnit(BaseModel):
 
 
 class ComputeBlock(BaseModel):
-    """사이트 내 배치 단위 — Phase 1에서는 '층(floor)'으로 사용."""
+    """Placement unit within a site — used as a 'floor' in Phase 1."""
     id: str
     factory_id: str
     index: int
-    name: str = ""                    # 예: "1층 · 6MW"
-    power_mw: float = 0               # 층 계약 전력
-    ready: str = ""                   # 가동 시기 (예: 2027-03)
+    name: str = ""                    # e.g. "Floor 1 · 6MW"
+    power_mw: float = 0               # floor contracted power
+    ready: str = ""                   # go-live timing (e.g. 2027-03)
     du_ids: list[str] = Field(default_factory=list)
 
 
@@ -174,7 +174,7 @@ class NetworkIsolation(BaseModel):
     converged_vni: int
     oob_vni: int
     vrf: str
-    ib_pkey: Optional[int] = None     # UFM 파티션 키 (첫 격리 구성 시 부여)
+    ib_pkey: Optional[int] = None     # UFM partition key (assigned at first isolation setup)
 
 
 class Allocation(BaseModel):
@@ -294,7 +294,7 @@ class OrderState(str, Enum):
     isolating = "isolating"
     storage_binding = "storage_binding"
     acceptance = "acceptance"
-    k8s_installing = "k8s_installing"   # Managed K8s 옵션 — BMaaS 위 K8s 설치
+    k8s_installing = "k8s_installing"   # Managed K8s option — K8s installed on top of BMaaS
     delivered = "delivered"
     reclaiming = "reclaiming"
     closed = "closed"
@@ -331,29 +331,29 @@ class ServiceOrder(BaseModel):
     racks: int = 0
     allocation_id: Optional[str] = None       # terminate target
     allocation_ids: list[str] = Field(default_factory=list)
-    approval_mode: bool = False               # 운영자 단계별 승인 게이트
-    pending_stage: Optional[str] = None       # 승인 대기 중인 다음 단계
+    approval_mode: bool = False               # operator per-stage approval gate
+    pending_stage: Optional[str] = None       # next stage awaiting approval
     storage_mode: str = "auto"                # auto | manual
     storage_tb: float = 0
     storage_gbps: float = 0
-    managed_k8s: bool = False                 # Managed K8s 옵션 (BMaaS+K8s)
-    k8s_version: str = ""                     # 옵션 선택 시 설치 버전
-    k8s_cluster_id: Optional[str] = None      # 생성된 K8s 클러스터 참조
+    managed_k8s: bool = False                 # Managed K8s option (BMaaS+K8s)
+    k8s_version: str = ""                     # install version when option selected
+    k8s_cluster_id: Optional[str] = None      # reference to the created K8s cluster
     segment_id: Optional[str] = None          # tenant VPC (NICo segment)
     storage_ids: list[str] = Field(default_factory=list)
     node_ids: list[str] = Field(default_factory=list)
     state: OrderState = OrderState.received
     error: Optional[str] = None
-    # 딜리버리 시 고객에게 전달하는 접속·보안 인증 패키지 (client_secret 1회 노출)
+    # access & security credential package handed to the customer at delivery (client_secret shown once)
     access_package: Optional[dict] = None
     history: list[LifecycleEvent] = Field(default_factory=list)
 
 
 class CpuNode(BaseModel):
-    """범용 CPU 노드 — DPU 장착, 테넌트 VPC에 연결 (기본 제공 5대/테넌트).
+    """General-purpose CPU node — DPU-equipped, attached to the tenant VPC (5 provided per tenant by default).
 
-    GPU 클러스터의 보조 컴퓨트(로그인/스케줄러/데이터 준비용). IB/NVLink 없음,
-    Ethernet(VPC)만 DPU HBN으로 격리 연결된다."""
+    Auxiliary compute for the GPU cluster (login/scheduler/data-prep). No IB/NVLink;
+    only Ethernet (VPC) is isolation-connected via the DPU HBN."""
     id: str
     dpu_id: str
     dpu_sku: str = "BF3"
@@ -361,79 +361,79 @@ class CpuNode(BaseModel):
     cores: int = 96
     mem_tb: float = 1.5
     state: str = "pool_ready"         # pool_ready | allocated
-    role: str = "general"             # general | k8s_cp (Managed K8s 컨트롤플레인)
-    nico_host_id: Optional[str] = None  # AI Infra Emulator(NICo) 호스트 참조
+    role: str = "general"             # general | k8s_cp (Managed K8s control plane)
+    nico_host_id: Optional[str] = None  # AI Infra Emulator (NICo) host reference
     tenant_id: Optional[str] = None
-    order_id: Optional[str] = None    # k8s_cp — 개통 주문 귀속 (flow 버킷팅)
+    order_id: Optional[str] = None    # k8s_cp — attributed to the provisioning order (flow bucketing)
     host_ip: str = ""
     segment_id: Optional[str] = None
 
 
 class K8sCluster(BaseModel):
-    """Managed K8s 클러스터 — BMaaS 개통 위에 옵션으로 설치·관리되는 테넌트
-    K8s. CP 3노드는 CPU 노드 풀에서 NICo(DPU isolation) 경유로 할당되고
-    Converged Network(VNI)로 GPU 워커와 묶인다. DCGM 텔레메트리는 in-band
-    (DCGM exporter DaemonSet) 경로로 수집한다."""
+    """Managed K8s cluster — tenant K8s installed and managed as an option on top of
+    a BMaaS provisioning. The 3 CP nodes are allocated from the CPU node pool via
+    NICo (DPU isolation) and bound to the GPU workers over the Converged Network (VNI).
+    DCGM telemetry is collected via the in-band (DCGM exporter DaemonSet) path."""
     id: str
     tenant_id: str
     order_id: str
     allocation_id: Optional[str] = None
     name: str = ""
-    version: str = ""                 # K8s 버전 (예: v1.32.4)
-    nkd_version: str = ""             # NVIDIA Kubernetes Deployment 버전
+    version: str = ""                 # K8s version (e.g. v1.32.4)
+    nkd_version: str = ""             # NVIDIA Kubernetes Deployment version
     state: str = "installing"         # installing | running | deleting | deleted | failed
-    api_vip: str = ""                 # kube-vip — Converged Network 상 API VIP
-    oidc_issuer: str = ""             # kubeconfig 발급용 OIDC issuer
+    api_vip: str = ""                 # kube-vip — API VIP on the Converged Network
+    oidc_issuer: str = ""             # OIDC issuer for kubeconfig issuance
     cp_node_ids: list[str] = Field(default_factory=list)      # CpuNode.id ×3
     worker_node_ids: list[str] = Field(default_factory=list)  # NodeInstance.id
     gpus_total: int = 0
     addons: list[dict] = Field(default_factory=list)          # {name,version,status}
     dcgm_mode: str = "in-band"        # in-band(DCGM exporter) | oob(Redfish)
-    conditions: list[dict] = Field(default_factory=list)      # 설치 검증 결과
-    # 설치 saga 관찰용 파생 상태 (R4) — 콘솔 스테퍼가 폴링으로 소비
-    stage: str = ""                   # 현재 설치 스테이지 (8단계)
+    conditions: list[dict] = Field(default_factory=list)      # install verification results
+    # derived state for observing the install saga (R4) — consumed by the console stepper via polling
+    stage: str = ""                   # current install stage (8 stages)
     stage_history: list[dict] = Field(default_factory=list)   # {name,status,ts}
-    progress_pct: int = 0             # 설치 진행률 (완료 스테이지 / 8)
-    acceptance: Optional[dict] = None  # burn-in 리포트 {status,report_ts,checks}
-    quarantined_nodes: list[str] = Field(default_factory=list)  # 격리 워커 tray
-    node_versions: dict = Field(default_factory=dict)          # 노드별 K8s 버전
+    progress_pct: int = 0             # install progress (completed stages / 8)
+    acceptance: Optional[dict] = None  # burn-in report {status,report_ts,checks}
+    quarantined_nodes: list[str] = Field(default_factory=list)  # quarantined worker tray
+    node_versions: dict = Field(default_factory=dict)          # per-node K8s version
     created_at: str = ""
     history: list[LifecycleEvent] = Field(default_factory=list)
 
 
 class K8sInstall(BaseModel):
-    """Managed K8s 설치 기록 — Day-1(주문 옵션)·Day-2(installs) 공통.
+    """Managed K8s install record — shared by Day-1 (order option) and Day-2 (installs).
 
-    설치 saga의 스테이지 진행을 축적해 콘솔 '요청·작업' 보드가 소비한다."""
+    Accumulates the install saga's stage progress, consumed by the console 'requests · tasks' board."""
     install_id: str
-    cluster_id: Optional[str] = None  # 스테이지 1(cp-reserve)에서 확정
+    cluster_id: Optional[str] = None  # confirmed at stage 1 (cp-reserve)
     tenant_id: str
     allocation_id: Optional[str] = None
     order_id: Optional[str] = None
     k8s_version: str = ""
     state: str = "running"            # running | succeeded | failed
-    stage: str = ""                   # 현재 스테이지 이름
+    stage: str = ""                   # current stage name
     stages: list[dict] = Field(default_factory=list)  # {name,status,ts}
     created_at: str = ""
 
 
 class K8sKubeconfig(BaseModel):
-    """kubeconfig 발급 이력 — 가짜 PKI(시리얼)·TTL·폐기(revoke) 관리."""
+    """kubeconfig issuance history — manages mock PKI (serial), TTL, and revocation."""
     kubeconfig_id: str
     cluster_id: str
     tenant_id: str
-    serial: str = ""                  # 모의 PKI 인증서 시리얼 (hex)
-    role: str = "edit"                # RBAC 템플릿 (admin | edit | view …)
+    serial: str = ""                  # mock PKI certificate serial (hex)
+    role: str = "edit"                # RBAC template (admin | edit | view …)
     ttl_h: int = 12
     issued_at: str = ""
     expires_at: str = ""
     revoked: bool = False
     revoked_at: Optional[str] = None
-    kubeconfig_yaml: str = ""         # 모의 kubeconfig 본문
+    kubeconfig_yaml: str = ""         # mock kubeconfig body
 
 
 class K8sUpgrade(BaseModel):
-    """클러스터 업그레이드 saga — 노드별 cordon→drain→upgrade→uncordon."""
+    """Cluster upgrade saga — per node cordon→drain→upgrade→uncordon."""
     upgrade_id: str
     cluster_id: str
     tenant_id: str = ""
@@ -451,7 +451,7 @@ class StorageAllocation(BaseModel):
     tenant_id: str
     order_id: str
     allocation_id: Optional[str] = None
-    view_path: str                    # VAST view export 경로
+    view_path: str                    # VAST view export path
     capacity_tb: float
     qos_gbps: float
     protocol: str = "NFSoRDMA"
@@ -464,12 +464,12 @@ class OrderCreate(BaseModel):
     blueprint_key: Optional[str] = None
     racks: int = 0
     allocation_id: Optional[str] = None
-    approval_mode: bool = False               # True면 운영 승인 큐로
-    storage_mode: str = "auto"                # auto(랙 비례) | manual(직접 지정)
-    storage_tb: float = 0                     # manual일 때 용량
-    storage_gbps: float = 0                   # manual일 때 QoS (0=자동 산정)
-    managed_k8s: bool = False                 # Managed K8s 옵션 — BMaaS 후 K8s 설치
-    k8s_version: str = "v1.32.4"              # 옵션 선택 시 K8s 버전
+    approval_mode: bool = False               # if True, route to the ops approval queue
+    storage_mode: str = "auto"                # auto (rack-proportional) | manual (explicit)
+    storage_tb: float = 0                     # capacity when manual
+    storage_gbps: float = 0                   # QoS when manual (0=auto-computed)
+    managed_k8s: bool = False                 # Managed K8s option — K8s installed after BMaaS
+    k8s_version: str = "v1.32.4"              # K8s version when option selected
 
 
 class TicketComment(BaseModel):
@@ -479,7 +479,7 @@ class TicketComment(BaseModel):
 
 
 class Ticket(BaseModel):
-    """트러블 티켓 — Customer/Business/Operator 포털 공용."""
+    """Trouble ticket — shared by the Customer/Business/Operator portals."""
     id: str
     tenant_id: str
     subject: str
@@ -487,10 +487,10 @@ class Ticket(BaseModel):
     severity: str = "medium"          # low | medium | high | critical
     status: str = "open"              # open | in_progress | resolved
     type: str = "tech"                # tech | change | billing_dispute
-    routed_to: str = "ops"            # ops(tech/change) | biz(billing_dispute·계약)
-    change_scope: Optional[str] = None  # change 티켓: in_contract | contract_amendment
-    policy: Optional[str] = None      # billing_dispute: 청구 이의 처리 원칙 안내
-    ref: Optional[str] = None         # 관련 리소스 (node/cluster/order)
+    routed_to: str = "ops"            # ops(tech/change) | biz(billing_dispute·contract)
+    change_scope: Optional[str] = None  # change ticket: in_contract | contract_amendment
+    policy: Optional[str] = None      # billing_dispute: guidance on billing-dispute handling policy
+    ref: Optional[str] = None         # related resource (node/cluster/order)
     created_at: str = ""
     updated_at: str = ""
     comments: list[TicketComment] = Field(default_factory=list)
@@ -502,7 +502,7 @@ class TicketCreate(BaseModel):
     body: str = ""
     severity: str = "medium"
     type: str = "tech"                # tech | change | billing_dispute
-    change_scope: Optional[str] = None  # change 티켓 범위 (계약 내 / 계약 변경)
+    change_scope: Optional[str] = None  # change ticket scope (within contract / contract change)
     ref: Optional[str] = None
 
 

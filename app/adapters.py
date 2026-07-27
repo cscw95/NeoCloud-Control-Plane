@@ -50,7 +50,7 @@ class ComputeAdapter(Protocol):
 
 
 class StorageAdapter(Protocol):
-    """D4 — 벤더 스토리지 컨트롤 플레인 (기본 구현: VAST VMS)."""
+    """D4 — vendor storage control plane (default implementation: VAST VMS)."""
     def create_view(self, path: str, tenant_ref: str, export_subnet: str,
                     allocation_id: Optional[str] = None) -> VastView: ...
     def set_quota(self, path: str, capacity_tb: float) -> VastView: ...

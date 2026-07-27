@@ -2,7 +2,7 @@
 
 Seed (conftest): SU-1 = gb200-nvl72 (14 racks x 18 trays), SU-2 = vr-nvl72.
 Fake NICo + node bootstrap run in the app lifespan, so every test starts with
-540 pool_ready nodes mirroring 540 NICo hosts (gb200 SU 14랙 + vr SU 16랙).
+540 pool_ready nodes mirroring 540 NICo hosts (gb200 SU 14 racks + vr SU 16 racks).
 """
 
 import pytest
@@ -14,8 +14,8 @@ from app.nico_fake import FAKE_NICO, NicoHostState
 from app.store import STORE
 
 TRAYS_PER_RACK = 18
-TOTAL_NODES = (14 + 16) * TRAYS_PER_RACK       # gb200 SU 14랙 + vr SU 16랙(NCP RD)
-CPU_POOL_NODES = 60                            # 범용 CPU 노드 풀 — AI Infra Emulator 등록
+TOTAL_NODES = (14 + 16) * TRAYS_PER_RACK       # gb200 SU 14 racks + vr SU 16 racks (NCP RD)
+CPU_POOL_NODES = 60                            # general-purpose CPU node pool — registered with AI Infra Emulator
 
 
 def _mk_tenant(client, name="acme-ai"):
@@ -40,7 +40,7 @@ def test_bootstrap_pool(client):
     body = r.json()
     assert body["total"] == TOTAL_NODES
     assert body["by_state"] == {"pool_ready": TOTAL_NODES}
-    # GPU 트레이 미러 + CPU 노드 풀(cpu_nodes read-model 관리, NodeInstance 아님)
+    # GPU-tray mirror + CPU node pool (managed as cpu_nodes read-model, not NodeInstance)
     assert len(FAKE_NICO.hosts) == TOTAL_NODES + CPU_POOL_NODES
 
 
@@ -81,7 +81,7 @@ def test_new_order_delivers_cluster(client):
 
 def test_order_rejected_on_insufficient_capacity(client):
     tid = _mk_tenant(client)
-    r = _new_order(client, tid, racks=17)             # vr 랙은 16개뿐 (1 SU)
+    r = _new_order(client, tid, racks=17)             # only 16 vr racks (1 SU)
     order = r.json()
     assert order["state"] == "rejected"
     assert "insufficient capacity" in order["error"]
@@ -221,9 +221,9 @@ def test_order_survives_vanished_host(client):
 
 
 def test_cpu_nodes_default_allocation_and_reclaim(client):
-    """테넌트당 기본 CPU 노드 5대 — DPU로 VPC 연결, 마지막 회수 시 반납."""
+    """Default 5 CPU nodes per tenant — VPC-connected via DPU, returned on the final reclaim."""
     tid = _mk_tenant(client)
-    assert len(client.get("/api/v1/cpu-nodes").json()) == 60      # 풀 시드
+    assert len(client.get("/api/v1/cpu-nodes").json()) == 60      # pool seed
 
     order = _new_order(client, tid, racks=1).json()
     assert order["state"] == "delivered"
@@ -234,11 +234,11 @@ def test_cpu_nodes_default_allocation_and_reclaim(client):
     assert all(c["state"] == "allocated" and c["host_ip"].startswith("10.250.")
                and c["segment_id"] == order["segment_id"] for c in mine)
 
-    # 확장해도 5대 유지
+    # stays 5 even after expansion
     _new_order(client, tid, racks=1)
     assert len(client.get(f"/api/v1/cpu-nodes?tenant_id={tid}").json()) == 5
 
-    # 부분 회수 → 유지, 전체 회수 → 반납
+    # partial reclaim → keep, full reclaim → return
     orders = client.get(f"/api/v1/orders?tenant_id={tid}").json()
     allocs = [o["allocation_ids"][0] for o in orders if o["kind"] == "new"]
     client.post("/api/v1/orders", json={
@@ -252,7 +252,7 @@ def test_cpu_nodes_default_allocation_and_reclaim(client):
 
 
 def test_manual_storage_allocation(client):
-    """스토리지 수동 지정 — 용량/QoS가 주문 값으로 프로비저닝."""
+    """Manual storage selection — capacity/QoS provisioned from the order values."""
     tid = _mk_tenant(client)
     order = client.post("/api/v1/orders", json={
         "tenant_id": tid, "kind": "new", "blueprint_key": "vr-nvl72",
@@ -265,7 +265,7 @@ def test_manual_storage_allocation(client):
               if e["state"] == "storage_binding"][0]["detail"]
     assert "수동 지정" in detail
 
-    # manual인데 용량 미지정 → 검증 단계에서 rejected
+    # manual but no capacity specified → rejected at the validation stage
     bad = client.post("/api/v1/orders", json={
         "tenant_id": tid, "kind": "new", "blueprint_key": "vr-nvl72",
         "racks": 1, "storage_mode": "manual"}).json()
@@ -273,38 +273,38 @@ def test_manual_storage_allocation(client):
 
 
 def test_placement_respects_dedicated_su_isolation(client):
-    """버그 회귀(tnt-skb-001): dedicated 테넌트 배치가 타 테넌트 점유 SU를
-    선택해 격리 단계에서 실패하던 문제 — 배치 단계에서 정책 선반영."""
+    """Bug regression (tnt-skb-001): dedicated-tenant placement used to pick an SU
+    occupied by another tenant and fail at the isolation stage — policy now applied up front at placement."""
     a = _mk_tenant(client, name="alpha-ded")
-    order_a = _new_order(client, a, racks=2).json()      # su-2(vr)에 2랙 점유
+    order_a = _new_order(client, a, racks=2).json()      # occupies 2 racks on su-2 (vr)
     assert order_a["state"] == "delivered"
 
-    # dedicated 신규 테넌트는 su-2를 공유할 수 없음 → 남는 vr SU 없음 →
-    # (기존 버그: isolating에서 failed) → 이제 배치 단계에서 정책적 rejected
+    # a new dedicated tenant can't share su-2 → no vr SU left →
+    # (old bug: failed at isolating) → now policy-rejected at the placement stage
     b = _mk_tenant(client, name="bravo-ded")
     order_b = _new_order(client, b, racks=1).json()
     assert order_b["state"] == "rejected"
     assert "insufficient capacity" in order_b["error"]
-    # 잔재 없음 — 예약/격리까지 가지 않음
+    # no leftovers — never reaches reserve/isolation
     assert client.get(f"/api/v1/tenants/{b}").json()["allocations"] == []
 
-    # 같은 테넌트의 확장은 자기 SU 공유 허용 (기존 동작 유지)
+    # same tenant's expansion may share its own SU (existing behavior preserved)
     expand = _new_order(client, a, racks=1).json()
     assert expand["state"] == "delivered"
 
-    # gb200 SU(su-1)는 비어 있으므로 dedicated 신규 배치 가능
+    # gb200 SU (su-1) is empty, so a new dedicated placement is possible
     order_b2 = client.post("/api/v1/orders", json={
         "tenant_id": b, "kind": "new",
         "blueprint_key": "gb200-nvl72", "racks": 1}).json()
     assert order_b2["state"] == "delivered"
 
-    # 역방향 보호: vm_multitenant 테넌트도 dedicated가 점유한 SU에는 배치 불가
+    # reverse protection: a vm_multitenant tenant also can't be placed on a dedicated-occupied SU
     r = client.post("/api/v1/tenants", json={
         "name": "charlie-vm", "isolation_tier": "vm_multitenant"})
     cvm = r.json()["id"]
-    order_c = _new_order(client, cvm, racks=1).json()    # vr SU는 alpha 전용
+    order_c = _new_order(client, cvm, racks=1).json()    # vr SU is alpha-only
     assert order_c["state"] == "rejected"
-    # 기존 dedicated 테넌트의 격리 리포트는 계속 PASS
+    # the existing dedicated tenant's isolation report still PASSes
     assert client.get(f"/api/v1/tenants/{a}/isolation").json()["ok"] is True
 
 
@@ -369,37 +369,37 @@ def test_full_stack_trace_segment_and_storage(client):
     assert order["state"] == "delivered"
     assert order["segment_id"] and order["storage_ids"]
 
-    # 시스템 세부 트레이스 — 전 채널이 기록되어야 한다
+    # system-detail trace — every channel must be recorded
     tr = client.get("/api/v1/trace?limit=2000").json()
     channels = {e["channel"] for e in tr}
     for ch in ("REST", "gRPC", "Redfish", "DHCP", "PXE", "cloud-init",
                "NVUE/HBN", "UFM", "NMX", "VAST-API", "internal"):
         assert ch in channels, f"missing channel: {ch}"
 
-    # BMC→DHCP→PXE 메시지 페이로드 확인
+    # check BMC→DHCP→PXE message payloads
     dhcp = [e for e in tr if e["channel"] == "DHCP"][0]
     assert dhcp["payload"]["yiaddr"].startswith("10.")
     redfish = [e for e in tr if e["channel"] == "Redfish"
                and "Reset" in e["op"]][0]
     assert redfish["payload"] == {"ResetType": "ForceRestart"}
 
-    # 호스트에 IP·VPC 바인딩 반영
+    # IP·VPC binding reflected on the host
     node = client.get(f"/api/v1/nodes/{order['node_ids'][0]}").json()
     host = client.get(f"/fake-nico/hosts/{node['nico_host_id']}").json()
     assert host["host_ip"].startswith("10.")
     assert host["segment_id"] == order["segment_id"]
 
-    # order_id 필터
+    # order_id filter
     mine = client.get(f"/api/v1/trace?order_id={order['id']}&limit=2000").json()
     assert mine and all(e["order_id"] == order["id"] for e in mine)
 
-    # VAST 뷰·쿼터·QoS
+    # VAST view·quota·QoS
     views = client.get("/fake-vast/views").json()
     assert len(views) == 1
     assert views[0]["capacity_tb"] == 500 and views[0]["qos_gbps"] == 40
     assert views[0]["tenant_ref"] == tid
 
-    # 회수 시 스토리지·VPC 완전 해체
+    # storage·VPC fully torn down on reclaim
     term = client.post("/api/v1/orders", json={
         "tenant_id": tid, "kind": "terminate",
         "allocation_id": order["allocation_ids"][0]}).json()
@@ -411,7 +411,7 @@ def test_full_stack_trace_segment_and_storage(client):
 
 
 # ---------------------------------------------------------------------------
-# /flow 검증 콘솔 + demo-only endpoints
+# /flow verification console + demo-only endpoints
 # ---------------------------------------------------------------------------
 def test_flow_console_served(client):
     r = client.get("/flow")
@@ -466,10 +466,10 @@ def test_http_adapter_parity(client):
 
 
 def test_dpu_isolation_reflects_real_nico_behavior(client):
-    """DPU isolation 세부 동작 — 실 NICo(infra-controller) 재현 회귀.
+    """DPU isolation internals — regression reproducing real NICo (infra-controller) behavior.
 
-    carbide 기록 → dpu-agent gRPC 폴링 → FNN NVUE 렌더/HBN 적용(호스트당 1건,
-    카운트 규약 유지) → BGP 수렴 검증이 isolating 트레이스에 나타나야 한다."""
+    carbide write → dpu-agent gRPC polling → FNN NVUE render/HBN apply (1 per host,
+    count convention preserved) → BGP convergence check must appear in the isolating trace."""
     r = client.post("/api/v1/tenants", json={
         "name": "dpu-iso", "isolation_tier": "bare_metal_dedicated"})
     tid = r.json()["id"]
@@ -485,21 +485,21 @@ def test_dpu_isolation_reflects_real_nico_behavior(client):
 
     flow = client.get(f"/api/v1/orders/{order['id']}/flow").json()
     iso = [st for st in flow["stages"] if st["state"] == "isolating"][0]
-    assert iso["by_channel"]["NVUE/HBN"] == 18 + 5        # 트레이 18 + CPU 5
-    assert iso["by_channel"].get("gRPC", 0) >= 1          # config fetcher 폴링
+    assert iso["by_channel"]["NVUE/HBN"] == 18 + 5        # trays 18 + CPU 5
+    assert iso["by_channel"].get("gRPC", 0) >= 1          # config fetcher polling
     calls = " ".join(c["op"] + (c.get("detail") or "")
                      for c in iso["apis"])
     assert "GetManagedHostNetworkConfig" in calls
     assert "pf0hpf" in calls and "BGP summary" in calls
-    assert f"vpc_{seg['l3vni']}" in calls                 # 실 VRF 명명 규칙
+    assert f"vpc_{seg['l3vni']}" in calls                 # real VRF naming convention
 
 
 def test_partial_reclaim_control_plane_api_flow(client):
-    """부분 SU 회수 — CP 하부 API 누락 회귀 (실사용 이슈).
+    """Partial SU reclaim — regression for missing CP downstream APIs (real-world issue).
 
-    잔여 할당이 있으면 UFM은 포트 언바인드(P_Key 유지)여야 하고, 회수에도
-    개통과 대칭으로 호스트별 HBN 해체·DHCP lease 회수·EVPN withdraw가
-    reclaiming 버킷에 나타나야 한다."""
+    With allocations remaining, UFM must port-unbind (keep P_Key), and reclaim must
+    mirror provisioning: per-host HBN teardown, DHCP lease reclaim, and EVPN withdraw
+    must appear in the reclaiming bucket."""
     r = client.post("/api/v1/tenants", json={
         "name": "partial-ai", "isolation_tier": "bare_metal_dedicated"})
     tid = r.json()["id"]
@@ -515,31 +515,31 @@ def test_partial_reclaim_control_plane_api_flow(client):
     pkey = client.get(f"/api/v1/fabric/ib?tenant_id={tid}").json()[
         "selected"]["pkey"]
 
-    # ── 부분 회수 (1랙) — 잔여 2랙 유지 ───────────────────────────────
+    # ── partial reclaim (1 rack) — remaining 2 racks kept ───────────────────────────────
     t = client.post("/api/v1/orders", json={
         "tenant_id": tid, "kind": "terminate",
         "allocation_id": o2["allocation_ids"][0]}).json()
     assert t["state"] == "closed"
     stages = {s["state"]: s for s in client.get(
         f"/api/v1/orders/{t['id']}/flow").json()["stages"]}
-    # 고객 포털 → NeoCloud OS 북바운드 호출이 received 버킷에 카운트
+    # customer portal → NeoCloud OS northbound call counted in the received bucket
     assert stages["received"]["by_channel"].get("REST") == 1
     assert any("POST /orders" in a["op"]
                for a in stages["received"]["apis"])
     rec = stages["reclaiming"]
     by = rec["by_channel"]
-    assert by.get("NVUE/HBN") == 18                  # 호스트별 FNN 해체
-    assert by.get("DHCP") == 18                      # lease 회수
-    assert by.get("gRPC", 0) >= 1                    # agent 폴링 감지
+    assert by.get("NVUE/HBN") == 18                  # per-host FNN teardown
+    assert by.get("DHCP") == 18                      # lease reclaim
+    assert by.get("gRPC", 0) >= 1                    # agent polling detected
     calls = " ".join(a["op"] + (a.get("detail") or "") for a in rec["apis"])
     assert f"PATCH /ufmRest/resources/pkeys/{pkey}" in calls
     assert "P_Key" in calls and "유지" in calls
     assert "EVPN withdraw" in calls
 
     sel = client.get(f"/api/v1/fabric/ib?tenant_id={tid}").json()["selected"]
-    assert sel["racks"] == 2 and sel["pkey"] == pkey  # 잔여 클러스터 무영향
+    assert sel["racks"] == 2 and sel["pkey"] == pkey  # remaining cluster unaffected
 
-    # ── 마지막 회수 — 이때만 P_Key 파티션 제거 ──────────────────────────
+    # ── final reclaim — P_Key partition removed only now ──────────────────────────
     t2 = client.post("/api/v1/orders", json={
         "tenant_id": tid, "kind": "terminate",
         "allocation_id": o1["allocation_ids"][0]}).json()

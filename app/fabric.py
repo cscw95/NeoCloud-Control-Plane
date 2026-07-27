@@ -1,13 +1,13 @@
-"""IB fabric topology read-model — spine/leaf(rail)/rack 구성 시각화용.
+"""IB fabric topology read-model — for visualizing the spine/leaf(rail)/rack layout.
 
-NCP 레퍼런스의 rail-optimized 2-tier compute fabric을 단순화해 노출한다:
-  - 트레이의 SuperNIC n번 포트는 SU 내 rail-n leaf 스위치에 접속
-    (rail 수 = blueprint의 connectx_supernics_per_tray),
-  - SU의 leaf 그룹은 core(spine) 스위치 전체와 풀메시 업링크,
-  - 테넌트 격리는 UFM P_Key로 표현 (NetworkIsolation.ib_pkey).
+Exposes a simplified view of the NCP reference's rail-optimized 2-tier compute fabric:
+  - a tray's SuperNIC port n connects to the rail-n leaf switch within the SU
+    (rail count = blueprint's connectx_supernics_per_tray),
+  - an SU's leaf group has a full-mesh uplink to all core(spine) switches,
+  - tenant isolation is expressed via the UFM P_Key (NetworkIsolation.ib_pkey).
 
-/nico 대시보드의 SVG 렌더러가 이 read-model을 그대로 그린다. 실제 케이블
-단위 SoT는 Nautobot(D3) 몫이며, 여기는 이해·시각화 목적의 요약 모델이다.
+The /nico dashboard's SVG renderer draws this read-model as-is. The cable-level
+SoT belongs to Nautobot(D3); this is a summary model for comprehension/visualization.
 """
 
 from __future__ import annotations
@@ -26,14 +26,14 @@ CORE_SPINES = 4
 
 @router.get("/fabric/ib")
 def ib_fabric(tenant_id: Optional[str] = None) -> dict:
-    """사이트(AIFactory)별 **독립** IB 패브릭 — 가산·안산 간 크로스 연결 없음.
+    """Per-site (AIFactory) **independent** IB fabric — no cross-connect between Gasan and Ansan.
 
-    NCP RD(RD-12835-001-01 v02) 기준 컴퓨트 패브릭:
-      - 듀얼 네트워크 Fabric-A/B (별도 서브넷 → UFM(HA) 2세트),
-      - 네트워크당 rail 4 × 리프 16/SU, SU당 2,304×800G 노드-리프 링크,
-      - 2-tier ≤9 SU / 3-tier 10~32 SU (컨버지드는 2-tier ≤4 SU).
-    각 사이트가 자체 스파인 세트를 가지며, 테넌트 클러스터는 단일 사이트
-    안에서만 구성된다(M4 배치가 보장)."""
+    Compute fabric per NCP RD (RD-12835-001-01 v02):
+      - dual-network Fabric-A/B (separate subnets → 2 sets of UFM(HA)),
+      - 4 rails × 16 leaves/SU per network, 2,304×800G node-leaf links per SU,
+      - 2-tier ≤9 SU / 3-tier 10~32 SU (converged is 2-tier ≤4 SU).
+    Each site has its own spine set, and a tenant cluster is composed within a
+    single site only (guaranteed by M4 placement)."""
     s = STORE
     ib = spec.IB_FABRIC
 
@@ -50,7 +50,7 @@ def ib_fabric(tenant_id: Optional[str] = None) -> dict:
                 "rails": rails,
                 "rails_per_network": max(1, rails // len(ib["networks"])),
                 "leaves_per_network": ib["leaves_per_network_per_su"],
-                "links_800g": trays * rails,      # 16랙 SU = 2,304 (RD)
+                "links_800g": trays * rails,      # 16-rack SU = 2,304 (RD)
                 "leaf_group": f"leaf-{su.id} (rail x{rails})",
                 "racks": racks}
 
@@ -71,7 +71,7 @@ def ib_fabric(tenant_id: Optional[str] = None) -> dict:
                 "converged_tier": (
                     "2-tier" if n_su <= spec.CONVERGED_FABRIC["tier2_max_su"]
                     else "3-tier"),
-                "ufm_ha_sets": len(ib["networks"]),   # 서브넷별 UFM(HA)
+                "ufm_ha_sets": len(ib["networks"]),   # UFM(HA) per subnet
                 "networks": [
                     {"name": net,
                      "spines": [{"id": f"{tag}-{net.lower()}-core-{i + 1}",

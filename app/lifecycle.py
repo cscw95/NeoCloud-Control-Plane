@@ -63,20 +63,20 @@ router = APIRouter(prefix="/api/v1", tags=["lifecycle"])
 
 DEFAULT_IMAGE = "ubuntu-24.04-nvidia"
 
-# 상품 카탈로그 상수 (데모): 랙(NVL72)당 스토리지 용량·성능 배분
+# Product catalog constants (demo): storage capacity/performance allocation per rack (NVL72)
 STORAGE_TB_PER_RACK = 500
 STORAGE_GBPS_PER_RACK = 40
 STORAGE_KIOPS_PER_RACK = 500
-CPU_NODES_PER_TENANT = 5          # 테넌트당 기본 제공 범용 CPU 노드 (DPU 장착)
+CPU_NODES_PER_TENANT = 5          # Default general-purpose CPU nodes provided per tenant (DPU-equipped)
 
-# ── Managed K8s 옵션 (BMaaS 개통 후 K8s 설치·관리) ─────────────────────────
-K8S_CP_NODES_PER_CLUSTER = 3      # 클러스터당 컨트롤플레인 CPU 노드 (HA·etcd 정족수)
-K8S_SUPPORTED_VERSIONS = ["v1.32.4", "v1.33.2"]   # N/N-1 버전 정책
-K8S_NKD_VERSION = "25.06"         # NVIDIA Kubernetes Deployment 번들
-K8S_CP_IMAGE = "ubuntu-24.04-k8s-cp"              # CP 노드 OS 이미지
-K8S_CP_SLA = "99.9%"              # 관리형 컨트롤플레인 SLA (HA 3노드 전제)
-# 관리형 애드온 카탈로그 — NKD 번들 버전 고정 (업체 분석: CoreWeave/Crusoe
-# 방식의 선택형·버전 고정 애드온. DCGM exporter가 in-band 텔레메트리 경로)
+# ── Managed K8s option (K8s install/management after BMaaS provisioning) ─────────────────────────
+K8S_CP_NODES_PER_CLUSTER = 3      # Control-plane CPU nodes per cluster (HA / etcd quorum)
+K8S_SUPPORTED_VERSIONS = ["v1.32.4", "v1.33.2"]   # N/N-1 version policy
+K8S_NKD_VERSION = "25.06"         # NVIDIA Kubernetes Deployment bundle
+K8S_CP_IMAGE = "ubuntu-24.04-k8s-cp"              # CP node OS image
+K8S_CP_SLA = "99.9%"              # Managed control-plane SLA (assumes HA 3-node)
+# Managed add-on catalog — NKD bundle version pinned (vendor analysis: CoreWeave/Crusoe
+# style of selectable, version-pinned add-ons; DCGM exporter is the in-band telemetry path)
 K8S_MANAGED_ADDONS = [
     {"name": "cilium",            "version": "1.16.5",  "role": "CNI — Converged Network(VXLAN) 오버레이"},
     {"name": "multus",            "version": "4.1.3",   "role": "secondary NIC — RDMA/IB 인터페이스 주입"},
@@ -115,7 +115,7 @@ NODE_TRANSITIONS: dict[NS, set] = {
     NS.provisioning: {NS.allocated, NS.quarantined, NS.releasing},
     NS.allocated:    {NS.in_service, NS.releasing},
     NS.in_service:   {NS.cordoned, NS.draining},
-    NS.cordoned:     {NS.draining, NS.in_service},              # 오탐 해제
+    NS.cordoned:     {NS.draining, NS.in_service},              # clear false positive
     NS.draining:     {NS.releasing},
     NS.releasing:    {NS.sanitizing},
     NS.sanitizing:   {NS.pool_ready, NS.rma},
@@ -125,14 +125,14 @@ NODE_TRANSITIONS: dict[NS, set] = {
 ORDER_TRANSITIONS: dict[OS, set] = {
     OS.received:        {OS.validated, OS.rejected},
     OS.validated:       {OS.reserved, OS.reclaiming, OS.rejected,
-                         OS.compensating},          # reserve 단계 실패 시
+                         OS.compensating},          # on reserve-stage failure
     OS.reserved:        {OS.provisioning, OS.compensating},
     OS.provisioning:    {OS.isolating, OS.compensating},
     OS.isolating:       {OS.storage_binding, OS.compensating},
     OS.storage_binding: {OS.acceptance, OS.compensating},
     OS.acceptance:      {OS.delivered, OS.k8s_installing, OS.compensating},
     OS.k8s_installing:  {OS.delivered, OS.compensating},
-    OS.delivered:       {OS.closed, OS.k8s_installing},   # Day-2 K8s 애드온
+    OS.delivered:       {OS.closed, OS.k8s_installing},   # Day-2 K8s add-on
     OS.reclaiming:      {OS.closed},
     OS.compensating:    {OS.failed},
     OS.closed: set(), OS.rejected: set(), OS.failed: set(),
@@ -217,12 +217,12 @@ def _rack_sellable(rack: Rack) -> bool:
 
 
 def _su_allowed_for(su, tenant) -> bool:
-    """SU 격리 정책 (M4) — create_allocation의 정책과 동일 기준을 배치
-    단계에서 선반영해, 격리 단계에서 뒤늦게 실패하지 않도록 한다.
+    """SU isolation policy (M4) — applies the same criteria as create_allocation
+    early at the placement stage, so isolation doesn't fail late in the flow.
 
-    ① bare_metal_dedicated 테넌트는 타 테넌트가 점유한 SU에 배치 불가.
-    ② 타 dedicated 테넌트가 점유한 SU에는 누구도 배치 불가 (역방향 보호 —
-       기존 dedicated 고객의 물리 격리 SLA 훼손 방지)."""
+    ① A bare_metal_dedicated tenant cannot be placed on an SU occupied by another tenant.
+    ② No one may be placed on an SU occupied by another dedicated tenant (reverse
+       protection — prevents breaking the physical-isolation SLA of an existing dedicated customer)."""
     if tenant is None:
         return True
     owners = {r.tenant_id for r in STORE.racks_of_su(su.id)
@@ -242,10 +242,10 @@ def select_racks(blueprint_key: str, count: int,
     **within one site**.
 
     NVL-domain integrity is rack-granular (one NVL72 rack == one domain), so
-    spanning SUs is allowed but a partial rack is not. 단, 사이트(AIFactory)
-    간에는 IB 패브릭·NVLink가 물리적으로 이어지지 않으므로(STT 가산 ↔ IGIS
-    안산) 하나의 클러스터가 사이트를 넘을 수 없다 — spill은 동일 사이트
-    내에서만 허용된다. Generation mixing is forbidden by filtering on
+    spanning SUs is allowed but a partial rack is not. However, across sites
+    (AIFactory) the IB fabric and NVLink are not physically connected (STT Gasan
+    ↔ IGIS Ansan), so a single cluster cannot span sites — spill is allowed only
+    within the same site. Generation mixing is forbidden by filtering on
     blueprint_key; tenant isolation policy filters SUs (see _su_allowed_for).
     """
     pools: list[tuple] = []                 # (su, free_racks, factory_id)
@@ -263,7 +263,7 @@ def select_racks(blueprint_key: str, count: int,
         _, free, _ = min(fits, key=lambda p: len(p[1]))
         return free[:count]
 
-    # spill: 사이트 경계 안에서만 — 사이트 단위 best-fit 후 SU 단위 채움
+    # spill: within site boundaries only — best-fit at the site level, then fill at the SU level
     by_site: dict[str, list] = {}
     for su, free, fid in pools:
         by_site.setdefault(fid, []).append(free)
@@ -282,9 +282,9 @@ def select_racks(blueprint_key: str, count: int,
 
 
 def availability_by_site(blueprint_key: str, tenant=None) -> dict:
-    """테넌트 기준 사이트별 계약 가능 랙 수 — dedicated SU 격리·판매가능 반영.
+    """Contractable rack count per site for a given tenant — reflects dedicated-SU isolation and sellability.
 
-    거절 사유·용량 안내에 사용: 물리 유휴와 달리 이 수치가 실제 주문 가능량."""
+    Used for rejection reasons / capacity guidance: unlike raw physical idle, this figure is the actual orderable amount."""
     out: dict[str, int] = {}
     for su in STORE.sus.values():
         if su.blueprint_key != blueprint_key:
@@ -313,7 +313,7 @@ def _nodes_for_racks(racks: list[Rack]) -> list[NodeInstance]:
 def _teardown_storage_and_segment(order_id: str, storage_ids: list,
                                   segment_id: Optional[str],
                                   adapter: ComputeAdapter) -> None:
-    """D4 뷰 회수 + D2 VPC 해체 (best-effort — 실패는 기록 후 계속)."""
+    """D4 view reclaim + D2 VPC teardown (best-effort — failures are logged and processing continues)."""
     storage = get_storage_adapter()
     for sid in list(storage_ids):
         sa = STORE.storage_allocs.get(sid)
@@ -346,7 +346,7 @@ def _compensate(order: ServiceOrder, nodes: list[NodeInstance],
         if aid in STORE.allocations:
             tenancy.delete_allocation(aid)
     order.allocation_ids.clear()
-    _sync_cpu_nodes(order.tenant_id, None)     # 마지막 allocation이면 CPU 반납
+    _sync_cpu_nodes(order.tenant_id, None)     # release CPU nodes if this is the last allocation
     # roll nodes back, reverse order of progress; best-effort per node — a
     # rollback that itself fails is cordoned/escalated, never raises out
     for node in nodes:
@@ -384,14 +384,14 @@ def _compensate(order: ServiceOrder, nodes: list[NodeInstance],
 
 
 def _sync_cpu_nodes(tenant_id: str, segment_id: Optional[str]) -> list:
-    """테넌트 기본 CPU 노드 동기화 — allocation 보유 시 5대 보장, 없으면 반납.
+    """Sync the tenant's default CPU nodes — guarantees 5 while an allocation is held, releases them otherwise.
 
-    CPU 노드는 DPU 장착 범용 노드로, 테넌트 VPC(segment)에 HBN으로 연결된다
-    (Ethernet 전용 — IB/NVLink 없음)."""
+    CPU nodes are DPU-equipped general-purpose nodes connected to the tenant VPC (segment) via HBN
+    (Ethernet only — no IB/NVLink)."""
     s = STORE
     has_gpu = any(a.tenant_id == tenant_id for a in s.allocations.values())
     mine = [c for c in s.cpu_nodes.values() if c.tenant_id == tenant_id]
-    if not has_gpu:                             # 마지막 회수 → 전량 반납
+    if not has_gpu:                             # last reclaim → release all
         for cn in mine:
             emit("NeoCloudOS.D2", f"DPU-Agent({cn.dpu_id})", "NVUE/HBN",
                  "CPU 노드 VPC 연결 해제",
@@ -404,7 +404,7 @@ def _sync_cpu_nodes(tenant_id: str, segment_id: Optional[str]) -> list:
             cn.order_id = None
         return []
     ni = s.netiso.get(tenant_id)
-    # 기본 제공 수량은 general 역할 기준 — Managed K8s CP(k8s_cp)는 별도 추가분
+    # the default provisioned count is based on the general role — Managed K8s CP (k8s_cp) is a separate addition
     need = CPU_NODES_PER_TENANT - sum(1 for c in mine if c.role == "general")
     pool = [c for c in s.cpu_nodes.values() if c.state == "pool_ready"]
     for cn in pool[:max(0, need)]:
@@ -429,7 +429,7 @@ def _sync_cpu_nodes(tenant_id: str, segment_id: Optional[str]) -> list:
     return mine
 
 
-# -- 단계 컨텍스트 재구성 (승인 게이트 사이에도 order에서 복원 가능) ----------
+# -- Reconstruct stage context (restorable from the order even across approval gates) ----------
 def _ctx_nodes(order: ServiceOrder) -> list:
     return [STORE.node_instances[nid] for nid in order.node_ids
             if nid in STORE.node_instances]
@@ -472,7 +472,7 @@ def _stage_validated(order: ServiceOrder, adapter: ComputeAdapter) -> None:
                 return
             free_cpu = sum(1 for c in s.cpu_nodes.values()
                            if c.state == "pool_ready")
-            # 기본 5대(신규 테넌트 가정) + CP 3대 여유 확인
+            # check headroom for the default 5 (assuming a new tenant) + 3 CP nodes
             if free_cpu < CPU_NODES_PER_TENANT + K8S_CP_NODES_PER_CLUSTER:
                 advance_order(order, OS.rejected,
                               f"insufficient CPU pool: Managed K8s는 CP "
@@ -485,7 +485,7 @@ def _stage_validated(order: ServiceOrder, adapter: ComputeAdapter) -> None:
                       + (f" · Managed K8s {order.k8s_version} 옵션"
                          if order.managed_k8s else ""))
 
-        # -- placement (M4-lite, 격리 정책 반영) -----------------------------
+        # -- placement (M4-lite, applies isolation policy) -----------------------------
         racks = select_racks(order.blueprint_key, order.racks, tenant=tenant)
         if racks is None:
             avail = availability_by_site(order.blueprint_key, tenant)
@@ -517,8 +517,8 @@ def _stage_reserved(order: ServiceOrder, adapter: ComputeAdapter) -> None:
         nodes = _ctx_nodes(order)
         racks = _ctx_racks(order)
         # -- reserve ---------------------------------------------------------
-        # 단계 진입을 먼저 기록 — ReserveHost 호출들이 'reserved' 단계 창에
-        # 귀속되도록 (GET /orders/{id}/flow 의 시간창 버킷팅 기준)
+        # record stage entry first — so ReserveHost calls are attributed to the
+        # 'reserved' stage window (per the time-window bucketing in GET /orders/{id}/flow)
         advance_order(order, OS.reserved,
                       f"{len(nodes)} node(s) across {len(racks)} rack(s)")
         reserved: list[NodeInstance] = []
@@ -596,7 +596,7 @@ def _stage_isolating(order: ServiceOrder, adapter: ComputeAdapter) -> None:
         nodes = _ctx_nodes(order)
         racks = _ctx_racks(order)
         tenant = s.tenants[order.tenant_id]
-        # -- isolate: 3-plane 격리 (VPC/DPU + IB P_Key + NVLink 파티션) --------
+        # -- isolate: 3-plane isolation (VPC/DPU + IB P_Key + NVLink partition) --------
         advance_order(order, OS.isolating, "3-plane 격리 구성 (ETH/IB/NVLink)")
         by_su: dict[str, list[str]] = {}
         for rack in racks:
@@ -608,10 +608,10 @@ def _stage_isolating(order: ServiceOrder, adapter: ComputeAdapter) -> None:
                     su_id=su_id, rack_ids=rack_ids))
                 order.allocation_ids.append(alloc.id)
 
-            # ① Ethernet: 테넌트 VPC(network segment) — DPU HBN이 강제
+            # ① Ethernet: tenant VPC (network segment) — enforced by the DPU HBN
             ni = s.netiso[tenant.id]
-            # UFM P_Key는 테넌트당 1개 — 세그먼트 생성 전에 확정해 물리
-            # 계층(NICo→AI Infra IB 파티션)까지 동일 값으로 전파한다
+            # One UFM P_Key per tenant — fixed before segment creation and propagated
+            # with the same value down to the physical layer (NICo → AI Infra IB partition)
             pkey = ni.ib_pkey or (0x8000 + s.next_seq("pkey"))
             ni.ib_pkey = pkey
             emit("NeoCloudOS.D2", "NICo.APIService", "REST", "POST /segments",
@@ -628,8 +628,8 @@ def _stage_isolating(order: ServiceOrder, adapter: ComputeAdapter) -> None:
                 allocation_id=order.allocation_ids[0], ib_pkey=pkey)
             order.segment_id = seg.segment_id
 
-            # ② InfiniBand: UFM P_Key 파티션 (scale-out E-W) — 위에서 확정한
-            #    테넌트 P_Key 재사용 (확장 시에도 동일 값)
+            # ② InfiniBand: UFM P_Key partition (scale-out E-W) — reuses the tenant
+            #    P_Key fixed above (same value even on expansion)
             emit("NeoCloudOS.D2", "UFM", "UFM",
                  "POST /ufmRest/resources/pkeys",
                  f"IB 파티션 — P_Key {hex(pkey)}에 테넌트 포트 GUID 바인딩 "
@@ -639,7 +639,7 @@ def _stage_isolating(order: ServiceOrder, adapter: ComputeAdapter) -> None:
                           "guids": f"{len(nodes)} host ports"},
                  order_id=oid)
 
-            # ③ NVLink: NMX 파티션 (rack = NVL 도메인 단위)
+            # ③ NVLink: NMX partition (rack = NVL domain unit)
             for rack in racks:
                 part = tenancy.create_partition(PartitionCreate(
                     rack_id=rack.id, tenant_id=tenant.id,
@@ -653,7 +653,7 @@ def _stage_isolating(order: ServiceOrder, adapter: ComputeAdapter) -> None:
                               "trays": len(rack.tray_ids),
                               "tenant": tenant.id},
                      order_id=oid)
-            # ④ 기본 제공 CPU 노드 — DPU 장착, 동일 VPC에 HBN 연결
+            # ④ default-provisioned CPU nodes — DPU-equipped, HBN-connected to the same VPC
             cpu_nodes = _sync_cpu_nodes(tenant.id, seg.segment_id)
             order.history[-1].detail = (
                 f"VPC {seg.segment_id} (VRF {ni.vrf}/VNI {ni.compute_l3vni}) · "
@@ -673,7 +673,7 @@ def _stage_storage_binding(order: ServiceOrder, adapter: ComputeAdapter) -> None
         racks = _ctx_racks(order)
         tenant = s.tenants[order.tenant_id]
         ni = s.netiso[tenant.id]
-        # -- storage: VAST VMS 제어 (D4) — 자동(랙 비례) / 수동(직접 지정) ------
+        # -- storage: VAST VMS control (D4) — auto (rack-proportional) / manual (directly specified) ------
         storage = get_storage_adapter()
         if order.storage_mode == "manual":
             capacity_tb = order.storage_tb
@@ -728,7 +728,7 @@ def _stage_acceptance(order: ServiceOrder, adapter: ComputeAdapter) -> None:
             _compensate(order, nodes, adapter,
                         f"isolation verification failed: {fails}")
             return
-        # -- Shared Services(⑦): 클러스터 자격증명 발급 — IAM SA + Vault ------
+        # -- Shared Services (⑦): issue cluster credentials — IAM SA + Vault ------
         SHARED.issue_service_account(tenant.id, oid)
         SHARED.write_secret(f"tenants/{tenant.id}/{oid}/storage-s3",
                             "s3-access-key", tenant.id, oid)
@@ -737,8 +737,8 @@ def _stage_acceptance(order: ServiceOrder, adapter: ComputeAdapter) -> None:
 
 
 def _rollback_k8s_cp(order: ServiceOrder, adapter: ComputeAdapter) -> None:
-    """K8s 설치 실패 보상 — 이 주문이 확보한 CP CPU 노드를 NICo 경유로
-    반납(release→sanitize→pool 복귀)하고 read-model을 원복한다."""
+    """Compensation for K8s install failure — releases the CP CPU nodes this order acquired
+    via NICo (release→sanitize→pool return) and reverts the read-model."""
     s = STORE
     for cn in s.cpu_nodes.values():
         if cn.order_id != order.id or cn.role != "k8s_cp":
@@ -756,7 +756,7 @@ def _rollback_k8s_cp(order: ServiceOrder, adapter: ComputeAdapter) -> None:
                     adapter.abort_provision(cn.nico_host_id)
                 wait_job(adapter, adapter.sanitize(cn.nico_host_id))
         except HTTPException:
-            pass                     # 보상 중 오류 — reconcile 트랙으로 이관
+            pass                     # error during compensation — hand off to the reconcile track
         cn.tenant_id = None
         cn.order_id = None
         cn.role = "general"
@@ -766,13 +766,13 @@ def _rollback_k8s_cp(order: ServiceOrder, adapter: ComputeAdapter) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Managed K8s 설치 saga — R4 8단계 (NVIDIA DGX OS + NKD 가이드 정렬)
+# Managed K8s install saga — R4 8 stages (aligned with the NVIDIA DGX OS + NKD guide)
 #
-# 콘솔 개통 진행 화면이 2~3s 폴링으로 관찰하는 스테이지. Day-1(주문 옵션)·
-# Day-2(installs) 모두 동일하게 기록된다(K8sInstall + K8sCluster.stage_history).
-# 실체인(HTTP 어댑터) 기동 시 백그라운드 스레드가 스테이지당 지연을 두고
-# 진행하고, 인프로세스(FakeNico·pytest)에서는 지연 0의 완전 동기로 돌아
-# 기존 동작·테스트와 호환된다.
+# Stages observed by the console's provisioning-progress screen via 2-3s polling.
+# Both Day-1 (order option) and Day-2 (installs) are recorded identically
+# (K8sInstall + K8sCluster.stage_history). On the real chain (HTTP adapter), a
+# background thread advances with a per-stage delay; in-process (FakeNico/pytest)
+# it runs fully synchronously with zero delay, staying compatible with existing behavior and tests.
 # ---------------------------------------------------------------------------
 K8S_INSTALL_STAGES = [
     ("cp-reserve",    "CP 노드 확보 — CPU 풀에서 3대 reserve"),
@@ -785,7 +785,7 @@ K8S_INSTALL_STAGES = [
     ("active",        "delivered — 클러스터 Active·kubeconfig 발급 가능"),
 ]
 
-# 선택(옵션) 애드온 카탈로그 — POST /k8s/clusters/{id}/addons 로 추가 설치
+# Optional add-on catalog — installed additionally via POST /k8s/clusters/{id}/addons
 K8S_OPTIONAL_ADDONS = [
     {"name": "kube-prometheus-stack", "version": "68.4.0",
      "role": "모니터링 — Prometheus·Grafana (DCGM 대시보드 포함)"},
@@ -797,14 +797,14 @@ K8S_OPTIONAL_ADDONS = [
      "role": "VAST CSI — RWX PVC·GDS(GPUDirect Storage) 경로"},
 ]
 
-_K8S_BG_ORDERS: set = set()           # 백그라운드 설치 saga 진행 중인 주문 id
+_K8S_BG_ORDERS: set = set()           # order ids with a background install saga in progress
 
 
 def _k8s_stage_delay() -> float:
-    """설치 saga 페이싱(스테이지당 초) — NOCP_K8S_STAGE_DELAY로 재정의.
+    """Install-saga pacing (seconds per stage) — overridable via NOCP_K8S_STAGE_DELAY.
 
-    기본: 실체인(NOCP_NICO_URL, HTTP 어댑터) 기동이면 2.5s(콘솔 라이브
-    스테퍼용), 인프로세스(FakeNico·pytest)면 0(완전 동기 — 기존 동작)."""
+    Default: 2.5s on the real chain (NOCP_NICO_URL, HTTP adapter) for the console's
+    live stepper; 0 in-process (FakeNico/pytest), i.e. fully synchronous (existing behavior)."""
     import os
     raw = os.environ.get("NOCP_K8S_STAGE_DELAY")
     if raw is not None:
@@ -816,10 +816,10 @@ def _k8s_stage_delay() -> float:
 
 
 def _begin_k8s_install(order: ServiceOrder) -> K8sInstall:
-    """k8s_installing 진입 + 설치 기록(K8sInstall) 생성.
+    """Enter k8s_installing + create the install record (K8sInstall).
 
-    호출 전제: STORE.lock 보유. 페이싱 모드에서도 상태 전이는 요청 스레드
-    에서 동기로 일어나 응답에 즉시 반영된다."""
+    Precondition: holds STORE.lock. Even in pacing mode the state transition happens
+    synchronously on the request thread, so it is reflected in the response immediately."""
     s = STORE
     nodes = _ctx_nodes(order)
     advance_order(order, OS.k8s_installing,
@@ -842,7 +842,7 @@ def _begin_k8s_install(order: ServiceOrder) -> K8sInstall:
 
 def _k8s_mark(inst: K8sInstall, cluster: Optional[K8sCluster],
               name: str, status: str) -> None:
-    """스테이지 상태 갱신 — 설치 기록 + 클러스터 파생 상태 동시 반영."""
+    """Update stage status — reflects both the install record and the cluster's derived state at once."""
     ts = _now()
     for st in inst.stages:
         if st["name"] == name:
@@ -864,9 +864,9 @@ def _k8s_mark(inst: K8sInstall, cluster: Optional[K8sCluster],
         cluster.progress_pct = round(done / len(K8S_INSTALL_STAGES) * 100)
 
 
-# -- 스테이지 구현 (호출 전제: STORE.lock 보유 — 러너가 스테이지 단위로 획득) --
+# -- Stage implementations (precondition: holds STORE.lock — the runner acquires it per stage) --
 def _k8s_st_cp_reserve(ctx: dict) -> None:
-    """① CP CPU 노드 3대 확보 — 풀 선택·NICo reserve + 클러스터 선생성."""
+    """① Secure 3 CP CPU nodes — pool selection / NICo reserve + pre-create the cluster."""
     s, order, adapter = STORE, ctx["order"], ctx["adapter"]
     tenant, oid = ctx["tenant"], ctx["order"].id
     pool = sorted((c for c in s.cpu_nodes.values()
@@ -884,7 +884,7 @@ def _k8s_st_cp_reserve(ctx: dict) -> None:
          "외 추가분)",
          payload={"cp_nodes": [c.id for c in cp_nodes],
                   "role": "k8s_cp"}, order_id=oid)
-    # 클러스터 read-model 선생성 — 콘솔이 설치 스테퍼를 폴링으로 관찰
+    # pre-create the cluster read-model — the console observes the install stepper via polling
     cid = f"k8s-{s.next_seq('k8s')}"
     api_vip = f"10.250.1.{200 + int(cid.rsplit('-', 1)[1])}"
     cluster = K8sCluster(
@@ -912,7 +912,7 @@ def _k8s_st_cp_reserve(ctx: dict) -> None:
                           "role": "k8s_cp"},
                  order_id=oid, host_id=cn.nico_host_id)
             adapter.reserve(cn.nico_host_id)
-            # 롤백 추적 + 재선점 방지 — 스테이지 간 락 해제 창에서도 안전
+            # rollback tracking + re-preemption prevention — safe even in the lock-release window between stages
             cn.order_id = oid
             cn.role = "k8s_cp"
             cn.state = "reserved"
@@ -922,8 +922,8 @@ def _k8s_st_cp_reserve(ctx: dict) -> None:
 
 
 def _k8s_st_os_provision(ctx: dict) -> None:
-    """② CP OS 프로비저닝 — DPU Day-1 경로(BMC→DPU-DHCP→PXE→cloud-init)
-    후 AllocateInstance로 테넌트 귀속."""
+    """② CP OS provisioning — DPU Day-1 path (BMC→DPU-DHCP→PXE→cloud-init),
+    then attribute to the tenant via AllocateInstance."""
     order, adapter, tenant = ctx["order"], ctx["adapter"], ctx["tenant"]
     oid = order.id
     try:
@@ -952,7 +952,7 @@ def _k8s_st_os_provision(ctx: dict) -> None:
             host = adapter.allocate(cn.nico_host_id, tenant.id)
             cn.tenant_id = tenant.id
             cn.state = "allocated"
-            # http 브리지는 host_ip를 주지 않는다 — CPU 대역으로 결정적 보정
+            # the http bridge doesn't supply host_ip — deterministically fill it from the CPU range
             cn.host_ip = (host.host_ip
                           or f"10.250.1.{int(cn.id.rsplit('-', 1)[1]) + 100}")
             cn.segment_id = order.segment_id
@@ -962,7 +962,7 @@ def _k8s_st_os_provision(ctx: dict) -> None:
 
 
 def _k8s_st_net_attach(ctx: dict) -> None:
-    """③ Converged Network attach — CP ↔ GPU 워커 east-west."""
+    """③ Converged Network attach — CP ↔ GPU worker east-west."""
     order, adapter = ctx["order"], ctx["adapter"]
     try:
         adapter.attach_hosts(order.segment_id,
@@ -976,8 +976,8 @@ def _k8s_st_net_attach(ctx: dict) -> None:
 
 
 def _k8s_st_nkd_bootstrap(ctx: dict) -> None:
-    """④ NKD 부트스트랩 — kubeadm init(HA·kube-vip VIP) → CP join ×2 →
-    GPU 워커 join."""
+    """④ NKD bootstrap — kubeadm init (HA / kube-vip VIP) → CP join ×2 →
+    GPU worker join."""
     s, order, cluster = STORE, ctx["order"], ctx["cluster"]
     cp_nodes, nodes, oid = ctx["cp_nodes"], ctx["nodes"], ctx["order"].id
     cid, api_vip = cluster.id, cluster.api_vip
@@ -1014,7 +1014,7 @@ def _k8s_st_nkd_bootstrap(ctx: dict) -> None:
                       "labels": {"nvidia.com/gpu.present": "true",
                                  "neocloud.skt/rack": node.rack_id}},
              order_id=oid, host_id=node.nico_host_id)
-    # 노드별 K8s 버전 기록 — 업그레이드 saga가 노드 단위로 전이시킨다
+    # record the K8s version per node — the upgrade saga transitions them node by node
     for cn in cp_nodes:
         cluster.node_versions[cn.id] = order.k8s_version
     for node in nodes:
@@ -1022,7 +1022,7 @@ def _k8s_st_nkd_bootstrap(ctx: dict) -> None:
 
 
 def _k8s_st_addons(ctx: dict) -> None:
-    """⑤ 관리형 애드온 설치 — NKD 번들 버전 고정 (cilium→gpu-operator→…)."""
+    """⑤ Install managed add-ons — NKD bundle versions pinned (cilium→gpu-operator→…)."""
     cluster, oid = ctx["cluster"], ctx["order"].id
     for addon in K8S_MANAGED_ADDONS:
         emit("NeoCloudOS.M6(K8sMgr)", f"K8s({cluster.id})", "K8s",
@@ -1034,8 +1034,8 @@ def _k8s_st_addons(ctx: dict) -> None:
 
 
 def _k8s_st_acceptance(ctx: dict) -> None:
-    """⑥ Acceptance/burn-in — node Ready·NCCL·DCGM diag. 결과는
-    cluster.conditions(기존)·cluster.acceptance(콘솔 리포트)로 보존."""
+    """⑥ Acceptance/burn-in — node Ready / NCCL / DCGM diag. Results are
+    preserved in cluster.conditions (existing) and cluster.acceptance (console report)."""
     s, order, cluster = STORE, ctx["order"], ctx["cluster"]
     nodes, ni, oid = ctx["nodes"], ctx["ni"], ctx["order"].id
     cid, api_vip, gpus_total = cluster.id, cluster.api_vip, cluster.gpus_total
@@ -1060,8 +1060,8 @@ def _k8s_st_acceptance(ctx: dict) -> None:
         cluster.conditions.append(
             {"check": check, "result": "PASS", "at": _now(),
              "detail": msg})
-    # 콘솔 Acceptance 탭 리포트 — node-ready·nccl-allreduce·dcgm-diag·
-    # storage-mount 4종 (계약 스키마)
+    # Console Acceptance-tab report — 4 kinds: node-ready, nccl-allreduce, dcgm-diag,
+    # storage-mount (contract schema)
     views = [s.storage_allocs[i].view_path for i in order.storage_ids
              if i in s.storage_allocs]
     total = K8S_CP_NODES_PER_CLUSTER + len(nodes)
@@ -1084,7 +1084,7 @@ def _k8s_st_acceptance(ctx: dict) -> None:
 
 
 def _k8s_st_telemetry(ctx: dict) -> None:
-    """⑦ DCGM 텔레메트리 전환 — OOB(Redfish) → in-band(exporter)."""
+    """⑦ DCGM telemetry switch — OOB (Redfish) → in-band (exporter)."""
     cluster, nodes, oid = ctx["cluster"], ctx["nodes"], ctx["order"].id
     cid, gpus_total = cluster.id, cluster.gpus_total
     emit(f"dcgm-exporter({cid})", "NeoCloudOS.M5(Telemetry)", "K8s",
@@ -1103,7 +1103,7 @@ def _k8s_st_telemetry(ctx: dict) -> None:
 
 
 def _k8s_st_active(ctx: dict) -> None:
-    """⑧ 클러스터 Active — 검증 요약·감사 기록·kubeconfig 발급 준비."""
+    """⑧ Cluster Active — verification summary / audit record / prepare kubeconfig issuance."""
     order, cluster, inst = ctx["order"], ctx["cluster"], ctx["inst"]
     nodes = ctx["nodes"]
     cluster.state = "running"
@@ -1113,7 +1113,7 @@ def _k8s_st_active(ctx: dict) -> None:
         detail=f"install verified — {len(cluster.conditions)} checks PASS · "
                f"addons {len(cluster.addons)}", at=_now()))
     inst.state = "succeeded"
-    # kubeconfig 발급 준비 (OIDC — 실발급은 access package에서)
+    # prepare kubeconfig issuance (OIDC — actual issuance happens in the access package)
     SHARED.audit("neocloud-os", "k8s.cluster.install", cluster.id,
                  tenant_ref=order.tenant_id)
     order.history[-1].detail = (
@@ -1133,11 +1133,11 @@ _K8S_STAGE_FNS = [
 
 def _run_k8s_install(order: ServiceOrder, adapter: ComputeAdapter,
                      inst: K8sInstall, delay: float) -> None:
-    """8단계 순차 실행 — delay>0이면 스테이지 간 sleep(콘솔 라이브 폴링용).
+    """Run the 8 stages sequentially — if delay>0, sleep between stages (for the console's live polling).
 
-    스테이지 단위로만 락을 잡아 폴링 API가 진행 중에도 응답한다. 실패 시
-    스테이지·기록을 failed로 남기고 HTTPException을 다시 올린다(호출측이
-    saga 보상 또는 Day-2 원복을 결정 — CP 노드는 스테이지가 이미 롤백)."""
+    Locks only per stage so the polling API stays responsive while in progress. On failure,
+    leaves the stage/record as failed and re-raises the HTTPException (the caller decides
+    saga compensation or Day-2 revert — CP nodes are already rolled back by the stage)."""
     with STORE.lock:
         tenant = STORE.tenants[order.tenant_id]
         nodes = _ctx_nodes(order)
@@ -1167,12 +1167,12 @@ def _run_k8s_install(order: ServiceOrder, adapter: ComputeAdapter,
 
 
 def _stage_k8s_install(order: ServiceOrder, adapter: ComputeAdapter) -> None:
-    """fulfillment 단계 래퍼 — 설치 실패 시 saga 보상(전체 원복).
+    """Fulfillment stage wrapper — saga compensation (full revert) on install failure.
 
-    페이싱 모드(실체인)면 백그라운드 스레드로 스테이지를 진행시키고
-    delivered 전이까지 스레드가 마무리한다 — run_new_order는 즉시 반환."""
+    In pacing mode (real chain), a background thread drives the stages and finishes
+    through the delivered transition — run_new_order returns immediately."""
     delay = _k8s_stage_delay()
-    if delay <= 0 or order.approval_mode:   # 동기 — 기존 동작(승인 게이트 포함)
+    if delay <= 0 or order.approval_mode:   # synchronous — existing behavior (including the approval gate)
         try:
             _install_k8s(order, adapter)
         except HTTPException as exc:
@@ -1198,11 +1198,11 @@ def _stage_k8s_install(order: ServiceOrder, adapter: ComputeAdapter) -> None:
 
 
 def _install_k8s(order: ServiceOrder, adapter: ComputeAdapter) -> None:
-    """Managed K8s 설치 코어(동기) — BMaaS 개통 위에 K8s를 설치한다.
+    """Managed K8s install core (synchronous) — installs K8s on top of BMaaS provisioning.
 
-    실패 시 CP CPU 노드를 자체 롤백한 뒤 HTTPException을 올린다 — 호출측이
-    saga 보상(신규 주문) 또는 애드온 원복(Day-2, BMaaS 자원 유지)을 결정.
-    스테이지 명세는 K8S_INSTALL_STAGES(R4 8단계) 참조."""
+    On failure, self-rolls-back the CP CPU nodes then raises an HTTPException — the caller
+    decides saga compensation (new order) or add-on revert (Day-2, keeping BMaaS resources).
+    See K8S_INSTALL_STAGES (R4 8 stages) for the stage spec."""
     with STORE.lock:
         inst = _begin_k8s_install(order)
     _run_k8s_install(order, adapter, inst, 0.0)
@@ -1221,10 +1221,10 @@ def _stage_delivered(order: ServiceOrder, adapter: ComputeAdapter) -> None:
 
 
 def _build_access_package(order: ServiceOrder) -> None:
-    """딜리버리 패키지 — 고객에게 전달하는 접속정보 + 보안 인증 정보(목업).
+    """Delivery package — connection info + security credentials handed to the customer (mockup).
 
-    client_secret은 여기서 1회만 노출된다(SEC09) — 이후에는 Vault 회전 대상.
-    호출 전제: STORE.lock 보유."""
+    The client_secret is exposed only once here (SEC09) — thereafter it is subject to Vault rotation.
+    Precondition: holds STORE.lock."""
     s = STORE
     oid, tid = order.id, order.tenant_id
     iso = s.netiso.get(tid)
@@ -1259,7 +1259,7 @@ def _build_access_package(order: ServiceOrder) -> None:
             "ib_pkey": (hex(iso.ib_pkey)
                         if iso and iso.ib_pkey is not None else None)},
     }
-    # Managed K8s — kubeconfig(OIDC 단기 토큰) 접속 정보
+    # Managed K8s — kubeconfig (OIDC short-lived token) connection info
     cluster = s.k8s_clusters.get(order.k8s_cluster_id or "")
     if order.managed_k8s and cluster:
         order.access_package["managed_k8s"] = _k8s_access_entry(cluster)
@@ -1274,7 +1274,7 @@ def _build_access_package(order: ServiceOrder) -> None:
 
 
 def _k8s_access_entry(cluster: K8sCluster) -> dict:
-    """Managed K8s 접속 정보 — access package의 kubeconfig 섹션."""
+    """Managed K8s connection info — the kubeconfig section of the access package."""
     return {
         "cluster_id": cluster.id, "name": cluster.name,
         "version": cluster.version,
@@ -1297,7 +1297,7 @@ FULFILL_STAGES = [
     (OS.acceptance, _stage_acceptance),
     (OS.delivered, _stage_delivered),
 ]
-# Managed K8s 옵션 주문 — acceptance(격리 검증) 통과 후 K8s 설치 단계 삽입
+# Managed K8s optional order — insert the K8s install stage after acceptance (isolation verification) passes
 FULFILL_STAGES_K8S = (FULFILL_STAGES[:-1]
                       + [(OS.k8s_installing, _stage_k8s_install)]
                       + [FULFILL_STAGES[-1]])
@@ -1305,7 +1305,7 @@ _TERMINAL_STATES = {OS.rejected, OS.failed, OS.closed, OS.delivered}
 
 
 def stages_for(order: ServiceOrder) -> list:
-    """주문별 fulfillment 파이프라인 — managed_k8s 옵션 시 K8s 설치 단계 포함."""
+    """Per-order fulfillment pipeline — includes the K8s install stage when the managed_k8s option is set."""
     return FULFILL_STAGES_K8S if order.managed_k8s else FULFILL_STAGES
 
 
@@ -1336,20 +1336,20 @@ def run_new_order(body: OrderCreate, adapter: ComputeAdapter) -> ServiceOrder:
                                       if body.managed_k8s else None),
                       "approval_mode": body.approval_mode},
              order_id=oid)
-    if body.approval_mode:                 # 운영 포털 fulfillment 승인 큐로
+    if body.approval_mode:                 # to the ops portal fulfillment approval queue
         order.pending_stage = OS.validated.value
         return order
-    for _, stage_fn in stages_for(order):  # 자동 모드: 전 단계 연속 실행
+    for _, stage_fn in stages_for(order):  # auto mode: run all stages consecutively
         stage_fn(order, adapter)
         if order.state in (OS.rejected, OS.failed):
             return order
-        if order.id in _K8S_BG_ORDERS:     # K8s 설치가 백그라운드 saga로 계속
-            return order                   # — delivered 전이는 스레드가 수행
+        if order.id in _K8S_BG_ORDERS:     # K8s install continues as a background saga
+            return order                   # — the delivered transition is done by the thread
     return order
 
 
 def approve_next_stage(order_id: str, adapter: ComputeAdapter) -> ServiceOrder:
-    """운영자 승인 — pending 단계 1개를 실행하고 다음 게이트에서 대기."""
+    """Operator approval — runs one pending stage and waits at the next gate."""
     order = STORE.orders.get(order_id)
     if not order:
         raise HTTPException(404, f"order '{order_id}' not found")
@@ -1371,7 +1371,7 @@ def approve_next_stage(order_id: str, adapter: ComputeAdapter) -> ServiceOrder:
 
 def reject_fulfillment(order_id: str, adapter: ComputeAdapter,
                        reason: str) -> ServiceOrder:
-    """운영자 거절 — 진행분이 있으면 saga 보상으로 원복."""
+    """Operator rejection — if there is progress, revert via saga compensation."""
     order = STORE.orders.get(order_id)
     if not order:
         raise HTTPException(404, f"order '{order_id}' not found")
@@ -1401,8 +1401,8 @@ def run_terminate_order(body: OrderCreate, adapter: ComputeAdapter) -> ServiceOr
             history=[LifecycleEvent(state=OS.received.value, at=_now())],
         )
         s.orders[oid] = order
-        # 고객 포털 → NeoCloud OS 북바운드 호출도 CP 트레이스에 카운트
-        # (신규 주문의 접수 emit과 대칭 — /arch·/flow received 버킷에 표시)
+        # Customer portal → NeoCloud OS northbound calls are also counted in the CP trace
+        # (symmetric with a new order's intake emit — shown in the /arch and /flow received buckets)
         emit("Portal/API", "NeoCloudOS.M1", "REST",
              f"POST /orders → {oid} (terminate)",
              f"자원 회수 주문 접수 — allocation {body.allocation_id} "
@@ -1425,7 +1425,7 @@ def run_terminate_order(body: OrderCreate, adapter: ComputeAdapter) -> ServiceOr
         order.node_ids = [n.id for n in nodes]
         advance_order(order, OS.reclaiming, f"{len(nodes)} node(s)")
 
-        # -- D2/D4 역순 해체: NVLink → IB → ETH(VPC) → 스토리지 --------------
+        # -- D2/D4 reverse-order teardown: NVLink → IB → ETH(VPC) → storage --------------
         for rid in alloc.rack_ids:
             for part in s.partitions_of_rack(rid):
                 if part.tenant_id == body.tenant_id:
@@ -1433,8 +1433,8 @@ def run_terminate_order(body: OrderCreate, adapter: ComputeAdapter) -> ServiceOr
                          f"DELETE /nmx/v1/domains/{rid}/partitions/"
                          f"{part.partition_id}",
                          f"NVLink 파티션 {part.partition_id} 해체", order_id=oid)
-        # UFM: 부분 회수면 회수 랙의 포트 GUID만 언바인드(P_Key 유지),
-        # 마지막 회수일 때만 파티션 자체를 제거한다
+        # UFM: on partial reclaim, unbind only the reclaimed racks' port GUIDs (keep the P_Key);
+        # only on the last reclaim remove the partition itself
         ni = s.netiso.get(body.tenant_id)
         pkey = hex(ni.ib_pkey) if (ni and ni.ib_pkey) else "(미부여)"
         other_racks = [r for a in s.allocations.values()
@@ -1460,7 +1460,7 @@ def run_terminate_order(body: OrderCreate, adapter: ComputeAdapter) -> ServiceOr
                  order_id=oid,
                  payload={"pkey": pkey, "unbind_port_guids": ports,
                           "partition": "deleted"})
-        # 세그먼트는 어댑터 경유로 조회 — http 모드에선 에뮬레이터가 원본
+        # look up the segment via the adapter — in http mode the emulator is the source of truth
         try:
             _segs = adapter.list_segments()
         except Exception:
@@ -1511,12 +1511,12 @@ def run_terminate_order(body: OrderCreate, adapter: ComputeAdapter) -> ServiceOr
             node.order_id = oid
 
         # release racks / partitions / allocation (audit stays in history)
-        # Shared Services(⑦): 원 개통 주문의 서비스 계정·시크릿 폐기
+        # Shared Services (⑦): revoke the original provisioning order's service account/secrets
         src_ord = next((o.id for o in s.orders.values()
                         if alloc.id in (o.allocation_ids or [])), None)
         if src_ord:
             SHARED.revoke_order_credentials(body.tenant_id, src_ord, oid)
-        # Managed K8s — 이 allocation 위의 클러스터 해체 (drain→delete→CP 반납)
+        # Managed K8s — tear down clusters on this allocation (drain→delete→CP release)
         for cluster in list(s.k8s_clusters.values()):
             if (cluster.tenant_id != body.tenant_id
                     or cluster.state not in ("running", "installing")
@@ -1566,7 +1566,7 @@ def run_terminate_order(body: OrderCreate, adapter: ComputeAdapter) -> ServiceOr
             SHARED.audit("neocloud-os", "k8s.cluster.delete", cluster.id,
                          tenant_ref=body.tenant_id)
         tenancy.delete_allocation(alloc.id)
-        _sync_cpu_nodes(body.tenant_id, None)  # 마지막 allocation이면 CPU 반납
+        _sync_cpu_nodes(body.tenant_id, None)  # release CPU nodes if this is the last allocation
         detail = "reclaim complete"
         errors = []
         if rma_nodes:
@@ -1588,7 +1588,7 @@ def run_terminate_order(body: OrderCreate, adapter: ComputeAdapter) -> ServiceOr
 _MIRROR: dict = {
     NicoHostState.discovered:   {NS.discovered, NS.validating},
     NicoHostState.quarantined:  {NS.quarantined, NS.rma},
-    # discovered/validating 허용: GHOST 등록 직후 풀 편입 전 온보딩 창
+    # allow discovered/validating: the onboarding window right after GHOST registration, before pool admission
     NicoHostState.pool_ready:   {NS.pool_ready, NS.discovered, NS.validating},
     NicoHostState.reserved:     {NS.reserved},
     NicoHostState.provisioning: {NS.provisioning},
@@ -1610,9 +1610,9 @@ def reconcile(adapter: ComputeAdapter) -> ReconcileReport:
     with s.lock:
         hosts = {h.host_id: h for h in adapter.list_hosts()}
         total_hosts = len(hosts)
-        # CPU 노드 풀(AI Infra Emulator 등록분)은 cpu_nodes read-model이
-        # 관리한다 — GPU 트레이 미러(NodeInstance) 대상이 아니므로 GHOST
-        # 판정에서 제외
+        # The CPU node pool (registered by the AI Infra Emulator) is managed by the
+        # cpu_nodes read-model — it is not a GPU-tray mirror (NodeInstance) target, so
+        # exclude it from GHOST determination
         for cn in s.cpu_nodes.values():
             if cn.nico_host_id:
                 hosts.pop(cn.nico_host_id, None)
@@ -1697,13 +1697,13 @@ def create_order(body: OrderCreate) -> ServiceOrder:
 
 @router.post("/orders/{order_id}/approve", response_model=ServiceOrder)
 def approve_order(order_id: str) -> ServiceOrder:
-    """운영 포털 fulfillment — 다음 파이프라인 단계 1개 승인 실행."""
+    """Ops portal fulfillment — approve and run one next pipeline stage."""
     return approve_next_stage(order_id, get_adapter())
 
 
 @router.post("/orders/{order_id}/reject", response_model=ServiceOrder)
 def reject_order(order_id: str, reason: str = "운영 정책") -> ServiceOrder:
-    """운영 포털 fulfillment — 거절 (진행분은 saga 보상으로 원복)."""
+    """Ops portal fulfillment — reject (any progress is reverted via saga compensation)."""
     return reject_fulfillment(order_id, get_adapter(), reason)
 
 
@@ -1725,14 +1725,14 @@ def get_order(order_id: str) -> ServiceOrder:
 
 @router.get("/orders/{order_id}/flow")
 def get_order_flow(order_id: str) -> dict:
-    """주문 상태머신 단계별로 하부 호출 API 전체를 버킷팅해 반환.
+    """Bucket and return all downstream API calls per order state-machine stage.
 
-    귀속 규칙 — 각 단계의 시간창 [stage.at, next_stage.at)에 대해:
-      ① order_id 일치(제어면 발신), ② 이 주문의 노드 호스트에서 발생
-      (NICo 내부 Redfish/DHCP/PXE/HBN, host_id 기준), ③ 무태그 시스템
-      이벤트(VAST VMS 내부·NICo segment store 등 — order/host 무관 계층).
-    ③은 동시 주문 시 교차 귀속될 수 있는 데모 단순화다(실구현은 correlation-id).
-    /arch 아키텍처 플로우 화면이 소비한다. (payload는 /flow 트레이스에서 확인)
+    Attribution rules — for each stage's time window [stage.at, next_stage.at):
+      ① matching order_id (control-plane origin), ② originating from this order's node hosts
+      (NICo-internal Redfish/DHCP/PXE/HBN, keyed by host_id), ③ untagged system
+      events (VAST VMS internals, NICo segment store, etc. — layers unrelated to order/host).
+    ③ is a demo simplification that can be cross-attributed under concurrent orders (real impl uses a correlation-id).
+    Consumed by the /arch architecture-flow screen. (payloads are visible in the /flow trace)
     """
     from datetime import datetime, timedelta
 
@@ -1744,7 +1744,7 @@ def get_order_flow(order_id: str) -> dict:
         node = STORE.node_instances.get(nid)
         if node:
             hosts.add(node.nico_host_id)
-    for cn in STORE.cpu_nodes.values():   # Managed K8s CP 노드 이벤트 귀속
+    for cn in STORE.cpu_nodes.values():   # attribute Managed K8s CP node events
         if cn.order_id == order_id and cn.nico_host_id:
             hosts.add(cn.nico_host_id)
 
@@ -1755,7 +1755,7 @@ def get_order_flow(order_id: str) -> dict:
         start = h.at
         if i + 1 < len(hist):
             end = hist[i + 1].at
-        else:                       # 종결 단계: 이후 에뮬레이션 잡음 제외
+        else:                       # terminal stage: exclude subsequent emulation noise
             end = (datetime.fromisoformat(h.at)
                    + timedelta(seconds=2)).isoformat()
         apis = [e for e in events
@@ -1790,7 +1790,7 @@ def list_nodes(state: Optional[str] = None,
     return nodes
 
 
-from pydantic import BaseModel as _BM  # noqa: E402 — 로컬 요청 바디용
+from pydantic import BaseModel as _BM  # noqa: E402 — for the local request body
 
 
 class _K8sAddonBody(_BM):
@@ -1801,8 +1801,8 @@ class _K8sAddonBody(_BM):
 
 @router.post("/k8s/installs", status_code=201, response_model=ServiceOrder)
 def install_k8s_addon(body: _K8sAddonBody) -> ServiceOrder:
-    """Day-2 애드온 — 이미 BMaaS로 개통된 테넌트(allocation)에 Managed K8s를
-    추가 설치한다. 실패 시 BMaaS 자원은 유지하고 CP 노드만 롤백."""
+    """Day-2 add-on — additionally installs Managed K8s on a tenant (allocation) already
+    provisioned via BMaaS. On failure, keeps the BMaaS resources and rolls back only the CP nodes."""
     adapter = get_adapter()
     s = STORE
     with s.lock:
@@ -1838,7 +1838,7 @@ def install_k8s_addon(body: _K8sAddonBody) -> ServiceOrder:
                       "allocation_id": body.allocation_id,
                       "k8s_version": body.k8s_version}, order_id=src.id)
         delay = _k8s_stage_delay()
-        if delay > 0:                  # 라이브 페이싱 — 진행은 폴링으로 관찰
+        if delay > 0:                  # live pacing — progress is observed via polling
             inst = _begin_k8s_install(src)     # delivered → k8s_installing
 
             def _bg() -> None:
@@ -1854,7 +1854,7 @@ def install_k8s_addon(body: _K8sAddonBody) -> ServiceOrder:
                             src.access_package["managed_k8s"] = \
                                 _k8s_access_entry(cluster)
                 except HTTPException as exc:
-                    with STORE.lock:   # CP 노드는 스테이지가 이미 롤백
+                    with STORE.lock:   # CP nodes are already rolled back by the stage
                         src.managed_k8s = False
                         src.k8s_version = ""
                         advance_order(src, OS.delivered,
@@ -1863,7 +1863,7 @@ def install_k8s_addon(body: _K8sAddonBody) -> ServiceOrder:
 
             threading.Thread(target=_bg, name=f"k8s-install-{src.id}",
                              daemon=True).start()
-            return src                 # state=k8s_installing — 콘솔이 폴링
+            return src                 # state=k8s_installing — the console polls
         try:
             _install_k8s(src, adapter)     # delivered → k8s_installing
         except HTTPException as exc:
@@ -1884,7 +1884,7 @@ def install_k8s_addon(body: _K8sAddonBody) -> ServiceOrder:
 
 @router.get("/k8s/clusters")
 def list_k8s_clusters(tenant_id: Optional[str] = None) -> list:
-    """Managed K8s 클러스터 목록 — 검증 콘솔·운영/고객 포털이 소비."""
+    """Managed K8s cluster list — consumed by the verification console and ops/customer portals."""
     clusters = list(STORE.k8s_clusters.values())
     if tenant_id:
         clusters = [c for c in clusters if c.tenant_id == tenant_id]
@@ -1901,7 +1901,7 @@ def get_k8s_cluster(cluster_id: str) -> K8sCluster:
 
 @router.get("/k8s/spec")
 def k8s_spec() -> dict:
-    """Managed K8s 상품 스펙 — 지원 버전·CP 구성·관리형 애드온 카탈로그."""
+    """Managed K8s product spec — supported versions, CP configuration, managed add-on catalog."""
     return {"supported_versions": K8S_SUPPORTED_VERSIONS,
             "nkd_version": K8S_NKD_VERSION,
             "cp_nodes_per_cluster": K8S_CP_NODES_PER_CLUSTER,
@@ -1915,7 +1915,7 @@ def k8s_spec() -> dict:
 
 @router.get("/cpu-nodes")
 def list_cpu_nodes(tenant_id: Optional[str] = None) -> list:
-    """범용 CPU 노드 (DPU 장착, 테넌트당 기본 5대 · VPC 연결)."""
+    """General-purpose CPU nodes (DPU-equipped, 5 per tenant by default, VPC-connected)."""
     nodes = list(STORE.cpu_nodes.values())
     if tenant_id:
         nodes = [c for c in nodes if c.tenant_id == tenant_id]

@@ -20,8 +20,8 @@ from dataclasses import dataclass
 # ---------------------------------------------------------------------------
 # Generation-agnostic building-block constants (DSX Facilities)
 # ---------------------------------------------------------------------------
-RACKS_PER_SU = 14                 # legacy 기본값 — 세대별 값은 blueprint.racks_per_su
-CMX_RACKS_PER_SU = 2              # Context Memory racks per SU (RD 권장 2 = 32 CMS 섀시)
+RACKS_PER_SU = 14                 # legacy default — per-generation value is blueprint.racks_per_su
+CMX_RACKS_PER_SU = 2              # Context Memory racks per SU (RD recommends 2 = 32 CMS chassis)
 SU_PER_DU_MIN = 3
 SU_PER_DU_MAX = 4                 # 4th SU only if MaxQ < 200 kW/rack
 DU_PER_COMPUTE_BLOCK = 6
@@ -65,8 +65,8 @@ class RackBlueprint:
     dpu_bw_gbps: int
     dpu_per_tray: int
     connectx_supernics_per_tray: int
-    racks_per_su: int = RACKS_PER_SU   # 세대별 SU 구성 (VR=16, NCP RD 확정)
-    hac_tdp_mw: float = 0.0            # 1 SU = 1 HAC 열설계전력 (IT 기준)
+    racks_per_su: int = RACKS_PER_SU   # per-generation SU configuration (VR=16, confirmed by NCP RD)
+    hac_tdp_mw: float = 0.0            # 1 SU = 1 HAC thermal design power (IT basis)
     preliminary: bool = False     # spec not finalized (public estimate)
 
     @property
@@ -94,8 +94,8 @@ BLUEPRINTS: dict[str, RackBlueprint] = {
         gpu_hbm_gb=192, gpu_hbm_type="HBM3e", gpu_dies=2,
         cpu_cores=72, cpu_mem_tb=0.48,
         nvlink_gen="NVLink5", nvlink_per_gpu_tbps=1.8,
-        # NVIDIA 공칭 120kW/rack (벤더별 TDP 132·EDPp ~1.5× 편차 존재).
-        # MaxQ 공식 수치 미공개 — TDP 운용(캡 없음)으로 표기 ('26.7 웹 조사)
+        # NVIDIA nominal 120kW/rack (per-vendor variance: TDP 132, EDPp ~1.5×).
+        # Official MaxQ figures undisclosed — listed as TDP operation (no cap) ('26.7 web research)
         rack_tdp_kw=120, maxq_rack_kw=120, maxp_rack_kw=120,
         power_shelf_kw=33, power_shelves=8, cooling="hybrid",
         dpu_sku="BF3", dpu_bw_gbps=400, dpu_per_tray=1,
@@ -109,8 +109,8 @@ BLUEPRINTS: dict[str, RackBlueprint] = {
         gpu_hbm_gb=288, gpu_hbm_type="HBM3e", gpu_dies=2,
         cpu_cores=72, cpu_mem_tb=0.48,
         nvlink_gen="NVLink5", nvlink_per_gpu_tbps=1.8,
-        # Lenovo 공칭 TDP 135kW/rack (피크 EDPp ~155kW · HPE/SMC 132~140 편차).
-        # MaxQ 공식 수치 미공개 — TDP 운용으로 표기 ('26.7 웹 조사, preliminary)
+        # Lenovo nominal TDP 135kW/rack (peak EDPp ~155kW; HPE/SMC variance 132~140).
+        # Official MaxQ figures undisclosed — listed as TDP operation ('26.7 web research, preliminary)
         rack_tdp_kw=135, maxq_rack_kw=135, maxp_rack_kw=135,
         power_shelf_kw=33, power_shelves=8, cooling="liquid",
         dpu_sku="BF3", dpu_bw_gbps=800, dpu_per_tray=1,
@@ -124,14 +124,14 @@ BLUEPRINTS: dict[str, RackBlueprint] = {
         gpu_hbm_gb=288, gpu_hbm_type="HBM4", gpu_dies=2,
         cpu_cores=88, cpu_mem_tb=1.44,
         nvlink_gen="NVLink6", nvlink_per_gpu_tbps=3.6,
-        # 전력 정책 (확정): TDP 227kW 기준 MaxP=227 · MaxQ=187
+        # Power policy (confirmed): based on TDP 227kW, MaxP=227, MaxQ=187
         rack_tdp_kw=227, maxq_rack_kw=187, maxp_rack_kw=227,
         power_shelf_kw=110, power_shelves=4, cooling="liquid",
         dpu_sku="BF4-B4240V", dpu_bw_gbps=800, dpu_per_tray=1,
         connectx_supernics_per_tray=8,
-        # NCP RD (RD-12835-001-01 v02): 1 SU = 16× VR NVL72 랙 = 1,152 GPU,
-        # 1 SU = 1 HAC(2열×8랙, 테넌트 격리 자연 경계), HAC TDP ~3.9MW
-        # (컴퓨트 227kW×16 + IB XDR 스파인랙 56kW×4 + Eth/CMX 포함)
+        # NCP RD (RD-12835-001-01 v02): 1 SU = 16× VR NVL72 racks = 1,152 GPU,
+        # 1 SU = 1 HAC (2 rows × 8 racks, natural tenant-isolation boundary), HAC TDP ~3.9MW
+        # (compute 227kW×16 + IB XDR spine racks 56kW×4 + Eth/CMX included)
         racks_per_su=16, hac_tdp_mw=3.9,
     ),
 }
@@ -139,33 +139,33 @@ BLUEPRINTS: dict[str, RackBlueprint] = {
 DEFAULT_BLUEPRINT = "vr-nvl72"
 
 # ---------------------------------------------------------------------------
-# Compute fabric — IB XDR 듀얼 네트워크 (NCP RD RD-12835-001-01 v02, VR 기준)
+# Compute fabric — IB XDR dual network (NCP RD RD-12835-001-01 v02, VR basis)
 # ---------------------------------------------------------------------------
 IB_FABRIC = {
-    "networks": ["Fabric-A", "Fabric-B"],   # 별도 서브넷 — UFM(HA) 2세트 필요
-    "rails_per_network": 4,                 # 트레이 SuperNIC 8 = 네트워크당 4
-    "leaves_per_network_per_su": 16,        # 레일당 4 리프 × 4 rail
-    "node_links_per_su": 2304,              # 800G — 네트워크당 1,152
+    "networks": ["Fabric-A", "Fabric-B"],   # separate subnets — 2 sets of UFM (HA) required
+    "rails_per_network": 4,                 # tray SuperNIC 8 = 4 per network
+    "leaves_per_network_per_su": 16,        # 4 leaves per rail × 4 rails
+    "node_links_per_su": 2304,              # 800G — 1,152 per network
     "link_speed_gbps": 800,
     "tier2_max_su": 9,                      # 2-tier: 1~9 SU (10,368 GPU)
     "tier3_max_su": 32,                     # 3-tier: 10~32 SU (36,864 GPU)
     "ib_spine_racks_per_su": 4, "ib_spine_rack_kw": 56,
 }
 
-# 컨버지드(Ethernet) 패브릭 — 3-tier 기준 SU당 spine 4 + leaf 12(NVL72 8 + CMX 4)
+# Converged (Ethernet) fabric — per SU at 3-tier: spine 4 + leaf 12 (NVL72 8 + CMX 4)
 CONVERGED_FABRIC = {
-    "tier2_max_su": 4,                      # 8 SU 이상은 3-tier 필수
+    "tier2_max_su": 4,                      # 8 SU or more requires 3-tier
     "spines_per_su_tier3": 4,
-    "leaves_per_su_tier3": 12,              # NVL72용 8 + CMX용 4
+    "leaves_per_su_tier3": 12,              # 8 for NVL72 + 4 for CMX
 }
 
 # ---------------------------------------------------------------------------
-# 냉각 (DLC — NCP RA): 1 SU = 1 HAC(2열×8랙), in-row CDU가 TCS 루프 공급
+# Cooling (DLC — NCP RA): 1 SU = 1 HAC (2 rows × 8 racks), in-row CDU feeds the TCS loop
 # ---------------------------------------------------------------------------
 COOLING = {
-    "cdu_per_su": 2,                  # HAC당 in-row CDU 이중화(2N) — RA 구성 예시
+    "cdu_per_su": 2,                  # in-row CDU redundancy per HAC (2N) — example RA configuration
     "cdu_type": "Liquid-to-Liquid in-row CDU",
-    "cdu_capacity_kw": 2000,          # 기당 열교환 용량 (예시 — HAC 3.9MW 대비 2N)
+    "cdu_capacity_kw": 2000,          # heat-exchange capacity per unit (example — 2N vs HAC 3.9MW)
     "loop": "시설 FWS ↔ CDU ↔ TCS(랙 매니폴드/콜드플레이트)",
 }
 

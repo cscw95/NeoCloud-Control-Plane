@@ -1,13 +1,14 @@
-"""Managed K8s 운영 API — 콘솔 10개 서브뷰의 Live 데이터 표면 (R3).
+"""Managed K8s operations API — Live data surface for the console's 10 subviews (R3).
 
-lifecycle.py의 설치 saga(K8S_INSTALL_STAGES)가 축적한 상태를 읽어
+Reads the state accumulated by lifecycle.py's install saga (K8S_INSTALL_STAGES)
+and exposes
 overview·installs·nodes·acceptance·nodepools·addons·services·kubeconfig·
-upgrades·CVE·health-events·storage·metrics를 노출한다. 설치/업그레이드
-전이는 기존 trace emit 패턴을 재사용해 /orders/{id}/flow·/trace에 나타난다.
+upgrades·CVE·health-events·storage·metrics. Install/upgrade
+transitions reuse the existing trace emit pattern, so they appear under /orders/{id}/flow·/trace.
 
-락 순서 주의: EMULATOR(_lock)와 STORE(lock)를 함께 쓸 때는 반드시
-EMULATOR 조회를 먼저 끝낸 뒤 STORE.lock을 잡는다 (sync_from_store가
-EMULATOR._lock → STORE.lock 순서로 중첩 획득하므로 역순은 교착).
+Lock ordering caution: when using EMULATOR(_lock) and STORE(lock) together, you must
+finish the EMULATOR query first, then take STORE.lock (sync_from_store acquires them
+nested in EMULATOR._lock → STORE.lock order, so the reverse order deadlocks).
 """
 
 from __future__ import annotations
@@ -45,9 +46,9 @@ from .vast_fake import FAKE_VAST
 
 router = APIRouter(prefix="/api/v1", tags=["managed-k8s"])
 
-K8S_WORKER_IMAGE = "dgx-os-7.0"        # GPU 워커 OS (DGX OS — NKD 워커 경로)
+K8S_WORKER_IMAGE = "dgx-os-7.0"        # GPU worker OS (DGX OS — NKD worker path)
 
-# RBAC 템플릿 — kubeconfig 발급 시 role → ClusterRole 매핑 (OIDC 그룹 클레임)
+# RBAC templates — role → ClusterRole mapping at kubeconfig issuance (OIDC group claims)
 K8S_RBAC_TEMPLATES = [
     {"role": "admin", "cluster_role": "cluster-admin", "scope": "cluster",
      "audience": "테넌트 플랫폼 운영자",
@@ -62,7 +63,7 @@ K8S_RBAC_TEMPLATES = [
      "detail": "Kueue 큐·잡 우선순위 관리 (GPU 쿼터 내)"},
 ]
 
-# 정적 큐레이션 CVE 목록 — 업그레이드·패치 탭이 소비 (영향/패치 버전 포함)
+# Statically curated CVE list — consumed by the upgrade/patch tab (includes affected/patched versions)
 K8S_CVES = [
     {"cve_id": "CVE-2026-32871", "component": "containerd",
      "severity": "critical", "cvss": 9.1,
@@ -100,7 +101,7 @@ K8S_CVES = [
 
 
 # ---------------------------------------------------------------------------
-# 공통 헬퍼
+# Common helpers
 # ---------------------------------------------------------------------------
 def _cluster_or_404(cluster_id: str) -> K8sCluster:
     cluster = STORE.k8s_clusters.get(cluster_id)
@@ -110,12 +111,12 @@ def _cluster_or_404(cluster_id: str) -> K8sCluster:
 
 
 def _pub_state(cluster: K8sCluster) -> str:
-    """내부 상태 → 콘솔 계약 상태 (running→active, 나머지는 그대로)."""
+    """Internal state → console contract state (running→active, everything else unchanged)."""
     return {"running": "active"}.get(cluster.state, cluster.state)
 
 
 def _worker_tray_map(cluster: K8sCluster) -> dict:
-    """워커 tray_id → NodeInstance (호출 전제: STORE.lock 미보유여도 안전)."""
+    """Worker tray_id → NodeInstance (safe to call even without holding STORE.lock)."""
     with STORE.lock:
         out = {}
         for nid in cluster.worker_node_ids:
@@ -126,7 +127,7 @@ def _worker_tray_map(cluster: K8sCluster) -> dict:
 
 
 def _ai_infra_faults(limit: int = 100) -> list:
-    """AI Infra(:9100) 전 도메인 장애 피드 best-effort — 실체인 기동 시만."""
+    """Best-effort all-domain fault feed from AI Infra(:9100) — only when the live chain is up."""
     if not os.environ.get("NOCP_NICO_URL"):
         return []
     try:
@@ -138,7 +139,7 @@ def _ai_infra_faults(limit: int = 100) -> list:
         if r.status_code != 200:
             return []
         return r.json().get("recent", [])
-    except Exception:                              # noqa: BLE001 — 표면화만
+    except Exception:                              # noqa: BLE001 — surface only
         return []
 
 
@@ -147,12 +148,12 @@ _AI_KIND = {"gpu": "gpu-xid", "cooling": "thermal", "dlc": "thermal",
 
 
 def _scan_health(cluster: K8sCluster, trays: dict) -> tuple[list, set]:
-    """헬스 이벤트 수집 — 로컬 XID 에피소드 + AI Infra obs/faults 병합.
+    """Collect health events — merge local XID episodes + AI Infra obs/faults.
 
-    반환: (이벤트 목록[최신순], 열린 GPU 장애가 있는 워커 tray 집합)."""
+    Returns: (event list [newest first], set of worker trays with open GPU faults)."""
     events: list[dict] = []
     open_gpu: set[str] = set()
-    # ① 로컬 tray 에뮬레이터 XID 에피소드 (주입·랜덤 공통 경로)
+    # ① Local tray emulator XID episodes (shared inject/random path)
     for rec in EMULATOR.faults(limit=200)["recent"]:
         tray = rec.get("tray_id")
         if tray not in trays:
@@ -170,7 +171,7 @@ def _scan_health(cluster: K8sCluster, trays: dict) -> tuple[list, set]:
                f" ({'open' if open_ else 'resolved'})",
             "action": "quarantined" if open_ else "none",
         })
-    # ② AI Infra 물리 트윈 피드 (host_id→tray 매핑 가능한 항목만)
+    # ② AI Infra physical twin feed (only entries mappable host_id→tray)
     for f in _ai_infra_faults():
         kind = _AI_KIND.get(f.get("kind") or "")
         if not kind:
@@ -195,7 +196,7 @@ def _scan_health(cluster: K8sCluster, trays: dict) -> tuple[list, set]:
 
 
 def _hot_spare_for(node) -> Optional[dict]:
-    """동일 blueprint의 pool_ready 트레이 — 격리 노드 대체(hot-spare) 제안."""
+    """pool_ready tray of the same blueprint — proposed hot-spare replacement for the isolated node."""
     spare = next(
         (n for n in sorted(STORE.node_instances.values(), key=lambda x: x.id)
          if n.state == NS.pool_ready
@@ -211,8 +212,8 @@ def _hot_spare_for(node) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 @router.get("/k8s/overview")
 def k8s_overview() -> dict:
-    """Managed K8s 집계 — 콘솔 Overview KPI가 소비."""
-    # EMULATOR 조회를 먼저 (락 순서 — 모듈 docstring 참조)
+    """Managed K8s aggregation — consumed by the console Overview KPIs."""
+    # Query EMULATOR first (lock ordering — see module docstring)
     recent = EMULATOR.faults(limit=200)["recent"]
     open_trays = {r.get("tray_id") for r in recent if not r.get("resolved")}
     with STORE.lock:
@@ -248,7 +249,7 @@ def k8s_overview() -> dict:
 
 @router.get("/k8s/installs")
 def list_k8s_installs(tenant_id: Optional[str] = None) -> list:
-    """설치 saga 기록 — Day-1(주문 옵션)·Day-2(installs) 공통 보드."""
+    """Install saga records — shared board for Day-1 (order option)·Day-2 (installs)."""
     with STORE.lock:
         installs = list(STORE.k8s_installs.values())
     if tenant_id:
@@ -257,11 +258,11 @@ def list_k8s_installs(tenant_id: Optional[str] = None) -> list:
 
 
 # ---------------------------------------------------------------------------
-# 클러스터 상세 표면 — nodes / acceptance / nodepools
+# Cluster detail surface — nodes / acceptance / nodepools
 # ---------------------------------------------------------------------------
 @router.get("/k8s/clusters/{cluster_id}/nodes")
 def cluster_nodes(cluster_id: str) -> list:
-    """CP·GPU 워커 노드 목록 — quarantine(R6)·업그레이드 drain 상태 반영."""
+    """CP·GPU worker node list — reflects quarantine (R6)·upgrade drain state."""
     with STORE.lock:
         cluster = _cluster_or_404(cluster_id)
     trays = _worker_tray_map(cluster)
@@ -324,7 +325,7 @@ def cluster_nodes(cluster_id: str) -> list:
 
 @router.get("/k8s/clusters/{cluster_id}/acceptance")
 def cluster_acceptance(cluster_id: str) -> dict:
-    """Acceptance/burn-in 리포트 — 설치 saga 6단계가 저장한 결과."""
+    """Acceptance/burn-in report — result stored by the 6-stage install saga."""
     with STORE.lock:
         cluster = _cluster_or_404(cluster_id)
         if cluster.acceptance:
@@ -342,7 +343,7 @@ def cluster_acceptance(cluster_id: str) -> dict:
 
 @router.get("/k8s/clusters/{cluster_id}/nodepools")
 def cluster_nodepools(cluster_id: str) -> list:
-    """노드풀 — CP 풀(CPU·kubeadm HA) + GPU 워커 풀(NVL72 트레이)."""
+    """Node pools — CP pool (CPU·kubeadm HA) + GPU worker pool (NVL72 trays)."""
     with STORE.lock:
         cluster = _cluster_or_404(cluster_id)
         cn = next((STORE.cpu_nodes[i] for i in cluster.cp_node_ids
@@ -368,7 +369,7 @@ def cluster_nodepools(cluster_id: str) -> list:
 
 
 # ---------------------------------------------------------------------------
-# 애드온
+# Add-ons
 # ---------------------------------------------------------------------------
 class _AddonBody(BaseModel):
     name: str
@@ -384,11 +385,11 @@ def _addon_view(a: dict) -> dict:
 
 @router.get("/k8s/clusters/{cluster_id}/addons")
 def cluster_addons(cluster_id: str) -> list:
-    """애드온 상태 — 설치 saga가 installed로 전이, 미설치분은 pending."""
+    """Add-on state — install saga transitions to installed; not-yet-installed ones are pending."""
     with STORE.lock:
         cluster = _cluster_or_404(cluster_id)
         out = [_addon_view(a) for a in cluster.addons]
-        if cluster.state == "installing":     # 카탈로그 기준 대기분 표시
+        if cluster.state == "installing":     # Show pending ones per the catalog
             have = {a["name"] for a in cluster.addons}
             out += [{**_addon_view(a), "status": "pending"}
                     for a in K8S_MANAGED_ADDONS if a["name"] not in have]
@@ -397,7 +398,7 @@ def cluster_addons(cluster_id: str) -> list:
 
 @router.post("/k8s/clusters/{cluster_id}/addons", status_code=201)
 def add_cluster_addon(cluster_id: str, body: _AddonBody) -> list:
-    """선택 애드온 추가 — K8S_OPTIONAL_ADDONS 카탈로그 기반."""
+    """Add an optional add-on — based on the K8S_OPTIONAL_ADDONS catalog."""
     with STORE.lock:
         cluster = _cluster_or_404(cluster_id)
         if cluster.state != "running":
@@ -425,7 +426,7 @@ def add_cluster_addon(cluster_id: str, body: _AddonBody) -> list:
 
 
 # ---------------------------------------------------------------------------
-# 네트워킹·외부노출 (kube-vip VIP + in-process fake LB/DNS)
+# Networking·external exposure (kube-vip VIP + in-process fake LB/DNS)
 # ---------------------------------------------------------------------------
 @router.get("/k8s/clusters/{cluster_id}/services")
 def cluster_services(cluster_id: str) -> dict:
@@ -455,7 +456,7 @@ def cluster_services(cluster_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 접근관리 — kubeconfig 발급/폐기 + RBAC 템플릿
+# Access management — kubeconfig issue/revoke + RBAC templates
 # ---------------------------------------------------------------------------
 class _KubeconfigBody(BaseModel):
     role: str = "edit"
@@ -463,7 +464,7 @@ class _KubeconfigBody(BaseModel):
 
 
 def _kubeconfig_yaml(cluster: K8sCluster, role: str, serial: str) -> str:
-    """모의 kubeconfig — OIDC exec-plugin 방식 (가짜 PKI CA 시리얼 포함)."""
+    """Mock kubeconfig — OIDC exec-plugin style (includes a fake PKI CA serial)."""
     return (
         "apiVersion: v1\n"
         "kind: Config\n"
@@ -498,7 +499,7 @@ def list_kubeconfigs(cluster_id: str) -> list:
 @router.post("/k8s/clusters/{cluster_id}/kubeconfigs", status_code=201,
              response_model=K8sKubeconfig)
 def issue_kubeconfig(cluster_id: str, body: _KubeconfigBody) -> K8sKubeconfig:
-    """kubeconfig 발급 — 가짜 PKI 시리얼 + TTL (OIDC exec-plugin 모의)."""
+    """Issue kubeconfig — fake PKI serial + TTL (OIDC exec-plugin mock)."""
     from datetime import datetime, timedelta, timezone
     with STORE.lock:
         cluster = _cluster_or_404(cluster_id)
@@ -532,7 +533,7 @@ def issue_kubeconfig(cluster_id: str, body: _KubeconfigBody) -> K8sKubeconfig:
 
 @router.delete("/k8s/clusters/{cluster_id}/kubeconfigs/{kubeconfig_id}")
 def revoke_kubeconfig(cluster_id: str, kubeconfig_id: str) -> K8sKubeconfig:
-    """kubeconfig 폐기(revoke) — 이력은 보존, 시리얼은 CRL 등재로 간주."""
+    """Revoke kubeconfig — history preserved, serial treated as entered into the CRL."""
     with STORE.lock:
         _cluster_or_404(cluster_id)
         kc = STORE.k8s_kubeconfigs.get(kubeconfig_id)
@@ -557,15 +558,15 @@ def rbac_templates() -> list:
 
 
 # ---------------------------------------------------------------------------
-# 업그레이드 saga — 노드별 cordon→drain→upgrade→uncordon
+# Upgrade saga — per-node cordon→drain→upgrade→uncordon
 # ---------------------------------------------------------------------------
 class _UpgradeBody(BaseModel):
     target_version: str
 
 
 def _upgrade_step_delay() -> float:
-    """노드 스텝당 지연(s) — NOCP_K8S_UPGRADE_DELAY로 재정의. 기본:
-    실체인 기동 0.15s(콘솔 관찰용), 인프로세스 0(테스트 즉시 완료)."""
+    """Per-node-step delay (s) — overridable via NOCP_K8S_UPGRADE_DELAY. Default:
+    0.15s when the live chain is running (for console observation), 0 in-process (tests finish immediately)."""
     raw = os.environ.get("NOCP_K8S_UPGRADE_DELAY")
     if raw is not None:
         try:
@@ -576,7 +577,7 @@ def _upgrade_step_delay() -> float:
 
 
 def _run_upgrade(up: K8sUpgrade, node_names: list) -> None:
-    """업그레이드 saga 본체 (백그라운드 스레드) — 노드 단위 롤링."""
+    """Upgrade saga body (background thread) — per-node rolling."""
     delay = _upgrade_step_delay()
     for name in node_names:
         with STORE.lock:
@@ -621,7 +622,7 @@ def _run_upgrade(up: K8sUpgrade, node_names: list) -> None:
 @router.post("/k8s/clusters/{cluster_id}/upgrades", status_code=201,
              response_model=K8sUpgrade)
 def start_upgrade(cluster_id: str, body: _UpgradeBody) -> K8sUpgrade:
-    """업그레이드 시작 — N/N-1 검증 후 백그라운드 롤링 saga."""
+    """Start upgrade — background rolling saga after N/N-1 validation."""
     with STORE.lock:
         cluster = _cluster_or_404(cluster_id)
         if cluster.state != "running":
@@ -641,7 +642,7 @@ def start_upgrade(cluster_id: str, body: _UpgradeBody) -> K8sUpgrade:
         if any(u.cluster_id == cluster_id and u.state == "running"
                for u in STORE.k8s_upgrades.values()):
             raise HTTPException(409, "이미 진행 중인 업그레이드가 있음")
-        # 롤링 순서: CP 먼저(마이너 스큐 정책), 그다음 GPU 워커
+        # Rolling order: CP first (minor-skew policy), then GPU workers
         node_names = list(cluster.cp_node_ids)
         for nid in cluster.worker_node_ids:
             node = STORE.node_instances.get(nid)
@@ -677,17 +678,17 @@ def list_upgrades(cluster_id: str) -> list:
 
 @router.get("/k8s/cves")
 def list_cves() -> list:
-    """정적 큐레이션 CVE — 업그레이드·패치 탭 (영향 버전·패치 버전)."""
+    """Statically curated CVEs — upgrade/patch tab (affected versions·patched versions)."""
     return K8S_CVES
 
 
 # ---------------------------------------------------------------------------
-# 장애관리(NVSentinel) — AI Infra obs/faults → 노드 매핑 (R6)
+# Fault management (NVSentinel) — AI Infra obs/faults → node mapping (R6)
 # ---------------------------------------------------------------------------
 @router.get("/k8s/clusters/{cluster_id}/health-events")
 def cluster_health_events(cluster_id: str) -> list:
-    """헬스 이벤트 — 열린 GPU 장애는 해당 워커를 Quarantined로 전이시키고
-    hot-spare 교체 제안을 첨부한다 (fault 주입 → quarantine E2E 경로)."""
+    """Health events — an open GPU fault transitions the affected worker to Quarantined
+    and attaches a hot-spare replacement proposal (fault inject → quarantine E2E path)."""
     with STORE.lock:
         cluster = _cluster_or_404(cluster_id)
     trays = _worker_tray_map(cluster)
@@ -709,7 +710,7 @@ def cluster_health_events(cluster_id: str) -> list:
 
 
 # ---------------------------------------------------------------------------
-# 스토리지(GDS) — VAST 뷰의 테넌트 스코프 PVC 변환
+# Storage (GDS) — tenant-scoped PVC conversion of the VAST view
 # ---------------------------------------------------------------------------
 @router.get("/k8s/clusters/{cluster_id}/storage")
 def cluster_storage(cluster_id: str) -> list:
@@ -732,7 +733,7 @@ def cluster_storage(cluster_id: str) -> list:
 
 
 # ---------------------------------------------------------------------------
-# 모니터링 — 클러스터 랙 스코프 DCGM 집계 (기존 tray 에뮬레이터 재사용)
+# Monitoring — cluster rack-scoped DCGM aggregation (reuses the existing tray emulator)
 # ---------------------------------------------------------------------------
 @router.get("/k8s/clusters/{cluster_id}/metrics")
 def cluster_metrics(cluster_id: str) -> dict:
@@ -740,7 +741,7 @@ def cluster_metrics(cluster_id: str) -> dict:
         cluster = _cluster_or_404(cluster_id)
         tenant_id = cluster.tenant_id
         gpus_total, dcgm_mode = cluster.gpus_total, cluster.dcgm_mode
-    # EMULATOR 조회는 STORE.lock 밖에서 (락 순서)
+    # Query EMULATOR outside STORE.lock (lock ordering)
     summary = next((c for c in EMULATOR.clusters()
                     if c.tenant_id == tenant_id), None)
     hist = EMULATOR.history(tenant_id=tenant_id, limit=60)

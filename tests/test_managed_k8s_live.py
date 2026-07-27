@@ -1,15 +1,17 @@
-"""Managed K8s Live-mode 확장 API 회귀 테스트 (R3·R4·R6).
+"""Managed K8s Live-mode extended-API regression tests (R3, R4, R6).
 
-- R3: overview·installs·nodes·acceptance·nodepools·addons·services·
-      kubeconfig·upgrades·CVE·health-events·storage·metrics 표면
-- R4: 설치 saga 8단계 기록(K8sInstall·K8sCluster.stage_history) —
-      페이싱 모드(NOCP_K8S_STAGE_DELAY)에서는 폴링으로 Active 도달 검증
-- R6: GPU fault 주입(POST /emu/faults) → 워커 Quarantined 전이 +
-      health-event + hot-spare 교체 제안
+- R3: overview / installs / nodes / acceptance / nodepools / addons /
+      services / kubeconfig / upgrades / CVE / health-events / storage /
+      metrics surfaces
+- R4: install saga 8-stage record (K8sInstall, K8sCluster.stage_history) —
+      in pacing mode (NOCP_K8S_STAGE_DELAY), reaching Active is verified by polling
+- R6: GPU fault injection (POST /emu/faults) -> worker Quarantined transition +
+      health-event + hot-spare replacement proposal
 
-AI Infra(:9100) 의존 경로(_ai_infra_faults)는 NOCP_NICO_URL 미설정 시
-빈 목록으로 우회되므로(기존 tray_emu._emulator_reprov_faults 패턴과 동일)
-인프로세스(FakeNico)만으로 전 경로가 검증된다.
+The AI Infra (:9100)-dependent path (_ai_infra_faults) is bypassed with an
+empty list when NOCP_NICO_URL is unset (same pattern as the existing
+tray_emu._emulator_reprov_faults), so the entire path is verified with the
+in-process FakeNico alone.
 """
 import time
 from collections import Counter
@@ -37,7 +39,7 @@ def _bmaas_order(client, tenant_id):
 
 
 def _wait(fn, timeout=12.0, interval=0.05):
-    """폴링 헬퍼 — fn()이 truthy를 반환할 때까지 대기."""
+    """Polling helper — wait until fn() returns truthy."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         v = fn()
@@ -48,7 +50,7 @@ def _wait(fn, timeout=12.0, interval=0.05):
 
 
 # ---------------------------------------------------------------------------
-# R4 — 설치 기록 (Day-1/Day-2 공통) + overview
+# R4 — Install record (common to Day-1/Day-2) + overview
 # ---------------------------------------------------------------------------
 def test_install_record_day1_and_overview(client):
     tid = _mk_tenant(client)
@@ -67,7 +69,7 @@ def test_install_record_day1_and_overview(client):
                      "telemetry", "active"]
     assert all(s["status"] == "done" and s["ts"] for s in inst["stages"])
 
-    # 클러스터 파생 상태 — 스테퍼·진행률
+    # Cluster derived state — stepper / progress
     c = client.get(f"/api/v1/k8s/clusters/{o['k8s_cluster_id']}").json()
     assert c["stage"] == "active" and c["progress_pct"] == 100
     assert [h["status"] for h in c["stage_history"]].count("done") == 8
@@ -93,12 +95,12 @@ def test_install_record_day2_and_failure(client):
     assert len(installs) == 1 and installs[0]["state"] == "succeeded"
     assert installs[0]["k8s_version"] == "v1.33.2"
 
-    # 실패 기록 — CP provision 실패 주입 (Day-1, 새 테넌트는 gb200 SU —
-    # dedicated 격리로 t1이 점유한 vr SU는 배치 불가)
+    # Failure record — inject CP provision failure (Day-1; the new tenant is
+    # a gb200 SU — with dedicated isolation, the vr SU held by t1 can't be placed)
     tid2 = _mk_tenant(client, "fail-corp")
     pool = sorted(cn["id"] for cn in client.get("/api/v1/cpu-nodes").json()
                   if cn["state"] == "pool_ready")
-    FAKE_NICO.inject_failure(f"nh-{pool[5]}", "provision")  # 기본 5 다음 = CP#1
+    FAKE_NICO.inject_failure(f"nh-{pool[5]}", "provision")  # after default 5 = CP#1
     o2 = client.post("/api/v1/orders", json={
         "tenant_id": tid2, "kind": "new", "blueprint_key": "gb200-nvl72",
         "racks": 1, "managed_k8s": True, "k8s_version": "v1.32.4"}).json()
@@ -108,13 +110,13 @@ def test_install_record_day2_and_failure(client):
     assert len(failed) == 1 and failed[0]["state"] == "failed"
     st = {s["name"]: s["status"] for s in failed[0]["stages"]}
     assert st["os-provision"] == "failed"
-    # 실패 클러스터는 overview에서 failed 버킷
+    # Failed cluster goes to the failed bucket in overview
     ov = client.get("/api/v1/k8s/overview").json()
     assert ov["by_state"]["failed"] == 1
 
 
 # ---------------------------------------------------------------------------
-# R4 — 페이싱 모드: 폴링으로 스테이지 진행·Active 도달 관찰
+# R4 — Pacing mode: observe stage progression / reaching Active via polling
 # ---------------------------------------------------------------------------
 def test_paced_day2_install_polls_to_active(client, monkeypatch):
     monkeypatch.setenv("NOCP_K8S_STAGE_DELAY", "0.05")
@@ -124,7 +126,7 @@ def test_paced_day2_install_polls_to_active(client, monkeypatch):
         "tenant_id": tid, "allocation_id": o["allocation_ids"][0],
         "k8s_version": "v1.32.4"})
     assert r.status_code == 201
-    assert r.json()["state"] == "k8s_installing"     # 비동기 — 즉시 반환
+    assert r.json()["state"] == "k8s_installing"     # async — returns immediately
 
     inst = _wait(lambda: next(
         (i for i in client.get("/api/v1/k8s/installs").json()
@@ -144,7 +146,7 @@ def test_paced_day1_order_polls_to_delivered(client, monkeypatch):
     r = _k8s_order(client, tid)
     assert r.status_code == 201
     o = r.json()
-    assert o["state"] == "k8s_installing"            # bg saga 진행 중
+    assert o["state"] == "k8s_installing"            # bg saga in progress
     done = _wait(lambda: (lambda x: x if x["state"] == "delivered" else None)(
         client.get(f"/api/v1/orders/{o['id']}").json()))
     assert done["k8s_cluster_id"]
@@ -155,7 +157,7 @@ def test_paced_day1_order_polls_to_delivered(client, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# R3 — 클러스터 상세 표면
+# R3 — Cluster detail surfaces
 # ---------------------------------------------------------------------------
 def test_nodes_acceptance_nodepools_services(client):
     tid = _mk_tenant(client)
@@ -205,11 +207,11 @@ def test_storage_and_metrics(client):
     assert len(st) == 1
     pvc = st[0]
     assert pvc["gds"] is True and pvc["mode"] == "RWX"
-    assert pvc["capacity_tb"] == 500          # 1랙 × 500TB (자동 산정)
+    assert pvc["capacity_tb"] == 500          # 1 rack × 500TB (auto-computed)
     assert 0 < pvc["used_tb"] < pvc["capacity_tb"]
     assert pvc["storage_class"] == "vast-nfs-rdma-gds"
 
-    client.post("/api/v1/emu/tick?n=3")       # 시계열 생성
+    client.post("/api/v1/emu/tick?n=3")       # generate time series
     m = client.get(f"/api/v1/k8s/clusters/{cid}/metrics").json()
     assert m["gpus_total"] == 72 and m["dcgm_mode"] == "in-band"
     assert {"gpu_util_pct", "gpu_temp_max_c", "ecc_correctable",
@@ -234,19 +236,19 @@ def test_addons_get_and_optional_post(client):
     assert r.status_code == 201
     added = next(a for a in r.json() if a["name"] == "kueue")
     assert added["status"] == "installed" and added["channel"] == "optional"
-    # 중복·미지원 애드온
+    # Duplicate / unsupported addon
     assert client.post(f"/api/v1/k8s/clusters/{cid}/addons",
                        json={"name": "kueue"}).status_code == 409
     assert client.post(f"/api/v1/k8s/clusters/{cid}/addons",
                        json={"name": "no-such"}).status_code == 404
-    # spec 카탈로그 노출
+    # spec catalog exposure
     spec = client.get("/api/v1/k8s/spec").json()
     assert any(a["name"] == "kueue" for a in spec["optional_addons"])
     assert [s["name"] for s in spec["install_stages"]][0] == "cp-reserve"
 
 
 # ---------------------------------------------------------------------------
-# R3 — kubeconfig 발급/폐기 + RBAC 템플릿
+# R3 — kubeconfig issue/revoke + RBAC templates
 # ---------------------------------------------------------------------------
 def test_kubeconfig_issue_revoke_and_rbac_templates(client):
     tid = _mk_tenant(client)
@@ -272,7 +274,7 @@ def test_kubeconfig_issue_revoke_and_rbac_templates(client):
     assert r.status_code == 200 and r.json()["revoked"] is True
     assert client.delete(f"/api/v1/k8s/clusters/{cid}/kubeconfigs/"
                          f"{kc['kubeconfig_id']}").status_code == 409
-    # 미지원 role
+    # Unsupported role
     assert client.post(f"/api/v1/k8s/clusters/{cid}/kubeconfigs",
                        json={"role": "root"}).status_code == 422
 
@@ -281,14 +283,14 @@ def test_kubeconfig_issue_revoke_and_rbac_templates(client):
 
 
 # ---------------------------------------------------------------------------
-# R3/R6 — 업그레이드 saga (v1.32.4 → v1.33.2)
+# R3/R6 — Upgrade saga (v1.32.4 → v1.33.2)
 # ---------------------------------------------------------------------------
 def test_upgrade_saga_and_validation(client):
     tid = _mk_tenant(client)
     o = _k8s_order(client, tid, version="v1.32.4").json()
     cid = o["k8s_cluster_id"]
 
-    # 검증 — 미지원·동일 버전
+    # Validation — unsupported / same version
     assert client.post(f"/api/v1/k8s/clusters/{cid}/upgrades",
                        json={"target_version": "v1.31.0"}).status_code == 422
     assert client.post(f"/api/v1/k8s/clusters/{cid}/upgrades",
@@ -307,7 +309,7 @@ def test_upgrade_saga_and_validation(client):
          if u["upgrade_id"] == up["upgrade_id"]
          and u["state"] == "succeeded"), None))
     total = done["node_progress"]["total"]
-    assert done["node_progress"]["done"] == total == 3 + 18   # CP + 워커
+    assert done["node_progress"]["done"] == total == 3 + 18   # CP + workers
     steps = Counter(e["step"] for e in done["events"])
     assert steps == {"cordon": total, "drain": total,
                      "upgrade": total, "uncordon": total}
@@ -319,7 +321,7 @@ def test_upgrade_saga_and_validation(client):
     assert c["version"] == "v1.33.2"
     nodes = client.get(f"/api/v1/k8s/clusters/{cid}/nodes").json()
     assert all(n["version"] == "v1.33.2" for n in nodes)
-    # 완료 후 재요청 — 다운그레이드 금지
+    # Re-request after completion — downgrade not allowed
     assert client.post(f"/api/v1/k8s/clusters/{cid}/upgrades",
                        json={"target_version": "v1.32.4"}).status_code == 409
 
@@ -335,7 +337,7 @@ def test_cves_static_curation(client):
 
 
 # ---------------------------------------------------------------------------
-# R6 — fault 주입 → 워커 Quarantined + health-event + hot-spare 제안
+# R6 — Fault injection → worker Quarantined + health-event + hot-spare proposal
 # ---------------------------------------------------------------------------
 def test_fault_injection_quarantines_worker(client):
     tid = _mk_tenant(client)
@@ -345,7 +347,7 @@ def test_fault_injection_quarantines_worker(client):
     victim = next(n for n in nodes if n["role"] == "gpu-worker")
     assert victim["state"] == "Ready"
 
-    # 기존 XID 에피소드 경로로 GPU fault 주입 (DCGM→NVSentinel)
+    # Inject GPU fault via the existing XID episode path (DCGM→NVSentinel)
     r = client.post("/api/v1/emu/faults", json={
         "tray_id": victim["name"], "gpu": 1, "xid": 79, "ttl_ticks": 200})
     assert r.status_code == 201, r.text
@@ -355,7 +357,7 @@ def test_fault_injection_quarantines_worker(client):
     hit = next(e for e in ev if e["node"] == victim["name"]
                and e["kind"] == "gpu-xid" and e["action"] == "quarantined")
     assert hit["severity"] == "critical"
-    assert hit["hot_spare"] and hit["hot_spare"]["node"]      # 교체 제안
+    assert hit["hot_spare"] and hit["hot_spare"]["node"]      # replacement proposal
     assert hit["hot_spare"]["node"] != victim["name"]
 
     nodes = client.get(f"/api/v1/k8s/clusters/{cid}/nodes").json()
@@ -366,7 +368,7 @@ def test_fault_injection_quarantines_worker(client):
     ov = client.get("/api/v1/k8s/overview").json()
     assert ov["health_events_open"] >= 1
 
-    # 복구(TTL 강제 소진 — 틱 진행) 후 quarantine 해제
+    # After recovery (force-expire TTL by advancing ticks), quarantine lifts
     client.post("/api/v1/emu/tick?n=200")
     nodes = client.get(f"/api/v1/k8s/clusters/{cid}/nodes").json()
     assert next(n for n in nodes
@@ -374,7 +376,7 @@ def test_fault_injection_quarantines_worker(client):
 
 
 # ---------------------------------------------------------------------------
-# 제약 — reset cascade에 신규 컬렉션 포함
+# Constraint — new collections are included in the reset cascade
 # ---------------------------------------------------------------------------
 def test_reset_clears_new_collections(client):
     tid = _mk_tenant(client)

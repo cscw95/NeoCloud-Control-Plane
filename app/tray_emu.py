@@ -39,7 +39,7 @@ from .trace import emit
 
 TICK_SECONDS = 2.0
 GPU_IDLE_W = 90.0
-TRAY_BASE_W = 800.0            # CPU/DPU/NIC/보드 기본 부하
+TRAY_BASE_W = 800.0            # base load for CPU/DPU/NIC/board
 
 PROFILES = {
     "training":  {"util": (88, 99), "nvlink": (2.2, 3.4), "ckpt_every": 40},
@@ -52,9 +52,9 @@ XID_POOL = [63, 79, 48]        # row-remap / GPU fallen off bus / DBE
 
 
 def _random_faults_enabled() -> bool:
-    """확률적 XID 장애 주입 — 데모 중 돌발 알림 방지를 위해 기본 비활성.
+    """Probabilistic XID fault injection — disabled by default to avoid surprise alerts during demos.
 
-    NOCP_RANDOM_FAULTS=1 일 때만 기존 랜덤 주입 동작 (호출 시점 평가)."""
+    The original random injection only runs when NOCP_RANDOM_FAULTS=1 (evaluated at call time)."""
     return os.environ.get("NOCP_RANDOM_FAULTS", "") == "1"
 
 
@@ -98,15 +98,15 @@ class ClusterSummary(BaseModel):
     power_cap_kw: float
     max_gpu_temp_c: float
     nvlink_tbps: float
-    tokens_ks: float               # 추정 토큰 처리량 (K tokens/s)
+    tokens_ks: float               # estimated token throughput (K tokens/s)
     ecc_corrected_total: int
     fault_gpus: int
 
 
 class TrayEmulator:
-    HISTORY_LEN = 240                # 틱 단위 시계열 (2s 틱 기준 ≈ 8분)
+    HISTORY_LEN = 240                # time series in tick units (≈ 8 min at 2s ticks)
 
-    TICK_S = 2                       # 1틱 = 2초 (run_loop 주기 — TTR 환산 기준)
+    TICK_S = 2                       # 1 tick = 2 seconds (run_loop period — basis for TTR conversion)
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -115,7 +115,7 @@ class TrayEmulator:
         self.step = 0
         self.history_global: deque = deque(maxlen=self.HISTORY_LEN)
         self.history_tenants: dict[str, deque] = {}
-        # GPU 장애 에피소드 로그 — 감지→조치→복구 라이프사이클 (MTTR 산출)
+        # GPU fault episode log — detect→remediate→recover lifecycle (for MTTR calculation)
         self.fault_log: deque = deque(maxlen=500)
 
     # -- topology alignment ---------------------------------------------------
@@ -143,7 +143,7 @@ class TrayEmulator:
                     self.trays[tray.id] = rt
                 node = STORE.node_instances.get(f"ni-{tray.id}")
                 if node and node.state == NS.in_service and node.tenant_id:
-                    if rt.tenant_id != node.tenant_id:      # 신규 인도
+                    if rt.tenant_id != node.tenant_id:      # newly delivered
                         rt.tenant_id = node.tenant_id
                         rt.job_name = f"{node.tenant_id}-job-{node.order_id}"
                         self.cluster_profile.setdefault(node.tenant_id,
@@ -151,7 +151,7 @@ class TrayEmulator:
                     rt.workload = self.cluster_profile.get(
                         node.tenant_id, "training")
                 else:
-                    if rt.tenant_id is not None:            # 회수됨
+                    if rt.tenant_id is not None:            # reclaimed
                         rt.tenant_id = None
                         rt.job_name = None
                         for g in rt.gpus:
@@ -171,7 +171,7 @@ class TrayEmulator:
         if profile not in PROFILES:
             raise HTTPException(422, f"unknown profile '{profile}' "
                                      f"(choose from {sorted(PROFILES)})")
-        self.sync_from_store()          # 인도 직후에도 즉시 반영되도록
+        self.sync_from_store()          # so it reflects immediately, even right after delivery
         with self._lock:
             if tenant_id not in self.cluster_profile:
                 raise HTTPException(404, f"no active cluster for '{tenant_id}'")
@@ -189,7 +189,7 @@ class TrayEmulator:
         return self.step
 
     def _record_locked(self) -> None:
-        """틱마다 전역/테넌트별 시계열 스냅샷 기록 (라인 그래프용)."""
+        """Record a global/per-tenant time-series snapshot each tick (for line graphs)."""
         at = datetime.now(timezone.utc).isoformat()
         summaries = self._summaries_locked()
         active_gpus = sum(c.gpus for c in summaries)
@@ -221,7 +221,7 @@ class TrayEmulator:
                     "fault_gpus": c.fault_gpus,
                     "ecc": c.ecc_corrected_total,
                 })
-        for t in list(self.history_tenants):      # 회수된 테넌트 시계열 정리
+        for t in list(self.history_tenants):      # clean up time series of reclaimed tenants
             if t not in live:
                 del self.history_tenants[t]
 
@@ -255,11 +255,11 @@ class TrayEmulator:
         target = random.uniform(lo, hi) if not in_ckpt else random.uniform(18, 30)
 
         for g in rt.gpus:
-            if g.fault_ttl > 0:                     # XID 복구 대기
+            if g.fault_ttl > 0:                     # awaiting XID recovery
                 g.fault_ttl -= 1
                 g.state, g.util_pct, g.power_w = "fault", 0.0, GPU_IDLE_W
                 g.temp_c = max(40.0, g.temp_c - 3)
-                if g.fault_ttl == 0:                # 복구 완료 — 에피소드 마감
+                if g.fault_ttl == 0:                # recovery complete — close the episode
                     for rec in reversed(self.fault_log):
                         if (rec["tray_id"] == rt.tray_id
                                 and rec["gpu"] == g.index
@@ -288,7 +288,7 @@ class TrayEmulator:
             if random.random() < 0.002:
                 g.ecc_corrected += 1
             if (_random_faults_enabled()
-                    and random.random() < 0.0001):  # 희귀 XID 폴트 (opt-in)
+                    and random.random() < 0.0001):  # rare XID fault (opt-in)
                 xid = random.choice(XID_POOL)
                 g.xid_events.append(xid)
                 g.fault_ttl = 5
@@ -299,7 +299,7 @@ class TrayEmulator:
                     "started_at": datetime.now(timezone.utc).isoformat(),
                     "started_step": self.step,
                     "action": "NVSentinel — cordon/drain 지정 후 복구 절차",
-                    "tta_s": self.TICK_S,       # 감지→조치 1틱 내 (자동)
+                    "tta_s": self.TICK_S,       # detect→remediate within 1 tick (automatic)
                     "resolved_at": None, "ttr_s": None, "state": "open"})
                 emit(f"DCGM({rt.tray_id})", "NVSentinel", "internal",
                      f"XID {xid} 감지",
@@ -376,7 +376,7 @@ class TrayEmulator:
             self.fault_log.clear()
             self.step = 0
 
-    # -- GPU 장애 조치 지표 (가용성·MTTR) --------------------------------------
+    # -- GPU fault-remediation metrics (availability, MTTR) --------------------------------------
     def faults(self, tenant_id: Optional[str] = None, limit: int = 30) -> dict:
         with self._lock:
             items = [f for f in self.fault_log
@@ -390,8 +390,8 @@ class TrayEmulator:
         mtta = (round(sum(f["tta_s"] for f in items) / len(items), 1)
                 if items else None)
         avail = (round((1 - len(open_) / gpus) * 100, 3) if gpus else None)
-        # DCGM 수집 경로 — Managed K8s(running) 테넌트는 in-band(exporter
-        # DaemonSet), 그 외는 OOB(BMC/Redfish 폴링)
+        # DCGM collection path — Managed K8s (running) tenants use in-band (exporter
+        # DaemonSet); others use OOB (BMC/Redfish polling)
         if tenant_id:
             inband = any(c.tenant_id == tenant_id and c.state == "running"
                          for c in STORE.k8s_clusters.values())
@@ -406,13 +406,13 @@ class TrayEmulator:
                            if k8s_tenants else "oob (BMC/Redfish)")
         return {
             "gpus_total": gpus,
-            "dcgm_source": dcgm_source,     # 텔레메트리 수집 경로 전환 표시
+            "dcgm_source": dcgm_source,     # indicates telemetry collection path switching
             "faults_open": len(open_),
             "faults_resolved": len(resolved),
-            "availability_pct": avail,      # 정상 GPU / 전체 (진행 장애 제외)
-            "mtta_s": mtta,                 # 감지→조치 (NVSentinel 자동)
-            "mttr_s": mttr,                 # 감지→복구 평균
-            # 콘솔 알림 호환 필드(at/resolved)를 함께 노출
+            "availability_pct": avail,      # healthy GPUs / total (excluding in-progress faults)
+            "mtta_s": mtta,                 # detect→remediate (NVSentinel automatic)
+            "mttr_s": mttr,                 # average detect→recover
+            # also expose console-alert-compatible fields (at/resolved)
             "recent": [{**f,
                         "at": f.get("at") or f.get("started_at"),
                         "resolved": f.get("resolved_at") is not None}
@@ -421,10 +421,10 @@ class TrayEmulator:
 
     def inject_fault(self, tray_id: str, gpu: int = 0, xid: int = 79,
                      ttl_ticks: int = 30) -> dict:
-        """GPU XID 장애 수동 주입 — 기존 XID 에피소드 경로(fault_log +
-        DCGM→NVSentinel 트레이스) 재사용. R6 fault→quarantine 시나리오의
-        트리거로 사용하며, TTL 경과 시 기존 로직대로 자동 복구된다."""
-        self.sync_from_store()          # 인도 직후에도 tenant 바인딩 반영
+        """Manually inject a GPU XID fault — reuses the existing XID episode path (fault_log +
+        DCGM→NVSentinel trace). Used as the trigger for the R6 fault→quarantine scenario;
+        auto-recovers per the existing logic once the TTL elapses."""
+        self.sync_from_store()          # reflect tenant binding even right after delivery
         with self._lock:
             rt = self.trays.get(tray_id)
             if not rt:
@@ -455,10 +455,10 @@ class TrayEmulator:
         return episode
 
     def seed_sample_faults(self) -> None:
-        """리셋/시드 직후 장애 메뉴가 비지 않도록 샘플 XID 에피소드 2건 주입.
+        """Inject 2 sample XID episodes so the faults menu is not empty right after a reset/seed.
 
-        1건은 resolved(복구 완료), 1건은 open(대응 중). detail 의 "(sample)"
-        표기로 시연용 샘플임을 구분한다."""
+        One is resolved (recovery complete), one is open (being handled). The "(sample)"
+        marker in detail distinguishes them as demo samples."""
         with STORE.lock:
             tray_ids = sorted(STORE.trays)
         if not tray_ids:
@@ -507,10 +507,10 @@ class _ProfileBody(BaseModel):
 
 
 def _emulator_reprov_faults(limit: int) -> list:
-    """NICo 에뮬레이터 /emulator/v1/faults 를 best-effort 로 조회해
-    기존 XID 항목과 호환되는 형태(tray_id/xid/resolved/at)로 변환한다.
+    """Best-effort query of the NICo emulator's /emulator/v1/faults, converted into a form
+    compatible with existing XID items (tray_id/xid/resolved/at).
 
-    HTTP 어댑터 모드(NOCP_NICO_URL 설정)일 때만 시도, 실패는 조용히 무시."""
+    Attempted only in HTTP adapter mode (NOCP_NICO_URL set); failures are silently ignored."""
     if not os.environ.get("NOCP_NICO_URL"):
         return []
     try:
@@ -546,12 +546,12 @@ def _emulator_reprov_faults(limit: int) -> list:
 
 @router.get("/faults")
 def faults(tenant_id: Optional[str] = None, limit: int = 30) -> dict:
-    """GPU 장애 조치 지표 — 가용성·MTTA·MTTR + 최근 에피소드.
+    """GPU fault-remediation metrics — availability, MTTA, MTTR + recent episodes.
 
-    recent 에는 NICo 에뮬레이터의 재프로비저닝 장애(/emulator/v1/faults)를
-    best-effort 로 병합한다 (운영 콘솔 알림에 함께 노출)."""
+    recent best-effort merges the NICo emulator's reprovisioning faults (/emulator/v1/faults)
+    (also surfaced in the operations console alerts)."""
     out = EMULATOR.faults(tenant_id, limit)
-    if not tenant_id:                    # 재프로비저닝 장애는 테넌트 무관
+    if not tenant_id:                    # reprovisioning faults are tenant-agnostic
         merged = _emulator_reprov_faults(limit)
         if merged:
             recent = merged + out["recent"]
@@ -564,13 +564,13 @@ class _FaultInjectBody(BaseModel):
     tray_id: str
     gpu: int = 0
     xid: int = 79                   # 63 row-remap | 79 fallen off bus | 48 DBE
-    ttl_ticks: int = 30             # 2s 틱 기준 유지 시간 (기본 ≈60s)
+    ttl_ticks: int = 30             # hold time based on 2s ticks (default ≈60s)
 
 
 @router.post("/faults", status_code=201)
 def inject_fault(body: _FaultInjectBody) -> dict:
-    """GPU XID 장애 주입 — R6 데모 트리거: NVSentinel 헬스 이벤트 →
-    워커 노드 quarantine → hot-spare 교체 제안 경로를 구동한다."""
+    """Inject a GPU XID fault — R6 demo trigger: drives the NVSentinel health event →
+    worker-node quarantine → hot-spare replacement suggestion path."""
     return EMULATOR.inject_fault(body.tray_id, body.gpu, body.xid,
                                  body.ttl_ticks)
 
@@ -590,7 +590,7 @@ def clusters() -> list[ClusterSummary]:
 
 @router.get("/history")
 def history(tenant_id: Optional[str] = None, limit: int = 180) -> list:
-    """시계열 스냅샷 — tenant_id 없으면 전역(전체 GPU 사용 현황)."""
+    """Time-series snapshot — global if tenant_id is omitted (all-GPU usage)."""
     return EMULATOR.history(tenant_id=tenant_id, limit=min(max(limit, 1), 240))
 
 

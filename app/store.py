@@ -68,24 +68,24 @@ class Store:
         self.storage_allocs: dict[str, StorageAllocation] = {}
         self.tickets: dict[str, Ticket] = {}
         self.cpu_nodes: dict[str, CpuNode] = {}
-        self.k8s_clusters: dict[str, K8sCluster] = {}   # Managed K8s (옵션)
-        self.k8s_installs: dict[str, K8sInstall] = {}   # 설치 saga 기록 (Day-1/2)
-        self.k8s_kubeconfigs: dict[str, K8sKubeconfig] = {}  # kubeconfig 발급
-        self.k8s_upgrades: dict[str, K8sUpgrade] = {}   # 업그레이드 saga
-        # service scenario (고객 라이프사이클 — scenario_api)
-        self.acceptances: dict[str, dict] = {}      # order_id -> 검수 레코드
-        self.terminations: dict[str, dict] = {}     # termination_id -> 종료 워크플로우
-        self.incidents: dict[str, dict] = {}        # incident_id -> status page 인시던트
-        self.rcas: dict[str, dict] = {}             # rca_id -> RCA 리포트
+        self.k8s_clusters: dict[str, K8sCluster] = {}   # Managed K8s (optional)
+        self.k8s_installs: dict[str, K8sInstall] = {}   # install saga record (Day-1/2)
+        self.k8s_kubeconfigs: dict[str, K8sKubeconfig] = {}  # kubeconfig issuance
+        self.k8s_upgrades: dict[str, K8sUpgrade] = {}   # upgrade saga
+        # service scenario (customer lifecycle — scenario_api)
+        self.acceptances: dict[str, dict] = {}      # order_id -> acceptance record
+        self.terminations: dict[str, dict] = {}     # termination_id -> termination workflow
+        self.incidents: dict[str, dict] = {}        # incident_id -> status page incident
+        self.rcas: dict[str, dict] = {}             # rca_id -> RCA report
         self.sla_credits: dict[str, dict] = {}      # credit_id -> service credit
-        self.inquiries: dict[str, dict] = {}        # inquiry_id -> 공개 상품 문의
+        self.inquiries: dict[str, dict] = {}        # inquiry_id -> public product inquiry
 
-        # 고객면 운영 API (실 에뮬레이터 연동)
-        self.storage_volumes: dict[str, dict] = {}  # vol_id -> VAST 볼륨(뷰)
-        self.storage_snapshots: dict[str, dict] = {}  # snap_id -> 스냅샷
-        self.api_keys: dict[str, dict] = {}         # key_id -> 테넌트 API 키
-        self.members: dict[str, dict] = {}          # member_id -> 조직 멤버
-        self.node_ops: dict[str, dict] = {}         # op_id -> 노드 재기동/교체 작업
+        # customer-plane operations API (live emulator integration)
+        self.storage_volumes: dict[str, dict] = {}  # vol_id -> VAST volume (view)
+        self.storage_snapshots: dict[str, dict] = {}  # snap_id -> snapshot
+        self.api_keys: dict[str, dict] = {}         # key_id -> tenant API key
+        self.members: dict[str, dict] = {}          # member_id -> organization member
+        self.node_ops: dict[str, dict] = {}         # op_id -> node reboot/replace operation
         # monotonic counters for generated ids
         self._counters: dict[str, int] = {}
 
@@ -115,7 +115,7 @@ class Store:
 
     # -- convenience lookups ------------------------------------------------
     def factory_of_su(self, su_id: str):
-        """SU가 속한 AIFactory(사이트) — 사이트 간에는 IB/NVLink 크로스가 없다."""
+        """The AIFactory (site) the SU belongs to — no IB/NVLink cross-connect between sites."""
         for f in self.factories.values():
             for bid in f.block_ids:
                 block = self.blocks.get(bid)
