@@ -118,6 +118,7 @@ Upstream-backed views answer with `"source": "ai-infra" | "nico"`, or
 | `NOCP_CORS_ORIGINS` | `http://localhost:8090,http://127.0.0.1:8090` | Allowed console origins |
 | `NOCP_WEBHOOK_SOURCES` | `127.0.0.1,::1,testclient` | IPs/CIDRs allowed to POST `/api/v1/oob/events` |
 | `NOCP_WEBHOOK_SECRET` | — | When set, the webhook requires `X-Webhook-Token` |
+| `NOCP_EMU_API_KEY` | — | Sent as `X-API-Key` on every NOCP → NICo / AI-Infra call (set it to the emulators' `EMU_API_KEY`) |
 | `NOCP_WEBHOOK_DESTINATIONS` | `http://127.0.0.1:8000/api/v1/oob/events,http://localhost:8000/api/v1/oob/events` | Allowed EventService destinations |
 
 - No identity on `/api/*` → 401. Without `NOCP_DEV_INSECURE_HEADERS=1`, client identity headers are stripped and replaced by the token's identity.
@@ -132,8 +133,12 @@ Production leaves them `0`, and clients send `Authorization: Bearer`.
 ### DSX tests & smoke
 
 ```bash
-.venv/bin/python -m pytest -q                                      # 187 tests
+.venv/bin/python -m pytest -q                                      # 194 tests
 NOCP_NICO_URL=http://127.0.0.1:9000 .venv/bin/python scripts/dsx_smoke.py   # live NICo chain
+.venv/bin/python scripts/e2e_dsx_chain.py      # all 4 services up: every DSX flow live (51 checks)
+# secure mode (NOCP without dev switches, NOCP_TOKENS, emulators with EMU_API_KEY): 59 checks
+E2E_SECURE=1 E2E_OPERATOR_TOKEN=… E2E_TENANT_TOKEN=… E2E_OTHER_TOKEN=… E2E_EMU_API_KEY=… \
+  .venv/bin/python scripts/e2e_dsx_chain.py
 ```
 
 ## Quick Start
@@ -169,7 +174,7 @@ curl -XPOST "localhost:8000/api/v1/admin/reseed?blueprints=gb200-nvl72,gb300-nvl
 
 ```bash
 . .venv/bin/activate
-pytest -q                                        # 187 tests (including the E2E scenario and DSX suites)
+pytest -q                                        # 194 tests (including the E2E scenario and DSX suites)
 python scripts/demo_scenario.py                  # full end-to-end demo runner (11 acts, 37 checks)
 python scripts/demo_scenario.py --pause          # presentation mode
 ```
