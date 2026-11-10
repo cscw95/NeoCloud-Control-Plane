@@ -295,6 +295,9 @@ class Run:
     def _call(self, call, ctx: dict) -> tuple[Result, Optional[dict]]:
         if callable(call):
             out = call(ctx)
+            if isinstance(out, dict) and {"method", "path"} <= out.keys() and \
+                    isinstance(out.get("method"), str):
+                return self.client.http(_resolve(out, ctx))   # call built an HTTP spec from ctx
             if isinstance(out, Result):
                 return out, {"service": "internal", "method": "CALL",
                              "url": getattr(call, "__qualname__", "internal"), "body": None}
