@@ -16,8 +16,8 @@ Usage sources
     quantity, unit, ts, attrs}). Duplicate idempotency keys are billed once.
     Tokens are billed from the gateway source only (the engine count is for
     F04 reconciliation). Hour events (nico/nvke) replace the order-derived
-    rack hours for that tenant+product when present. Until F04 lands the
-    attribute is absent and only order-derived lines are produced (stub).
+    rack hours for that tenant+product when present (app.metering log; no
+    events → only order-derived lines).
 
 Money: integer KRW, each line rounded half-up; VAT = floor(subtotal × 10%)
 (원 미만 절사, the usual practice on Korean tax invoices). Token prices are
@@ -265,7 +265,7 @@ def put_price_book(body: PriceBook, request: Request) -> dict:
 # usage → rated lines
 # ---------------------------------------------------------------------------
 def _metering_events() -> list[dict]:
-    """F04 usage events (stub until F04 lands: attribute absent → [])."""
+    """F04 usage events: the app.metering log (STORE.metering_events) plus Lago-ingested events."""
     raw = getattr(STORE, "metering_events", None) or []
     if isinstance(raw, dict):
         raw = list(raw.values())

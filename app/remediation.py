@@ -30,7 +30,9 @@ STORE_ONLY) and nothing is touched.
   POST    /api/v1/remediation/inject {machine_id, xid, gpu, persistent}
           fault injection: AI-Infra /emulator/v1/oob/inject sel_critical (SEL
           evidence) + NICo machine/{id}/gpu/fault; AI-Infra has no XID
-          injection, so the XID itself is a NOCP stub (local fault table).
+          injection; integration/v2: NICo gpu/fault drives the AI-Infra
+          gpu-faults twin (DCGM XID, Redfish health, GpuReset Task), the local
+          fault table is the offline fallback.
   POST    /api/v1/remediation/reset
 """
 
@@ -470,7 +472,8 @@ def inject(body: InjectBody) -> dict:
     t = _target(body.machine_id)
     host = t["machine_id"]
     with REM.lock:
-        REM.faults[host] = {"xid": body.xid, "gpu": body.gpu, "persistent": body.persistent}
+        REM.faults[host] = {"xid": body.xid, "gpu": body.gpu, "persistent": body.persistent,
+                            "via": "inject"}           # bus echo of this fault is ignored
     st_ai, _ = dsx.ai_send("POST", "/emulator/v1/oob/inject",
                            json={"kind": "sel_critical", "target": t["tray_id"] or host})
     st_n, _ = dsx.nico_send("POST", dsx.nico_rest_path("machine_gpu_reset", id=host)
@@ -483,7 +486,8 @@ def inject(body: InjectBody) -> dict:
                          "persistent": body.persistent,
                          "ai_infra_sel": "ok" if st_ai and st_ai < 400 else "stub",
                          "nico_fault": "ok" if st_n and st_n < 400 else "stub",
-                         "xid_source": "nocp-stub (AI-Infra has no XID injection)"},
+                         "xid_source": ("nico gpu/fault → ai-infra gpu-faults twin"
+                                        if st_n and st_n < 400 else "nocp-local fault table")},
             **out}
 
 
@@ -633,6 +637,10 @@ def _on_event(ev: dict) -> None:
         if (key, host) in REM.seen_events:
             return
         REM.seen_events.add((key, host))
+        # the same fault already came in as a HealthEvent (operator inject →
+        # NICo → AI-Infra echoes it on the bus): one run per fault, not two
+        if REM.faults.get(host, {}).get("via") == "inject":
+            return
         # the bus alert says nothing about recoverability unless the source
         # tells (AI-Infra fault source reset_recovers); otherwise the fault is
         # taken as persistent and the chain proves it by reset → re-validate

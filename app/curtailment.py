@@ -16,12 +16,12 @@ subscribers shed load against the Power State Status they watch; the Flex Agent
 breach/enforcement path stays in AI-Infra. The shed decision itself has no
 upstream implementation (NeoCloud 고유; DSX Flex shed_hints are advisory).
 
-Dependencies that live in other v2 modules are reached through thin seams with
-local stubs when the module is absent:
+Dependencies that live in other v2 modules are reached through thin seams
+(integration/v2 calls the real modules; the pre-merge stubs are gone):
   F02  app.token_quota.apply_override(tenant_id, tier, factor, until, reason)
-       / clear_override(tenant_id, tier)          stub: CURT.quota_overrides
-  F09  app.sla.create_exception(body) / close_exception(id)  stub: CURT.sla_exceptions
-  F13  app.status_notices.create_notice(body) / close_notice(id)  stub: CURT.notices
+       / clear_override(tenant_id, tier)    (CURT.quota_overrides = run-scoped record)
+  F09  app.sla.create_exception(body) / close_exception(id)
+  F13  app.status_notices.create_notice(body) / close_notice(id)
   F06  app.contracts.contracts_of_tenant(tid) → commitment "reserved"
 
   GET|PUT /api/v1/power/curtailment-policy
@@ -84,8 +84,6 @@ class _Curt:
         self.runs: dict[str, dict] = {}
         self.by_source: dict[str, str] = {}       # load target / flex id → run id
         self.quota_overrides: dict[tuple, dict] = {}
-        self.sla_exceptions: dict[str, dict] = {}
-        self.notices: dict[str, dict] = {}
         self.settlements: list[dict] = []
         self._seq = itertools.count(1)
 
@@ -109,88 +107,62 @@ def _module(name: str):
 
 
 # ---------------------------------------------------------------------------
-# seams to F02 / F09 / F13 / F06 (stubs when the module is not merged yet)
+# seams to F02 / F09 / F13 / F06 (integration/v2: the real modules)
 # ---------------------------------------------------------------------------
 def quota_override(tenant_id: str, tier: str, factor: float, until: str,
                    reason: str) -> dict:
-    m = _module("token_quota")
+    from . import token_quota
+    res = token_quota.apply_override(tenant_id, tier, factor, until, reason)
     rec = {"tenant_id": tenant_id, "tier": tier, "factor": factor, "until": until,
-           "reason": reason, "via": "stub"}
-    if m and hasattr(m, "apply_override"):
-        res = m.apply_override(tenant_id, tier, factor, until, reason)
-        rec = {**rec, **(res if isinstance(res, dict) else {}), "via": "F02"}
+           "reason": reason, **(res if isinstance(res, dict) else {}), "via": "F02"}
     CURT.quota_overrides[(tenant_id, tier)] = rec    # run-scoped record (list endpoint)
     return rec
 
 
 def quota_clear(tenant_id: str, tier: str) -> None:
-    m = _module("token_quota")
-    if m and hasattr(m, "clear_override"):
-        m.clear_override(tenant_id, tier)
+    from . import token_quota
+    token_quota.clear_override(tenant_id, tier)
     CURT.quota_overrides.pop((tenant_id, tier), None)
 
 
 def quota_factor(tenant_id: str, tier: str) -> float:
-    """Active override factor (1.0 = none): F02 token_quota when merged, else the stub."""
-    m = _module("token_quota")
-    if m and hasattr(m, "QUOTA"):
-        o = m.QUOTA.override(tenant_id, tier)
-        return float(o["factor"]) if o else 1.0
-    rec = CURT.quota_overrides.get((tenant_id, tier))
-    return float(rec["factor"]) if rec else 1.0
+    """Active F02 override factor (1.0 = none)."""
+    from . import token_quota
+    o = token_quota.QUOTA.override(tenant_id, tier)
+    return float(o["factor"]) if o else 1.0
 
 
 def _sla_exception(body: dict) -> dict:
-    m = _module("sla")
-    if m and hasattr(m, "create_exception"):
-        res = m.create_exception(body)
-        return res if isinstance(res, dict) else {"id": str(res), **body}
-    rec = {"id": CURT.nid("slaex"), **body, "via": "stub"}
-    CURT.sla_exceptions[rec["id"]] = rec
-    return rec
+    from . import sla
+    return sla.create_exception(body)
 
 
 def _sla_close(ex_id: Optional[str], end: str) -> None:
-    m = _module("sla")
-    if ex_id and m and hasattr(m, "close_exception"):
-        m.close_exception(ex_id, end)
-    if ex_id in CURT.sla_exceptions:
-        CURT.sla_exceptions[ex_id]["end"] = end
-
-
-def _notice(body: dict) -> dict:
-    m = _module("status_notices")
-    if m and hasattr(m, "create_notice"):
-        res = m.create_notice(body)
-        return res if isinstance(res, dict) else {"id": str(res), **body}
-    rec = {"id": CURT.nid("ntc"), **body, "state": "active", "via": "stub"}
-    CURT.notices[rec["id"]] = rec
-    return rec
-
-
-def _notice_close(nid: Optional[str], end: str) -> None:
-    m = _module("status_notices")
-    if nid and m and hasattr(m, "close_notice"):
-        m.close_notice(nid, end)
-    if nid in CURT.notices:
-        CURT.notices[nid].update(state="resolved", end=end)
+    from . import sla
+    if ex_id and ex_id in sla.SLA.exceptions:
+        sla.close_exception(ex_id, end)
 
 
 def _sla_get(ex_id: Optional[str]) -> Optional[dict]:
-    m = _module("sla")
-    if ex_id and m and hasattr(m, "SLA") and ex_id in m.SLA.exceptions:
-        return m.SLA.exceptions[ex_id]
-    return CURT.sla_exceptions.get(ex_id)
+    from . import sla
+    return sla.SLA.exceptions.get(ex_id) if ex_id else None
+
+
+def _notice(body: dict) -> dict:
+    from . import status_notices
+    return status_notices.create_notice(body)
+
+
+def _notice_close(nid: Optional[str], end: str) -> None:
+    from . import status_notices
+    status_notices.close_notice(nid, end)
 
 
 def _notice_get(nid: Optional[str]) -> Optional[dict]:
-    m = _module("status_notices")
-    if nid and m and hasattr(m, "get_notice"):
-        try:
-            return m.get_notice(nid)
-        except Exception:                          # noqa: BLE001 — unknown id
-            pass
-    return CURT.notices.get(nid)
+    from . import status_notices
+    if not nid or nid not in status_notices.NOTICES.items:
+        return None
+    return status_notices.get_notice(nid)
 
 
 def commitment_of(tenant_id: Optional[str]) -> str:

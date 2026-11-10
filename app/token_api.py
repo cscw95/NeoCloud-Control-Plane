@@ -104,10 +104,11 @@ def _h(s: str) -> int:
 
 
 # ---------------------------------------------------------------------------
-# quota hook (F02 replaces it with set_quota_hook)
+# quota hook (app.token_quota registers the F02 buckets with set_quota_hook at
+# import; _WindowQuota stays only as the default before that registration)
 # ---------------------------------------------------------------------------
 class _WindowQuota:
-    """Stub until F02: fixed 60 s window per key+tier, generous defaults.
+    """Pre-registration default: fixed 60 s window per key+tier, generous defaults.
     Interface F02 must keep: check(...) -> (ok, retry_after_s, headers),
     commit(...) after the request with the real token count."""
     RPM, TPM = 600, 2_000_000
@@ -456,26 +457,10 @@ def _emit_usage(key: dict, model: str, tier: str, rid: str, usage: dict,
 
 
 def _publish_metering(events: list[dict]) -> None:
-    """F04 boundary: app.metering.ingest(event) when F04 has landed, else
-    append to STORE.metering_events (list or dict keyed by idempotency key —
-    the shape app/billing.py reads)."""
-    try:
-        from . import metering                       # type: ignore[attr-defined]
-        ingest = getattr(metering, "ingest", None)
-    except ImportError:
-        ingest = None
+    """F04 boundary: app.metering.ingest(event) (idempotent on idempotency_key)."""
+    from . import metering
     for e in events:
-        if ingest is not None:
-            ingest(e)
-            continue
-        sink = getattr(STORE, "metering_events", None)
-        if sink is None:
-            sink = []
-            setattr(STORE, "metering_events", sink)
-        if isinstance(sink, dict):
-            sink.setdefault(e["idempotency_key"], e)
-        elif not any(x.get("idempotency_key") == e["idempotency_key"] for x in sink[-50:]):
-            sink.append(e)
+        metering.ingest(e)
 
 
 def _headers(rid: str, tier: str, qh: dict, engine: str) -> dict:

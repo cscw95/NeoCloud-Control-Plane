@@ -15,7 +15,7 @@ Flow: sbatch → PENDING → placement (same NVL72 block first) → CONFIGURING 
 Health Validation per allocated node, app/readiness.py) → RUNNING; prolog failure → node
 DRAIN + job REQUEUED (restart_cnt+1) → re-placed without that node. Node failure while
 running (S4): node DOWN, job NODE_FAIL → requeue with the node excluded, F10
-remediation started when app.remediation exists (stub otherwise).
+remediation started through app.remediation.start_run (F10).
 State is in-memory; the clock is the request (no background threads).
 
 NeoCloud surface (plan F31):          POST /api/v1/slurm/clusters/{id}/jobs  (sbatch)
@@ -599,12 +599,9 @@ def fail_node(c: dict, name: str, reason: str) -> dict:
 
 
 def _remediate(n: dict, reason: str) -> dict:
+    from .remediation import start_run               # F10
     try:
-        from .remediation import start_run           # F10 (feat/v2-v2-recovery-sla)
-    except ImportError:
-        return {"status": "stub", "detail": "F10 app.remediation not present on this branch"}
-    try:
-        run = start_run(n["tray_id"], reason or "slurm node failure", "slurm")
+        run = start_run(n["tray_id"], reason or "slurm node failure", {"kind": "slurm"})
         return {"status": "started", "run": run if isinstance(run, dict) else str(run)}
     except Exception as e:                             # noqa: BLE001 — never break slurm on F10
         return {"status": "error", "detail": str(e)}

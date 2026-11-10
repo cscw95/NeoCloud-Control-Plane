@@ -15,7 +15,7 @@ so the response record is a NeoCloud extension schema
 (`ref/upstream/neocloud-ext/leak-response.schema.json`, x-neocloud).
 
   Critical  cordon the tray's NICo host; NVKE node → F10 replace run
-            (app.remediation.start_run when merged, else nvke.replace_node);
+            (app.remediation.start_run with this HealthEvent: no GPU reset, replace);
             BMaaS node → customer ticket + status notice.
   Warning   status notice only.
 
@@ -24,7 +24,6 @@ so the response record is a NeoCloud extension schema
 
 from __future__ import annotations
 
-import importlib
 import itertools
 import threading
 import time
@@ -63,13 +62,6 @@ LEAK = _Leak()
 def reset() -> None:
     with LEAK.lock:
         LEAK.reset()
-
-
-def _module(name: str):
-    try:
-        return importlib.import_module(f"app.{name}")
-    except ImportError:
-        return None
 
 
 def _severity(ev: dict) -> str:
@@ -138,13 +130,10 @@ def _notice(resp: dict, severity: str) -> None:
             "message_ko": f"랙 {resp['rack']} 트레이 {resp['tray_id']} 냉각수 누수({severity}) 대응 중",
             "message_en": f"Coolant leak ({severity}) on rack {resp['rack']} tray "
                           f"{resp['tray_id']} — response in progress"}
-    m = _module("status_notices")
-    if m and hasattr(m, "create_notice"):
-        res = m.create_notice(body)
-        resp["notice_id"] = (res or {}).get("id") if isinstance(res, dict) else str(res)
-        resp["notice"] = {**(res if isinstance(res, dict) else body), "via": "F13"}
-    else:
-        resp["notice"] = {**body, "via": "stub"}
+    from . import status_notices
+    res = status_notices.create_notice(body)
+    resp["notice_id"] = res.get("id")
+    resp["notice"] = {**res, "via": "F13"}
 
 
 def _ticket(resp: dict, tenant_id: str) -> None:
@@ -188,27 +177,17 @@ def respond(tray_id: str, severity: str, event_id: str, message: str = "") -> di
         ni = next((n for n in STORE.node_instances.values() if n.tray_id == tray_id), None)
         if cluster is not None:
             resp.update(kind="nvke", tenant_id=cluster.tenant_id, cluster_id=cluster.id)
-            rem = _module("remediation")
-            if rem and hasattr(rem, "start_run"):
-                _step(resp, "drain", node=node.name)
-                run = rem.start_run(machine_id=host, reason="coolant leak Critical",
-                                    trigger={"event_id": event_id, "kind": "leak"},
-                                    health_event=resp["health_event"])
-                resp["remediation_run_id"] = (run or {}).get("id")
-                resp["replacement"] = (run or {}).get("replacement")
-                _step(resp, "remediation-run", run_id=resp["remediation_run_id"], via="F10")
-                if resp["replacement"]:
-                    _step(resp, "replace", old_host=resp["replacement"].get("old_host"),
-                          new_host=resp["replacement"].get("new_host"), via="F10 remediation")
-            else:
-                from .nvke import replace_node
-                _step(resp, "drain", node=node.name)
-                rec = replace_node(cluster.id, node.name, f"coolant leak Critical ({event_id})",
-                                   source="leak-response")
-                resp["replacement"] = rec
-                resp["remediation_run_id"] = rec["id"]
-                _step(resp, "replace", old_host=rec["old_host"], new_host=rec["new_host"],
-                      via="nvke.replace_node (F10 stub)")
+            from . import remediation
+            _step(resp, "drain", node=node.name)
+            run = remediation.start_run(machine_id=host, reason="coolant leak Critical",
+                                        trigger={"event_id": event_id, "kind": "leak"},
+                                        health_event=resp["health_event"])
+            resp["remediation_run_id"] = run.get("id")
+            resp["replacement"] = run.get("replacement")
+            _step(resp, "remediation-run", run_id=resp["remediation_run_id"], via="F10")
+            if resp["replacement"]:
+                _step(resp, "replace", old_host=resp["replacement"].get("old_host"),
+                      new_host=resp["replacement"].get("new_host"), via="F10 remediation")
             resp["state"] = "moved"
         elif ni is not None and ni.tenant_id:
             resp.update(kind="bmaas", tenant_id=ni.tenant_id)
