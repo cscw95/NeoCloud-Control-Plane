@@ -114,6 +114,9 @@ def summary(site: Optional[str] = None) -> dict:
     body = dsx.ai_get("/emulator/v1/oob/summary", params={"site": site} if site else None)
     if body is not None:
         rows = body if isinstance(body, list) else (body.get("racks") or [])
+        # AI-Infra keys rows by `rack_id`; NOCP views and the consoles use `rack`.
+        rows = [{**r, "rack": r.get("rack") or r.get("rack_id")} for r in rows
+                if isinstance(r, dict)]
         src = "ai-infra"
     else:
         rows, src = _local_summary(site), "local-fallback"
@@ -202,6 +205,15 @@ def _rack_of(origin: str) -> Optional[str]:
     return None
 
 
+def _machine_of(origin: str) -> Optional[str]:
+    """Tray (machine) id inside a Redfish origin such as
+    /redfish/v1/Chassis/{tray}/ThermalSubsystem/LeakDetection."""
+    for part in (origin or "").strip("/").split("/"):
+        if part in STORE.trays or part.removeprefix("nh-") in STORE.trays:
+            return part
+    return None
+
+
 def ingest(raw: dict) -> list[dict]:
     """Normalize Redfish Event (`{"Events":[...]}`) or a bare event dict."""
     batch = raw.get("Events") if isinstance(raw.get("Events"), list) else [raw]
@@ -216,7 +228,7 @@ def ingest(raw: dict) -> list[dict]:
         topic = _classify(e)
         sev = e.get("Severity") or e.get("severity") or "OK"
         rack = e.get("rack") or _rack_of(origin)
-        machine = e.get("machine") or (origin.strip("/").split("/")[-1] if origin else None)
+        machine = e.get("machine") or _machine_of(origin)
         with OOB.lock:
             OOB.seq += 1
             rec = {"id": f"oob-{OOB.seq}", "topic": topic, "severity": sev,
@@ -298,12 +310,34 @@ def list_events(limit: int = Query(50, ge=1, le=500), topic: Optional[str] = Non
     return {"events": rows, "subscription": OOB.subscription}
 
 
+def _find_subscription(dest: str) -> Optional[str]:
+    """Id of an AI-Infra EventService subscription already pointing at dest.
+    Extra subscriptions to the same destination (left by earlier NOCP runs)
+    are deleted so each event is delivered once."""
+    coll = dsx.ai_get("/redfish/v1/EventService/Subscriptions", timeout=2.0)
+    found = []
+    for m in (coll or {}).get("Members", []) if isinstance(coll, dict) else []:
+        path = str(m.get("@odata.id", "")).removeprefix(dsx.ai_infra_url())
+        sub = dsx.ai_get(path, timeout=2.0)
+        if isinstance(sub, dict) and sub.get("Destination") == dest:
+            found.append((sub.get("Id"), path))
+    for _, path in found[1:]:
+        dsx.ai_send("DELETE", path, timeout=2.0)
+    return found[0][0] if found else None
+
+
 def subscribe(destination: Optional[str] = None) -> dict:
     dest = destination or (os.environ.get("NOCP_PUBLIC_URL", "http://127.0.0.1:8000")
                            .rstrip("/") + "/api/v1/oob/events")
     if not destination_allowed(dest):
         rec = {"destination": dest, "status": None, "subscribed": False,
                "error": "destination not in NOCP_WEBHOOK_DESTINATIONS", "at": _now()}
+        OOB.subscription = rec
+        return rec
+    existing = _find_subscription(dest)
+    if existing:                     # idempotent: restarts must not stack duplicates
+        rec = {"destination": dest, "status": 200, "subscribed": True,
+               "id": existing, "reused": True, "at": _now()}
         OOB.subscription = rec
         return rec
     st, body = dsx.ai_send("POST", "/redfish/v1/EventService/Subscriptions",
@@ -359,6 +393,11 @@ def machine_action(machine: str, action: str) -> dict:
         via = "local-fallback"
     elif st >= 400:
         raise HTTPException(st, resp.get("detail") if isinstance(resp, dict) else str(resp))
+    # NICo answers 202 even when its AI-Infra Redfish call failed
+    # ({"delegated": false, "detail": ...}) — surface that instead of "accepted".
+    if via == "nico" and isinstance(resp, dict) and resp.get("delegated") is False:
+        raise HTTPException(409, f"NICo accepted {action} but the BMC refused it: "
+                                 f"{resp.get('detail', '')}")
     rec = {"machine": machine, "action": action, "accepted": True, "via": via,
            "status": st, "at": _now()}
     events.publish("health", {"event": "oob-action", **rec}, source="nocp.oob")

@@ -243,6 +243,13 @@ def _run_stage(case: dict, stage: str) -> dict:
             pass
         dsx.nico_send("PATCH", dsx.nico_rest_path("machine_one", id=host_id),
                       json={"maintenanceMessage": None})
+        try:                                       # released host → sanitize → pool_ready
+            if adapter.get_host(host_id).state.value == "released":
+                from .adapters import wait_job
+                job = wait_job(adapter, adapter.sanitize(host_id))
+                step["sanitize"] = job.state
+        except Exception as e:                     # noqa: BLE001 — record, keep going
+            step["warning"] = f"nico sanitize: {getattr(e, 'detail', e)}"
         if tray is not None:
             tray.state = HwState.allocated if tray.tenant_id else HwState.ready
         step["detail"] = "returned to pool"
@@ -340,6 +347,11 @@ def firmware_baseline() -> dict:
     if body is not None:
         from .adapters import _items
         items = _items(body) or (body.get("components") if isinstance(body, dict) else None)
+        if not items and isinstance(body, dict) and isinstance(body.get("baseline"), dict):
+            # NICo ext: {"baseline": {trayType: {component: version}}}
+            items = [{"component": f"{tt} {comp}", "tray_type": tt, "baseline": ver}
+                     for tt, comps in body["baseline"].items() if isinstance(comps, dict)
+                     for comp, ver in comps.items()]
         if items:
             return {"source": "nico", "components": items}
     return {"source": "nocp", "site_policy": "drift → auto-update on idle hosts (OOB)",
@@ -352,6 +364,17 @@ def firmware_drift() -> dict:
     if body is not None:
         from .adapters import _items
         rows = _items(body) or (body.get("drift") if isinstance(body, dict) else None) or []
+        if not rows and isinstance(body, dict) and isinstance(body.get("trays"), list):
+            # NICo ext: {"total", "trays": [{trayId, type, rackId, diffs: [{component,
+            # expected, actual}]}]} → one row per drifted component
+            rows = [{"machine": t.get("trayId"), "rack": t.get("rackId"),
+                     "tray_type": t.get("type"),
+                     "component": f"{t.get('type')} {d.get('component')}",
+                     "current": d.get("actual"), "baseline": d.get("expected"),
+                     "severity": "warning",
+                     "remediation": "PATCH /tray/{id}/firmware"}
+                    for t in body["trays"] if isinstance(t, dict)
+                    for d in t.get("diffs") or [] if isinstance(d, dict)]
         return {"source": "nico", "drift": rows}
     adapter = _adapter()
     try:

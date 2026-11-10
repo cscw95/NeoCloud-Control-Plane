@@ -125,10 +125,23 @@ def _local_domains() -> list[dict]:
     return out
 
 
-def _enrich(d: dict) -> dict:
+def _group_racks(groups: Optional[list]) -> dict:
+    """domain id -> rack ids, from DPS resource groups (AI-Infra reports a
+    domain's `racks` as a count, the rack ids live on its groups)."""
+    out: dict = {}
+    for g in groups or []:
+        if isinstance(g, dict) and isinstance(g.get("racks"), list):
+            out.setdefault(g.get("domain"), []).extend(g["racks"])
+    return out
+
+
+def _enrich(d: dict, groups: Optional[dict] = None) -> dict:
     """Attach the NOCP site-budget link to a domain (remote or local)."""
     block = d.get("compute_block") or (d["id"][3:] if str(d.get("id", "")).startswith("pd-") else None)
-    racks = [STORE.racks[r] for r in d.get("racks") or [] if r in STORE.racks]
+    rack_ids = d.get("racks")
+    if not isinstance(rack_ids, list):
+        rack_ids = (groups or {}).get(d.get("id")) or []
+    racks = [STORE.racks[r] for r in rack_ids if r in STORE.racks]
     if not racks and block:
         racks = _block_racks(block)
     cap = sum(r.power_cap_kw for r in racks)
@@ -169,6 +182,9 @@ class SimulateRequest(BaseModel):
     domain: str
     operating_limit_kw: Optional[float] = Field(None, gt=0)
     workload_mix: dict = Field(default_factory=lambda: {"training": 0.6, "inference": 0.4})
+    profile: Optional[str] = None         # WPPS profile (AI-Infra default max-p)
+    smoothing: Optional[bool] = None      # power smoothing (default: the domain's)
+    gpus_per_rack: Optional[int] = Field(None, ge=1, le=576)
 
 
 class FlexEvent(BaseModel):
@@ -191,7 +207,8 @@ def list_domains() -> dict:
     body = _remote("/dps/v1/power-domains")
     if isinstance(body, (list, dict)):
         items = body if isinstance(body, list) else dsx_items(body)
-        return {"source": "ai-infra", "domains": [_enrich(d) for d in items]}
+        groups = _group_racks(dsx_items(_remote("/dps/v1/resource-groups") or []))
+        return {"source": "ai-infra", "domains": [_enrich(d, groups) for d in items]}
     return {"source": "local-fallback", "domains": [_enrich(d) for d in _local_domains()]}
 
 
@@ -232,7 +249,8 @@ def _find_local(domain_id: str) -> dict:
 def get_domain(domain_id: str) -> dict:
     body = _remote(f"/dps/v1/power-domains/{domain_id}")
     if isinstance(body, dict):
-        return {"source": "ai-infra", "domain": _enrich(body)}
+        groups = _group_racks(dsx_items(_remote("/dps/v1/resource-groups") or []))
+        return {"source": "ai-infra", "domain": _enrich(body, groups)}
     return {"source": "local-fallback", "domain": _enrich(_find_local(domain_id))}
 
 

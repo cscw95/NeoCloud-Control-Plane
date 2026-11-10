@@ -163,7 +163,8 @@ class NicoHttpAdapter:
     """
 
     def __init__(self, base_url: str, client: Optional[httpx.Client] = None) -> None:
-        self._c = client or httpx.Client(base_url=base_url, timeout=30.0)
+        self._c = client or httpx.Client(base_url=base_url, timeout=30.0,
+                                         headers=_emu_headers())
 
     def _unwrap(self, resp: httpx.Response) -> dict:
         if resp.status_code >= 400:
@@ -286,6 +287,11 @@ _STATUS_MAP = {
 AMBIGUOUS = object()
 
 
+def _emu_headers() -> dict:
+    from .dsx import emu_headers
+    return emu_headers()
+
+
 def nico_root(url: str) -> str:
     """Emulator root from NOCP_NICO_URL (accepts either root or /nico-bridge base)."""
     return url.rstrip("/").rsplit("/nico-bridge", 1)[0]
@@ -344,7 +350,8 @@ class NicoRestClient:
     def __init__(self, root_url: str, org: str = "neocloud",
                  client: Optional[httpx.Client] = None) -> None:
         self.org = org
-        self._c = client or httpx.Client(base_url=nico_root(root_url), timeout=15.0)
+        self._c = client or httpx.Client(base_url=nico_root(root_url), timeout=15.0,
+                                         headers=_emu_headers())
 
     def path(self, key: str, **kw) -> str:
         return NICO_REST_PATHS[key].format(org=self.org, **kw)
@@ -380,7 +387,7 @@ class NicoRestAdapter(NicoHttpAdapter):
     def __init__(self, url: str, org: str = "neocloud",
                  client: Optional[httpx.Client] = None) -> None:
         root = nico_root(url)
-        c = client or httpx.Client(base_url=root, timeout=30.0)
+        c = client or httpx.Client(base_url=root, timeout=30.0, headers=_emu_headers())
         self.rest = NicoRestClient(root, org, client=c)
         super().__init__(root, client=_PrefixClient(c, "/nico-bridge"))
 
@@ -419,7 +426,9 @@ class NicoRestAdapter(NicoHttpAdapter):
         if body is None:
             return super().get_host(host_id)
         host = _machine_to_host(body)
-        if host.state.value == "allocated":
+        # REST folds several bridge states together: assigned (reserved..allocated)
+        # and sanitizing (released, wipe pending) — re-read the exact one.
+        if host.state.value in ("allocated", "sanitizing"):
             return super().get_host(host_id)
         return host
 
