@@ -1,0 +1,51 @@
+{
+  "$comment": "Subset of openai/openai-openapi @c6522b4e0c48 openapi.yaml (MIT, (c) OpenAI): components/schemas ErrorResponse, Error. misalignment omitted.",
+  "ErrorResponse": {
+    "type": "object",
+    "properties": {
+      "error": {
+        "$ref": "#/components/schemas/Error"
+      }
+    },
+    "required": [
+      "error"
+    ]
+  },
+  "Error": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "message": {
+        "type": "string"
+      },
+      "param": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "message",
+      "param",
+      "code"
+    ]
+  }
+}

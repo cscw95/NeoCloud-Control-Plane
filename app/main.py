@@ -44,6 +44,8 @@ from . import (
     trace,
     tray_emu,
     vast_fake,
+    token_quota,
+    metering,
 )
 from .seed import seed_default, seed_demo_samples
 from .store import STORE
@@ -68,6 +70,8 @@ async def lifespan(app: FastAPI):
     events.BUS.reset()
     oob.OOB.reset()
     ncp.RMA.reset()
+    token_quota.reset()            # F02 quota buckets·overrides
+    metering.reset()               # F04 metering log
     metrics.METRICS.reset()        # reset real-time API call counters
     token_api.reset()              # F01/F03 token gateway keys·usage·guard
     lifecycle.bootstrap_nodes()
@@ -120,6 +124,8 @@ app.include_router(identity.router)
 app.include_router(token_api.router)
 app.include_router(token_api.ops)
 app.include_router(token_guard.router)
+app.include_router(token_quota.router)
+app.include_router(metering.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
@@ -190,6 +196,8 @@ def reseed(blueprints: str | None = None) -> dict:
     oob.OOB.reset()
     ncp.RMA.reset()
     token_api.reset()
+    token_quota.reset()            # F02 quota buckets·overrides
+    metering.reset()               # F04 metering log
     lifecycle.bootstrap_nodes()
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()

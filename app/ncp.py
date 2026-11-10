@@ -84,9 +84,12 @@ def metering_usage(tenant: Optional[str] = None,
 
     def tot(metric):
         return round(sum(x["quantity"] for x in lines if x["metric"] == metric), 4)
-    return {"tenant": t, "period": _period(), "gpu_hours": tot("gpu_hour"),
-            "instance_hours": tot("instance_hour"), "k8s_node_hours": tot("k8s_node_hour"),
-            "lines": lines, "generated_at": _now()}
+    out = {"tenant": t, "period": _period(), "gpu_hours": tot("gpu_hour"),
+           "instance_hours": tot("instance_hour"), "k8s_node_hours": tot("k8s_node_hour"),
+           "lines": lines, "generated_at": _now()}
+    from . import metering                       # F04: token_lines, tokens_by_type
+    out.update(metering.usage_extension(t))
+    return out
 
 
 # ---------------------------------------------------------------------------

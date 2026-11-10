@@ -86,6 +86,10 @@ class Store:
         self.api_keys: dict[str, dict] = {}         # key_id -> tenant API key
         self.members: dict[str, dict] = {}          # member_id -> organization member
         self.node_ops: dict[str, dict] = {}         # op_id -> node reboot/replace operation
+        # token quotas · metering (F02/F04 — token_quota.py, metering.py)
+        self.token_quotas: dict[tuple, dict] = {}   # (tenant, tier, key_id|None) -> limits
+        self.token_quota_overrides: dict[tuple, dict] = {}  # (tenant, tier) -> override
+        self.metering_events: list[dict] = []       # usage events, append-only (metering.py indexes keys)
         # monotonic counters for generated ids
         self._counters: dict[str, int] = {}
 
@@ -111,6 +115,9 @@ class Store:
                 self.api_keys, self.members, self.node_ops,
             ):
                 d.clear()
+            # re-created, not cleared: tests may replace or delete these attributes
+            self.token_quotas, self.token_quota_overrides = {}, {}
+            self.metering_events = []
             self._counters.clear()
 
     # -- convenience lookups ------------------------------------------------
