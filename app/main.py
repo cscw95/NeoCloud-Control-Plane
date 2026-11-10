@@ -30,7 +30,9 @@ from . import (
     customer_ops,
     dsx,
     events,
+    ncp,
     nvke,
+    oob,
     power,
     shared_services,
     tenancy,
@@ -59,6 +61,8 @@ async def lifespan(app: FastAPI):
     nvke.NVKE.reset()
     power.POWER.reset()
     events.BUS.reset()
+    oob.OOB.reset()
+    ncp.RMA.reset()
     metrics.METRICS.reset()        # reset real-time API call counters
     lifecycle.bootstrap_nodes()
     # compute-tray emulation — background tick (2s)
@@ -67,6 +71,11 @@ async def lifespan(app: FastAPI):
     if fresh:                      # sample faults/tickets only in the demo seed
         seed_demo_samples(STORE)
     ticker = asyncio.create_task(tray_emu.EMULATOR.run_loop())
+    # DSX: register for AI-Infra Redfish EventService pushes (best effort, off-thread)
+    import os
+    import threading
+    if os.environ.get("NOCP_OOB_AUTOSUBSCRIBE", "1") == "1" and not dsx.offline():
+        threading.Thread(target=oob.subscribe, daemon=True).start()
     yield
     ticker.cancel()
 
@@ -98,6 +107,8 @@ app.include_router(dsx.router)
 app.include_router(nvke.router)
 app.include_router(power.router)
 app.include_router(events.router)
+app.include_router(oob.router)
+app.include_router(ncp.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
@@ -155,6 +166,8 @@ def reseed(blueprints: str | None = None) -> dict:
     nvke.NVKE.reset()
     power.POWER.reset()
     events.BUS.reset()
+    oob.OOB.reset()
+    ncp.RMA.reset()
     lifecycle.bootstrap_nodes()
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()

@@ -429,9 +429,12 @@ def set_power_policy(rack_id: str, body: PowerPolicyUpdate):
     if not rack:
         raise HTTPException(404, f"rack '{rack_id}' not found")
     policy = body.policy.lower()
+    profile = body.profile.lower() if body.profile else None
+    if policy in power.PROFILE_IDS and not profile:   # console sends {"policy": "<wpps>"}
+        profile = policy
+        policy = {"max-q": "maxq", "max-p": "maxp"}.get(policy, "dps-dynamic")
     if policy not in power.RACK_POLICIES:
         raise HTTPException(422, "policy must be 'maxq', 'maxp' or 'dps-dynamic'")
-    profile = body.profile.lower() if body.profile else None
     if profile and profile not in power.PROFILE_IDS:
         raise HTTPException(422, f"profile must be one of {sorted(power.PROFILE_IDS)}")
     prop = power.apply_rack_policy(rack, policy, profile)

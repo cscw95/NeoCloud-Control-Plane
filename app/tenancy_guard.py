@@ -55,6 +55,12 @@ from .store import STORE
 TENANT_HEADER = "x-tenant-id"
 OPERATOR_HEADER = "x-operator"
 _WEBHOOKS = frozenset({("POST", "/api/v1/oob/events")})
+# EventSource cannot send headers — the SSE stream accepts ?operator=true
+_SSE_PATHS = frozenset({"/api/v1/events"})
+# operator-only DSX surfaces (fleet health, power, raw infra) — closed to tenants
+_OPERATOR_ONLY = ("/api/v1/oob", "/api/v1/infra", "/api/v1/power", "/api/v1/rma",
+                  "/api/v1/firmware")
+_ISOLATION_PATH_RE = re.compile(r"^/api/v1/isolation/(?P<tid>[^/]+)")
 ROLE_HEADER = "x-tenant-role"
 
 # public (unauthenticated) surfaces never intervened in, even with the header
@@ -82,6 +88,7 @@ _QUERY_SCOPED_LISTS = frozenset({
     "/api/v1/cpu-nodes",
     "/api/v1/nvlink-partitions",
     "/api/v1/nvke/clusters",
+    "/api/v1/metering/usage",
 })
 
 # lists without a tenant filter parameter — post-filter the response JSON array
@@ -107,7 +114,7 @@ def _scope_violation(request: Request, tid: str) -> bool:
     leaking existence)."""
     path = request.url.path
 
-    m = _TENANT_PATH_RE.match(path)
+    m = _TENANT_PATH_RE.match(path) or _ISOLATION_PATH_RE.match(path)
     if m and m.group("tid") != tid:
         return True
 
@@ -195,6 +202,9 @@ def _operator_allowed(request: Request) -> bool:
     import os
     if os.environ.get("NOCP_DEV_OPERATOR_DEFAULT", "0") == "1":
         return True
+    if (request.method == "GET" and request.url.path in _SSE_PATHS
+            and request.query_params.get("operator", "").lower() in ("true", "1")):
+        return True
     return (request.headers.get(OPERATOR_HEADER) or "").strip().lower() in ("true", "1")
 
 
@@ -216,6 +226,8 @@ class TenancyGuardMiddleware(BaseHTTPMiddleware):
         # 0) block admin surfaces from the customer plane
         if path.startswith("/api/v1/admin"):
             return _forbidden("admin surface not allowed for tenant scope")
+        if path.startswith(_OPERATOR_ONLY):
+            return _forbidden("operator surface not allowed for tenant scope")
 
         # 1) tenant scope (path-based ownership check)
         if _scope_violation(request, tid):
