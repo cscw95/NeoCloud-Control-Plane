@@ -1,0 +1,94 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "x-neocloud": true,
+ "$id": "https://neocloud.example/schemas/audit-export.v1.json",
+ "title": "NeoCloud audit log export (F34)",
+ "description": "NeoCloud extension, no upstream. SEC08 audit trail with a SHA-256 hash chain: hash = sha256(prev_hash + canonical JSON of seq..tenant_ref); genesis = 64 zeros; X-Audit-Digest = last hash.",
+ "type": "object",
+ "required": [
+  "period",
+  "from",
+  "to",
+  "count",
+  "digest",
+  "algorithm",
+  "genesis",
+  "entries"
+ ],
+ "properties": {
+  "period": {
+   "type": "string"
+  },
+  "from": {
+   "type": "string"
+  },
+  "to": {
+   "type": "string"
+  },
+  "count": {
+   "type": "integer"
+  },
+  "digest": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{64}$"
+  },
+  "algorithm": {
+   "enum": [
+    "sha256-chain"
+   ]
+  },
+  "genesis": {
+   "type": "string"
+  },
+  "entries": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "required": [
+     "seq",
+     "at",
+     "actor",
+     "action",
+     "target",
+     "result",
+     "prev_hash",
+     "hash"
+    ],
+    "properties": {
+     "seq": {
+      "type": "integer"
+     },
+     "at": {
+      "type": "string"
+     },
+     "actor": {
+      "type": "string"
+     },
+     "action": {
+      "type": "string"
+     },
+     "target": {
+      "type": "string"
+     },
+     "result": {
+      "type": "string"
+     },
+     "tenant_ref": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "prev_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+     },
+     "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+     }
+    }
+   }
+  }
+ }
+}

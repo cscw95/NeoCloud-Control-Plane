@@ -1,0 +1,128 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "x-neocloud": true,
+ "$id": "https://neocloud.example/schemas/compliance-controls.v1.json",
+ "title": "NeoCloud ISMS-P control mapping (F34)",
+ "description": "NeoCloud extension, no upstream. Control ids/names follow the public KISA ISMS-P certification criteria (공개 문서 기준).",
+ "type": "object",
+ "required": [
+  "framework",
+  "generated_at",
+  "controls",
+  "summary"
+ ],
+ "properties": {
+  "framework": {
+   "type": "object",
+   "required": [
+    "id",
+    "basis"
+   ],
+   "properties": {
+    "id": {
+     "enum": [
+      "ISMS-P"
+     ]
+    },
+    "basis": {
+     "type": "string"
+    }
+   }
+  },
+  "generated_at": {
+   "type": "string"
+  },
+  "controls": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "required": [
+     "id",
+     "domain",
+     "name_ko",
+     "name_en",
+     "neocloud",
+     "evidence",
+     "status"
+    ],
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^[123]\\.[0-9]+\\.[0-9]+$"
+     },
+     "domain": {
+      "type": "string"
+     },
+     "name_ko": {
+      "type": "string"
+     },
+     "name_en": {
+      "type": "string"
+     },
+     "neocloud": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "evidence": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "required": [
+        "kind",
+        "ref"
+       ],
+       "properties": {
+        "kind": {
+         "type": "string"
+        },
+        "ref": {
+         "type": "string"
+        },
+        "count": {
+         "type": "integer",
+         "minimum": 0
+        }
+       }
+      }
+     },
+     "status": {
+      "enum": [
+       "implemented",
+       "partial",
+       "planned"
+      ]
+     }
+    }
+   }
+  },
+  "summary": {
+   "type": "object",
+   "required": [
+    "implemented",
+    "partial",
+    "planned",
+    "total",
+    "coverage_pct"
+   ],
+   "properties": {
+    "implemented": {
+     "type": "integer"
+    },
+    "partial": {
+     "type": "integer"
+    },
+    "planned": {
+     "type": "integer"
+    },
+    "total": {
+     "type": "integer"
+    },
+    "coverage_pct": {
+     "type": "number"
+    }
+   }
+  }
+ }
+}
