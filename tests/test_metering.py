@@ -175,5 +175,8 @@ def test_tenant_scope_and_operator_only(m):
 def test_billing_reads_store_shape(m):
     from app.store import STORE
     metering.ingest(_ev("gw:bill:input"))
-    assert isinstance(STORE.metering_events, dict)
-    assert STORE.metering_events["gw:bill:input"]["quantity"] == 100
+    assert isinstance(STORE.metering_events, list)
+    assert [e["quantity"] for e in STORE.metering_events
+            if e["idempotency_key"] == "gw:bill:input"] == [100]
+    STORE.metering_events = []                       # replaced list → index rebuilt
+    assert metering.ingest(_ev("gw:bill:input"))[1] is False

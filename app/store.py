@@ -89,7 +89,7 @@ class Store:
         # token quotas · metering (F02/F04 — token_quota.py, metering.py)
         self.token_quotas: dict[tuple, dict] = {}   # (tenant, tier, key_id|None) -> limits
         self.token_quota_overrides: dict[tuple, dict] = {}  # (tenant, tier) -> override
-        self.metering_events: dict[str, dict] = {}  # idempotency_key -> usage event (append-only)
+        self.metering_events: list[dict] = []       # usage events, append-only (metering.py indexes keys)
         # monotonic counters for generated ids
         self._counters: dict[str, int] = {}
 
@@ -115,8 +115,9 @@ class Store:
                 self.api_keys, self.members, self.node_ops,
             ):
                 d.clear()
-            for d in (self.token_quotas, self.token_quota_overrides, self.metering_events):
-                d.clear()
+            # re-created, not cleared: tests may replace or delete these attributes
+            self.token_quotas, self.token_quota_overrides = {}, {}
+            self.metering_events = []
             self._counters.clear()
 
     # -- convenience lookups ------------------------------------------------

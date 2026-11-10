@@ -9,8 +9,8 @@ reconciliation.
   POST /api/v1/metering/nico/state          NICo ManagedHostStateChangeMessage → hour events
   GET  /api/v1/metering/usage               (ncp.py) gains token_lines + tokens_by_type
 
-One append-only log (`STORE.metering_events`, dict idempotency_key → record,
-insertion ordered — the shape app/billing.py reads). A second event with a
+One append-only log (`STORE.metering_events`, a list of records with a key
+index — the shape app/billing.py and the F01 gateway read). A second event with a
 known idempotency key is dropped (first write wins, Lago transaction_id
 semantics). `EventSink` is the Kafka / OpenMeter adapter boundary: every
 accepted record is handed to SINK.emit() as a CloudEvents 1.0 envelope.
@@ -110,21 +110,28 @@ class _Meter:
         self.duplicates = 0
         self.open_allocs: dict[str, dict] = {}     # machine_id -> open NICo allocation
         self.engine_cursor = 0                     # AI-Infra /dynamo/v1/usage `next`
+        self._log: Optional[list] = None
+        self.index: dict[str, dict] = {}           # idempotency_key -> record
 
-    @staticmethod
-    def log() -> dict:
+    def log(self) -> list:
+        """STORE.metering_events (append-only list) — rebuilds the key index
+        when the list was replaced (reseed, tests) or a pre-F04 stub left a
+        dict or nothing."""
         t = getattr(STORE, "metering_events", None)
-        if not isinstance(t, dict):
-            old = t or []
-            t = {}
-            for e in old:                          # list shape from a pre-F04 stub
-                t.setdefault(e.get("idempotency_key") or f"legacy:{len(t)}", e)
+        if not isinstance(t, list):
+            t = list(t.values()) if isinstance(t, dict) else []
             setattr(STORE, "metering_events", t)
+        if t is not self._log or len(self.index) != len(t):
+            self._log = t
+            self.index = {}
+            for i, e in enumerate(t):
+                self.index.setdefault(e.get("idempotency_key") or f"legacy:{i}", e)
         return t
 
     def reset(self) -> None:
         with self.lock:
             self.log().clear()
+            self.index.clear()
             self.seq = 0
             self.duplicates = 0
             self.open_allocs.clear()
@@ -178,13 +185,14 @@ def ingest(event: dict) -> tuple[dict, bool]:
     rec = validate(event)
     with METER.lock:
         log = METER.log()
-        prev = log.get(rec["idempotency_key"])
+        prev = METER.index.get(rec["idempotency_key"])
         if prev is not None:
             METER.duplicates += 1
             return prev, True
         METER.seq += 1
         rec = {**rec, "seq": METER.seq, "received_at": _iso()}
-        log[rec["idempotency_key"]] = rec
+        log.append(rec)
+        METER.index[rec["idempotency_key"]] = rec
     SINK.emit(to_cloudevent(rec))
     return rec, False
 
@@ -195,7 +203,7 @@ def events(tenant_id: Optional[str] = None, source: Optional[str] = None,
     t0 = _parse(since) if since else None
     t1 = _parse(until) if until else None
     with METER.lock:
-        rows = list(METER.log().values())
+        rows = list(METER.log())
     out = []
     for r in rows:
         if tenant_id and r.get("tenant_id") != tenant_id:
