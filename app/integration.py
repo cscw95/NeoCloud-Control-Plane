@@ -123,10 +123,12 @@ def _component_nodes(up: bool):
                    f"validation {b['summary'].get('pass', 0)} pass"
                    + (f" · {b['summary'].get('fail', 0)} fail"
                       if b["summary"].get("fail") else "")),
-        "NetQ REST", "SN5600 leaf/spine")
-    add("dlc", "SMCI in-row CDU (DLC-2)", "/emulator/v1/obs/dlc/cdus",
+        "NetQ REST", "Dell PowerSwitch SN5610 leaf/spine")
+    add("dlc", "Dell PowerCool CDU (DLC-2)", "/emulator/v1/obs/dlc/cdus",
         lambda b: (("unknown" if any((c.get("alarms") or []) for c in b)
                     else "up"),
+                   # vendor/model as reported by AI-Infra (Dell PowerCool CDU C7000)
+                   f"{(b[0].get('model') or 'CDU') if b else 'CDU'} · "
                    f"CDU {len(b)} · alarms "
                    f"{sum(len(c.get('alarms') or []) for c in b)}"),
         "Redfish/Modbus", "액랭 공급/회수")

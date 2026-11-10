@@ -337,7 +337,7 @@ FIRMWARE_BASELINE = [
     {"component": "ConnectX-8 FW", "baseline": "40.44.1036"},
     {"component": "BlueField-4 (DOCA)", "baseline": "3.1.0"},
     {"component": "NVSwitch Tray FW", "baseline": "2.5.1"},
-    {"component": "Power Shelf (Delta PSU)", "baseline": "1.12.4"},
+    {"component": "Power Shelf (Dell PSU)", "baseline": "1.12.4"},
 ]
 
 

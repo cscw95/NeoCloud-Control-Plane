@@ -159,7 +159,7 @@ def rack_detail(rack_id: str) -> dict:
                 "sel_critical": sum(1 for e in sel if e.get("Severity") == "Critical"),
                 "leak": row.get("leak", "OK")})
     shelves = [{"shelf": i + 1, "psu_ok": PSU_PER_SHELF, "psu_total": PSU_PER_SHELF,
-                "vendor": "Delta"} for i in range(PSU_SHELVES_PER_RACK)]
+                "vendor": "Dell"} for i in range(PSU_SHELVES_PER_RACK)]
     return {"source": "ai-infra" if (power or thermal) else "local-fallback",
             **row, "trays": trays, "power_shelves": shelves,
             "redfish": {"power_subsystem": power, "thermal_subsystem": thermal},
