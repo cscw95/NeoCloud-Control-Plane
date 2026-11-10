@@ -309,8 +309,11 @@ def _machine_to_host(m: dict) -> NicoHost:
     return NicoHost(
         host_id=mid,
         tray_id=(labels.get("trayId") or meta.get("trayId")
+                 or (m.get("placementInRack") or {}).get("trayId")
                  or (mid[3:] if mid.startswith("nh-") else "")),
-        sku=m.get("instanceTypeId") or labels.get("sku") or "",
+        # spec instanceTypeId is a UUID — the SKU is the controller machine type
+        sku=(labels.get("sku") or m.get("controllerMachineType")
+             or m.get("instanceTypeId") or ""),
         site=m.get("siteId") or "",
         firmware_ok=not m.get("firmwareDrift", False),
         state=state,

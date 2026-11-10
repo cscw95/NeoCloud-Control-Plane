@@ -44,7 +44,8 @@ def test_mode_defaults_to_rest(monkeypatch):
 
 def test_rest_list_hosts_maps_machines():
     machines = [{"id": "nh-t-1", "status": "Ready", "lifecycleState": "ready",
-                 "siteId": "s1", "instanceTypeId": "vr-nvl72"},
+                 "siteId": "s1", "instanceTypeId": "6f2c-uuid",
+                 "controllerMachineType": "vr-nvl72"},
                 {"id": "nh-t-2", "status": "Initializing", "lifecycleState": "validating"},
                 {"id": "nh-t-3", "status": "InUse", "lifecycleState": "assigned"}]
     a, calls = _adapter({
@@ -53,7 +54,7 @@ def test_rest_list_hosts_maps_machines():
                                                "state": "provisioned"}])})
     hosts = a.list_hosts()
     assert [h.state.value for h in hosts] == ["pool_ready", "discovered", "provisioned"]
-    assert hosts[0].tray_id == "t-1"
+    assert hosts[0].tray_id == "t-1" and hosts[0].sku == "vr-nvl72"
     assert calls[0] == ("GET", "/v2/org/neocloud/nico/machine")
 
 
