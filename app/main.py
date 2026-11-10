@@ -32,6 +32,8 @@ from . import (
     dsx,
     events,
     ncp,
+    remediation,
+    sla,
     nvke,
     oob,
     power,
@@ -64,6 +66,8 @@ async def lifespan(app: FastAPI):
     events.BUS.reset()
     oob.OOB.reset()
     ncp.RMA.reset()
+    remediation.reset()
+    sla.reset()
     metrics.METRICS.reset()        # reset real-time API call counters
     lifecycle.bootstrap_nodes()
     # compute-tray emulation — background tick (2s)
@@ -111,6 +115,8 @@ app.include_router(power.router)
 app.include_router(events.router)
 app.include_router(oob.router)
 app.include_router(ncp.router)
+app.include_router(remediation.router)
+app.include_router(sla.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
@@ -178,6 +184,8 @@ def reseed(blueprints: str | None = None) -> dict:
     events.BUS.reset()
     oob.OOB.reset()
     ncp.RMA.reset()
+    remediation.reset()
+    sla.reset()
     lifecycle.bootstrap_nodes()
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()

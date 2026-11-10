@@ -42,8 +42,9 @@ TICKET_STATUSES = ("open", "in_progress", "resolved")
 TICKET_SEVERITIES = ("low", "medium", "high", "critical")
 # ticket type·routing (CP-005/006/009) — tech/change → ops,
 # billing_dispute (billing dispute)·contract → biz
-TICKET_TYPES = ("tech", "change", "billing_dispute")
-TICKET_ROUTING = {"tech": "ops", "change": "ops", "billing_dispute": "biz"}
+TICKET_TYPES = ("tech", "change", "billing_dispute", "sla_violation")
+TICKET_ROUTING = {"tech": "ops", "change": "ops", "billing_dispute": "biz",
+                  "sla_violation": "ops"}
 CHANGE_SCOPES = ("in_contract", "contract_amendment")
 BILLING_DISPUTE_POLICY = ("납기 유지·차기 청구 조정 원칙"
                           "(명백한 금액 오류만 재발행)")
@@ -77,7 +78,7 @@ def create_ticket(body: TicketCreate) -> Ticket:
         ticket = Ticket(
             id=tid, tenant_id=body.tenant_id, subject=body.subject,
             body=body.body, severity=body.severity, ref=body.ref,
-            type=body.type, routed_to=TICKET_ROUTING[body.type],
+            type=body.type, routed_to=TICKET_ROUTING[body.type], refs=body.refs,
             change_scope=(body.change_scope
                           or ("in_contract" if body.type == "change" else None)),
             policy=(BILLING_DISPUTE_POLICY

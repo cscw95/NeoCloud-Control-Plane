@@ -492,6 +492,7 @@ class Ticket(BaseModel):
     change_scope: Optional[str] = None  # change ticket: in_contract | contract_amendment
     policy: Optional[str] = None      # billing_dispute: guidance on billing-dispute handling policy
     ref: Optional[str] = None         # related resource (node/cluster/order)
+    refs: list[str] = Field(default_factory=list)   # F09 sla_violation: runs/incidents
     created_at: str = ""
     updated_at: str = ""
     comments: list[TicketComment] = Field(default_factory=list)
@@ -505,6 +506,7 @@ class TicketCreate(BaseModel):
     type: str = "tech"                # tech | change | billing_dispute
     change_scope: Optional[str] = None  # change ticket scope (within contract / contract change)
     ref: Optional[str] = None
+    refs: list[str] = Field(default_factory=list)
 
 
 class TicketUpdate(BaseModel):
