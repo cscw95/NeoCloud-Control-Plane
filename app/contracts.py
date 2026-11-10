@@ -294,6 +294,8 @@ def patch_contract(contract_id: str, body: ContractPatch,
                                          "(use /activate to activate)")
             c["status"] = "terminated"
             c["terminated_at"] = _now().isoformat()
+            from . import billing_lago            # Lago subscription.terminated
+            billing_lago.on_contract_terminated(c)
         if changes:
             if c["status"] != "draft" and set(changes) - {"sla_tier"}:
                 raise HTTPException(409, "only a draft contract can change terms")
@@ -320,6 +322,8 @@ def activate_contract(contract_id: str, request: Request) -> dict:
         c["status"] = "active"
         c["updated_at"] = now.isoformat()
         refresh_status(c, now)                     # back-dated term already over
+        from . import billing_lago                 # Lago plan + subscription.started
+        billing_lago.on_contract_activated(c)
         emit("BizPortal", "NeoCloudOS.M7", "internal",
              f"contract:activate → {contract_id}",
              f"약정 계약 활성 — {c['tenant_id']} {c['product']} "

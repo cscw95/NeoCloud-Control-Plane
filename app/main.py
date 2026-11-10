@@ -43,6 +43,8 @@ from . import (
     vast_fake,
     billing,
     contracts,
+    billing_lago,
+    billing_stripe,
 )
 from .seed import seed_default, seed_demo_samples
 from .store import STORE
@@ -115,6 +117,8 @@ app.include_router(oob.router)
 app.include_router(ncp.router)
 app.include_router(contracts.router)
 app.include_router(billing.router)
+app.include_router(billing_lago.router)
+app.include_router(billing_stripe.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.

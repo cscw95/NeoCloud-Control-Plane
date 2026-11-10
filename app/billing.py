@@ -24,6 +24,19 @@ Money: integer KRW, each line rounded half-up; VAT = floor(subtotal × 10%)
 per 1,000,000 tokens. Period boundaries are UTC calendar months.
 
 Tax invoice and payment are emulated adapters: no NTS (국세청) or PG call.
+
+Upstream alignment (WAVE-v2 "원본 충실도"; UPSTREAM-REFS §3.1 7–10): these
+/api/v1/billing endpoints stay as the NeoCloud facade. Underneath,
+  - billing_lago.py is the Lago-shaped surface (`/lago/api/v1/...`): customers,
+    plans, subscriptions, events (ingest → usage events read here), invoices
+    in Lago shape, and the Lago webhooks this module triggers (invoice.drafted
+    on run, invoice.created on finalize, invoice.payment_status_updated /
+    invoice.payment_failure on payment, invoice.voided);
+  - billing_stripe.py is the Stripe test-mode surface (`/stripe/v1/...`):
+    payment is a PaymentIntent created with confirm=true on the tenant's
+    Stripe customer (events payment_intent.succeeded / .payment_failed);
+  - billing_webhooks.py signs and logs every webhook
+    (GET /api/v1/billing/webhooks shows the raw headers and bodies).
 """
 
 from __future__ import annotations
@@ -256,6 +269,8 @@ def _metering_events() -> list[dict]:
     raw = getattr(STORE, "metering_events", None) or []
     if isinstance(raw, dict):
         raw = list(raw.values())
+    from . import billing_lago
+    raw = list(raw) + billing_lago.usage_events()     # Lago POST /events ingest
     out, seen = [], set()
     for e in raw:
         e = e.model_dump() if hasattr(e, "model_dump") else dict(e)
@@ -532,6 +547,9 @@ def run_invoices(body: InvoiceRun, request: Request) -> dict:
                         c["applied_invoice"] = inv["id"]
             STORE.invoices[inv["id"]] = inv
             (created if fresh else updated).append(inv["id"])
+            if fresh:
+                from . import billing_lago
+                billing_lago.on_invoice("drafted", inv)
             out.append(_summary(inv))
         emit("NeoCloudOS.M7", "BizPortal", "internal",
              f"POST /billing/invoices:run {body.period}",
@@ -603,30 +621,85 @@ def finalize_invoice(invoice_id: str, request: Request) -> dict:
         inv = _get_invoice(invoice_id, request)
         if inv["status"] != "draft":
             raise HTTPException(409, f"invoice is {inv['status']} (must be draft)")
-        now = _now()
-        compute_invoice(inv, now)            # freeze the latest numbers
-        inv["status"] = "finalized"
-        inv["finalized_at"] = now.isoformat()
-        inv["tax_invoice"] = _tax_invoice(inv, now)
-        for c in inv["sla_credits"]:
-            sc = STORE.sla_credits.get(c["credit_id"])
-            if sc is not None:
-                sc.update(status="applied", applied_invoice=inv["id"],
-                          amount_krw=c["amount"])
-        emit("NeoCloudOS.M7", "BizPortal", "internal",
-             f"invoice:finalize → {invoice_id}",
-             f"청구서 확정 — {inv['tenant_id']} {inv['period']} "
-             f"₩{inv['total']:,} (VAT ₩{inv['vat']:,}) · 세금계산서 "
-             f"{inv['tax_invoice']['approval_no']}",
-             payload=_summary(inv))
-        return inv
+        return finalize(inv)
+
+
+def finalize(inv: dict) -> dict:
+    """draft → finalized (Lago PUT /invoices/{id}/finalize shares this)."""
+    now = _now()
+    compute_invoice(inv, now)                # freeze the latest numbers
+    inv["status"] = "finalized"
+    inv["finalized_at"] = now.isoformat()
+    inv["tax_invoice"] = _tax_invoice(inv, now)
+    for c in inv["sla_credits"]:
+        sc = STORE.sla_credits.get(c["credit_id"])
+        if sc is not None:
+            sc.update(status="applied", applied_invoice=inv["id"],
+                      amount_krw=c["amount"])
+    emit("NeoCloudOS.M7", "BizPortal", "internal",
+         f"invoice:finalize → {inv['id']}",
+         f"청구서 확정 — {inv['tenant_id']} {inv['period']} "
+         f"₩{inv['total']:,} (VAT ₩{inv['vat']:,}) · 세금계산서 "
+         f"{inv['tax_invoice']['approval_no']}",
+         payload=_summary(inv))
+    from . import billing_lago
+    billing_lago.on_invoice("finalized", inv)
+    return inv
+
+
+def void(inv: dict) -> dict:
+    """finalized (unpaid) → void (Lago POST /invoices/{id}/void)."""
+    now = _now()
+    inv.update(status="void", voided_at=now.isoformat(), updated_at=now.isoformat())
+    for c in STORE.sla_credits.values():     # credits go back to the pool
+        if c.get("applied_invoice") == inv["id"]:
+            c.update(applied_invoice=None, status="pending")
+    from . import billing_lago
+    billing_lago.on_invoice("voided", inv)
+    return inv
+
+
+def charge(inv: dict, pm: dict) -> tuple[bool, dict]:
+    """Stripe PaymentIntent (test mode) for the invoice total, confirm=true.
+    Returns (succeeded, payment) — payment is the PaymentIntent plus the
+    NeoCloud fields invoice_id, tenant_id, kind, failure_code."""
+    from . import billing_lago, billing_stripe
+    cus = billing_stripe.customer_for(inv["tenant_id"])
+    if not pm.get("stripe_payment_method"):
+        pm["stripe_payment_method"] = billing_stripe.create_payment_method(
+            pm["token"], "card", cus["id"])["id"]
+    try:
+        pi = billing_stripe.create_payment_intent(
+            inv["total"], "krw", cus["id"], pm["stripe_payment_method"], True,
+            {"invoice_id": inv["id"], "tenant_id": inv["tenant_id"]},
+            f"NeoCloud invoice {inv['id']}", f"nocp-pay-{inv['id']}-"
+            f"{STORE.next_seq('payment')}")
+        ok = True
+    except billing_stripe.StripeError as e:
+        pi = e.body["error"].get("payment_intent")
+        if pi is None:
+            raise HTTPException(e.status, e.body)
+        ok = False
+    err = pi.get("last_payment_error") or {}
+    pay = {**pi, "invoice_id": inv["id"], "tenant_id": inv["tenant_id"],
+           "kind": pm["kind"], "failure_code": None if ok else err.get("code")}
+    STORE.payments[pi["id"]] = pay
+    now = _now()
+    if ok:
+        inv.update(status="paid", paid_at=now.isoformat(), payment=pay,
+                   payment_failed=False, updated_at=now.isoformat())
+        billing_lago.on_invoice("paid", inv, pay)
+    else:
+        inv.update(payment_failed=True, updated_at=now.isoformat())
+        billing_lago.on_invoice("payment_failed", inv, pay)
+    return ok, pay
 
 
 @router.post("/billing/invoices/{invoice_id}/pay")
 def pay_invoice(invoice_id: str, request: Request,
                 body: Optional[PayBody] = None) -> dict:
-    """Stripe-style payment intent (emulated). A token starting with
-    'tok_fail' declines (402)."""
+    """Stripe PaymentIntent (test mode, billing_stripe.py). A token starting
+    with 'tok_fail' (or Stripe's tok_chargeDeclined) declines (402)."""
     with STORE.lock:
         inv = _get_invoice(invoice_id, request)
         if inv["status"] != "finalized":
@@ -638,20 +711,10 @@ def pay_invoice(invoice_id: str, request: Request,
               else next((p for p in pms if p["default"]), None))
         if pm is None or pm["tenant_id"] != inv["tenant_id"]:
             raise HTTPException(422, "no payment method for tenant")
-        now = _now()
-        ok = not pm["token"].startswith("tok_fail")
-        pid = f"pi_{STORE.next_seq('payment'):06d}"
-        pay = {"id": pid, "object": "payment_intent", "invoice_id": inv["id"],
-               "tenant_id": inv["tenant_id"], "amount": inv["total"],
-               "currency": CURRENCY.lower(), "payment_method": pm["id"],
-               "kind": pm["kind"],
-               "status": "succeeded" if ok else "failed",
-               "failure_code": None if ok else "card_declined",
-               "created": now.isoformat()}
-        STORE.payments[pid] = pay
+        ok, pay = charge(inv, pm)
+        pid = pay["id"]
         if not ok:
             raise HTTPException(402, {"error": "card_declined", "payment": pay})
-        inv.update(status="paid", paid_at=now.isoformat(), payment=pay)
         emit("PaymentGateway", "NeoCloudOS.M7", "REST",
              f"POST /billing/invoices/{invoice_id}/pay → {pid}",
              f"결제 완료(모사) — ₩{inv['total']:,} {pm['kind']}",
@@ -690,6 +753,13 @@ def add_payment_method(body: PaymentMethodCreate, request: Request) -> dict:
               "tenant_id": body.tenant_id, "kind": body.kind,
               "token": body.token, "last4": digits[-4:] if digits else None,
               "default": first, "created_at": _now().isoformat()}
+        from . import billing_stripe
+        cus = billing_stripe.customer_for(body.tenant_id,
+                                          STORE.tenants[body.tenant_id].name)
+        pm["stripe_customer"] = cus["id"]
+        pm["stripe_payment_method"] = billing_stripe.create_payment_method(
+            body.token, "card" if body.kind == "card" else "customer_balance",
+            cus["id"])["id"]
         STORE.payment_methods[pm["id"]] = pm
         return {k: v for k, v in pm.items() if k != "token"}
 
@@ -704,3 +774,85 @@ def list_payment_methods(request: Request,
         return [{k: v for k, v in p.items() if k != "token"}
                 for p in STORE.payment_methods.values()
                 if not tenant_id or p["tenant_id"] == tenant_id]
+
+
+# ---------------------------------------------------------------------------
+# webhook log (NeoCloud extension: what Lago/Stripe sent, raw)
+# ---------------------------------------------------------------------------
+@router.get("/billing/webhooks")
+def list_webhooks(request: Request, provider: Optional[str] = None,
+                  tenant_id: Optional[str] = None,
+                  invoice_id: Optional[str] = None,
+                  type: Optional[str] = None) -> list:
+    """Signed Lago/Stripe webhooks with raw headers, body and delivery result
+    (operator; a tenant sees only its own)."""
+    from . import billing_webhooks
+    tid = _caller_tenant(request)
+    if tid is not None:
+        tenant_id = tid
+    with STORE.lock:
+        out = billing_webhooks.deliveries(provider, tenant_id=tenant_id,
+                                          invoice_id=invoice_id)
+        if type:
+            out = [r for r in out if r["type"] == type]
+        if tid is not None:
+            out = [r for r in out if r["refs"].get("tenant_id") == tid]
+        return [{k: v for k, v in r.items() if k != "raw"} | {"raw_size": len(r["raw"])}
+                for r in out]
+
+
+class DemoReset(BaseModel):
+    tenant_id: str
+
+
+@router.post("/billing/demo:reset")
+def demo_reset(body: DemoReset, request: Request) -> dict:
+    """Drop one tenant's billing state (contracts, invoices, payments, Lago and
+    Stripe objects, webhook log) so a billing demo reruns deterministically
+    (NeoCloud extension, operator only). Orders and the tenant are kept."""
+    _require_operator(request)
+    tid = body.tenant_id
+    with STORE.lock:
+        removed = {}
+
+        def _drop(name: str, d: dict, pred) -> None:
+            keys = [k for k, v in d.items() if pred(v)]
+            for k in keys:
+                del d[k]
+            removed[name] = len(keys)
+
+        cids = {k for k, c in STORE.contracts.items() if c["tenant_id"] == tid}
+        _drop("contracts", STORE.contracts, lambda c: c["tenant_id"] == tid)
+        _drop("invoices", STORE.invoices, lambda i: i["tenant_id"] == tid)
+        _drop("payments", STORE.payments, lambda p: p.get("tenant_id") == tid)
+        _drop("payment_methods", STORE.payment_methods,
+              lambda p: p["tenant_id"] == tid)
+        lago = STORE.lago
+        subs = {k for k, s in lago.get("subscriptions", {}).items()
+                if s["external_customer_id"] == tid}
+        _drop("lago_customers", lago.get("customers", {}),
+              lambda c: c["external_id"] == tid)
+        _drop("lago_subscriptions", lago.get("subscriptions", {}),
+              lambda s: s["external_customer_id"] == tid)
+        _drop("lago_events", lago.get("events", {}),
+              lambda e: e["object"]["external_subscription_id"] in subs | cids)
+        _drop("lago_plans", lago.get("plans", {}),
+              lambda p: (p.get("metadata") or {}).get("contract_id") in cids)
+        st = STORE.stripe
+        cus = {k for k, c in st.get("customers", {}).items()
+               if c["metadata"].get("tenant_id") == tid}
+        _drop("stripe_customers", st.get("customers", {}),
+              lambda c: c["id"] in cus)
+        _drop("stripe_payment_intents", st.get("payment_intents", {}),
+              lambda p: p.get("customer") in cus)
+        _drop("stripe_payment_methods", st.get("payment_methods", {}),
+              lambda p: p.get("customer") in cus)
+        before = len(STORE.billing_webhooks)
+        STORE.billing_webhooks[:] = [
+            r for r in STORE.billing_webhooks
+            if r["refs"].get("tenant_id") != tid
+            and r["refs"].get("stripe_customer") not in cus
+            and not (r["provider"] == "stripe"
+                     and (r["body"]["data"]["object"].get("customer") in cus))]
+        removed["webhooks"] = before - len(STORE.billing_webhooks)
+        return {"tenant_id": tid, "removed": removed}

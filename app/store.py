@@ -92,6 +92,11 @@ class Store:
         self.payment_methods: dict[str, dict] = {}  # pm_id -> payment method (Stripe-style)
         self.payments: dict[str, dict] = {}         # payment_id -> payment intent
         self.price_book: dict = {}                  # KRW price book (billing.py seeds it)
+        # Lago / Stripe emulators + webhook log (billing_lago/_stripe/_webhooks.py)
+        self.lago: dict[str, dict] = {}             # table -> {key: Lago object}
+        self.stripe: dict[str, dict] = {}           # table -> {id: Stripe object}
+        self.billing_webhook_endpoints: dict[str, dict] = {}  # provider -> endpoints
+        self.billing_webhooks: list[dict] = []      # signed webhook log (oldest first)
         # monotonic counters for generated ids
         self._counters: dict[str, int] = {}
 
@@ -119,6 +124,9 @@ class Store:
                 d.clear()
             for d in (self.contracts, self.invoices, self.payment_methods,
                       self.payments, self.price_book):
+                d.clear()
+            for d in (self.lago, self.stripe, self.billing_webhook_endpoints,
+                      self.billing_webhooks):
                 d.clear()
             self._counters.clear()
 
