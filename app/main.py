@@ -42,6 +42,7 @@ from . import (
     tray_emu,
     vast_fake,
 )
+from . import demo
 from .seed import seed_default, seed_demo_samples
 from .store import STORE
 
@@ -111,6 +112,7 @@ app.include_router(power.router)
 app.include_router(events.router)
 app.include_router(oob.router)
 app.include_router(ncp.router)
+app.include_router(demo.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
