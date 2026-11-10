@@ -341,7 +341,7 @@ def test_us03_order_and_release_via_sdk(nc):
 # --------------------------------------------------------------------------- demo runner
 def test_f29_demo_scenario_runs_without_failures(client):
     pytest.importorskip("app.demo.engine", reason="demo runner (feat/v2-demo) not merged")
-    client.post("/api/v1/demo/reset", json={"blueprints": "gb200-nvl72,vr-nvl72"})
+    client.post("/api/v1/demo/reset", json={})     # Phase-1 site layout: room for US-02 + US-03 + US-04
     r = client.post("/api/v1/demo/scenarios/f29-packaging/run", params={"wait": True}, json={"mode": "all"})
     assert r.status_code == 201, r.text
     steps = r.json()["steps"]
