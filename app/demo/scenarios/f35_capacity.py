@@ -53,10 +53,10 @@ SCENARIO = {
     "title_ko": "F35 용량 시나리오: 104랙 · 30 MW (DPS simulate 묶음)",
     "title_en": "F35 capacity scenario: 104 racks · 30 MW (DPS simulate bundle)",
     "summary_ko": "사이트 30 MW(PUE 1.25 → IT 24 MW)에 Vera Rubin NVL72 104랙이 들어가는지 "
-                  "전력 프로파일마다 DPS 정적·동적 산정을 묶어 판정한다. 25 MW에서는 "
-                  "정적으로는 부족하고 동적 프로비저닝이 차이를 메운다.",
+                  "전력 프로파일마다 DPS 정적·동적 산정을 묶어 판정한다. 같은 104랙을 "
+                  "25 MW 사이트에 두면 max-p로는 정적·동적 모두 부족한 것이 보인다.",
     "summary_en": "Does a 30 MW site (PUE 1.25 → 24 MW IT) hold 104 NVL72 racks? DPS "
-                  "static vs dynamic per profile; at 25 MW only dynamic provisioning fits.",
+                  "static vs dynamic per profile; at 25 MW max-p falls short either way.",
     "steps": [
         {"id": "dps", "title_ko": "AI-Infra DPS simulate 원 호출 (max-p, 24 MW)",
          "title_en": "Raw AI-Infra DPS simulate (max-p, 24 MW)",
