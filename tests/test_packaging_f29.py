@@ -336,3 +336,17 @@ def test_us03_order_and_release_via_sdk(nc):
     import stories
     checks = stories.us03(nc, tenant="f29-us03")          # no NICo URL in the unit suite
     assert [ok for ok, _, _ in checks] == [True, None, True, None]
+
+
+# --------------------------------------------------------------------------- demo runner
+def test_f29_demo_scenario_runs_without_failures(client):
+    pytest.importorskip("app.demo.engine", reason="demo runner (feat/v2-demo) not merged")
+    client.post("/api/v1/demo/reset", json={"blueprints": "gb200-nvl72,vr-nvl72"})
+    r = client.post("/api/v1/demo/scenarios/f29-packaging/run", params={"wait": True}, json={"mode": "all"})
+    assert r.status_code == 201, r.text
+    steps = r.json()["steps"]
+    assert [s["id"] for s in steps][:2] == ["00-sdk-sync", "01-us02"]
+    failed = [(s["id"], s["assertion"]) for s in steps if s["state"] == "failed"]
+    assert failed == [], failed
+    tf = next(s for s in steps if s["id"] == "05-terraform")
+    assert tf["state"] in ("passed", "pending"), tf
