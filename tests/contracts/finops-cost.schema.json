@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neocloud.example/schemas/finops-cost.schema.json",
+  "title": "FinOpsCostReport",
+  "description": "F27 GET /api/v1/finops/cost. Allocation idea after OpenCost (usage x unit price, idle kept as its own line); no upstream wire format, NeoCloud extension. NOCP app/finops.py.",
+  "x-neocloud": true,
+  "type": "object",
+  "required": ["period", "by", "currency", "window", "power_source", "items", "totals", "assumptions"],
+  "properties": {
+    "period": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"},
+    "by": {"type": "string", "enum": ["rack", "tenant", "model"]},
+    "currency": {"type": "string", "enum": ["KRW"]},
+    "window": {"type": "object", "required": ["start", "end", "hours", "complete"],
+      "properties": {"start": {"type": "string"}, "end": {"type": "string"}, "hours": {"type": "number"}, "complete": {"type": "boolean"}}},
+    "power_source": {"type": "string", "enum": ["model", "ai-infra-dps"]},
+    "items": {"type": "array", "items": {"type": "object",
+      "required": ["key", "kind", "energy_kwh", "energy_cost_krw", "depreciation_krw", "total_cost_krw"],
+      "properties": {
+        "key": {"type": "string"},
+        "kind": {"type": "string", "enum": ["rack", "tenant", "idle", "model"]},
+        "racks": {"type": ["integer", "null"]},
+        "energy_kwh": {"type": "number"},
+        "energy_cost_krw": {"type": "integer"},
+        "depreciation_krw": {"type": "integer"},
+        "total_cost_krw": {"type": "integer"},
+        "tokens": {"type": "integer"},
+        "cost_per_1m_tokens_krw": {"type": ["number", "null"]}}}},
+    "totals": {"type": "object",
+      "required": ["racks", "energy_kwh", "energy_cost_krw", "depreciation_krw", "total_cost_krw", "dr_incentive_krw", "net_cost_krw"],
+      "properties": {"racks": {"type": "integer"}, "energy_kwh": {"type": "number"}, "energy_cost_krw": {"type": "integer"},
+        "depreciation_krw": {"type": "integer"}, "total_cost_krw": {"type": "integer"}, "dr_incentive_krw": {"type": "integer"}, "net_cost_krw": {"type": "integer"}}},
+    "assumptions": {"type": "object", "required": ["tariff_krw_per_kwh", "pue", "depreciation"]}
+  }
+}

@@ -652,7 +652,13 @@ def status_page() -> dict:
                            "updates": i["updates"]} for i in incidents],
             "history_90d": {"uptime_pct": round(
                 max(0.0, 100 - downtime_min / window_min * 100), 3)},
+            "notices": _status_notices(),     # F13 incident · maintenance · grid_curtailment
         }
+
+
+def _status_notices() -> list:
+    from . import status_notices
+    return status_notices.page_notices()
 
 
 @router.get("/tenants/{tenant_id}/rca-reports")
