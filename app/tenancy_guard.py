@@ -95,6 +95,8 @@ _QUERY_SCOPED_LISTS = frozenset({
     "/api/v1/nvlink-partitions",
     "/api/v1/nvke/clusters",
     "/api/v1/metering/usage",
+    "/api/v1/metering/events",
+    "/api/v1/token/quotas",
 })
 
 # lists without a tenant filter parameter — post-filter the response JSON array
