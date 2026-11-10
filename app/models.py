@@ -340,6 +340,7 @@ class ServiceOrder(BaseModel):
     managed_k8s: bool = False                 # Managed K8s option (BMaaS+K8s)
     k8s_version: str = ""                     # install version when option selected
     k8s_cluster_id: Optional[str] = None      # reference to the created K8s cluster
+    contract_id: Optional[str] = None         # F06 reserved contract this order fulfils
     segment_id: Optional[str] = None          # tenant VPC (NICo segment)
     storage_ids: list[str] = Field(default_factory=list)
     node_ids: list[str] = Field(default_factory=list)
@@ -471,6 +472,7 @@ class OrderCreate(BaseModel):
     storage_gbps: float = 0                   # QoS when manual (0=auto-computed)
     managed_k8s: bool = False                 # Managed K8s option — K8s installed after BMaaS
     k8s_version: str = "v1.32.4"              # K8s version when option selected
+    contract_id: Optional[str] = None         # F06 reserved contract (racks/placement from it)
 
 
 class TicketComment(BaseModel):

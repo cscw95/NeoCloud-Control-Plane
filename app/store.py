@@ -86,6 +86,12 @@ class Store:
         self.api_keys: dict[str, dict] = {}         # key_id -> tenant API key
         self.members: dict[str, dict] = {}          # member_id -> organization member
         self.node_ops: dict[str, dict] = {}         # op_id -> node reboot/replace operation
+        # contracts · billing (F05/F06 — contracts.py, billing.py)
+        self.contracts: dict[str, dict] = {}        # contract_id -> reserved contract
+        self.invoices: dict[str, dict] = {}         # invoice_id -> monthly invoice
+        self.payment_methods: dict[str, dict] = {}  # pm_id -> payment method (Stripe-style)
+        self.payments: dict[str, dict] = {}         # payment_id -> payment intent
+        self.price_book: dict = {}                  # KRW price book (billing.py seeds it)
         # monotonic counters for generated ids
         self._counters: dict[str, int] = {}
 
@@ -110,6 +116,9 @@ class Store:
                 self.storage_volumes, self.storage_snapshots,
                 self.api_keys, self.members, self.node_ops,
             ):
+                d.clear()
+            for d in (self.contracts, self.invoices, self.payment_methods,
+                      self.payments, self.price_book):
                 d.clear()
             self._counters.clear()
 

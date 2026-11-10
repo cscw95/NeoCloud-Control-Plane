@@ -41,6 +41,8 @@ from . import (
     trace,
     tray_emu,
     vast_fake,
+    billing,
+    contracts,
 )
 from .seed import seed_default, seed_demo_samples
 from .store import STORE
@@ -111,6 +113,8 @@ app.include_router(power.router)
 app.include_router(events.router)
 app.include_router(oob.router)
 app.include_router(ncp.router)
+app.include_router(contracts.router)
+app.include_router(billing.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
