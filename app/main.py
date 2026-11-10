@@ -46,6 +46,10 @@ from . import (
     vast_fake,
     token_quota,
     metering,
+    billing,
+    contracts,
+    billing_lago,
+    billing_stripe,
 )
 from .seed import seed_default, seed_demo_samples
 from .store import STORE
@@ -126,6 +130,10 @@ app.include_router(token_api.ops)
 app.include_router(token_guard.router)
 app.include_router(token_quota.router)
 app.include_router(metering.router)
+app.include_router(contracts.router)
+app.include_router(billing.router)
+app.include_router(billing_lago.router)
+app.include_router(billing_stripe.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.

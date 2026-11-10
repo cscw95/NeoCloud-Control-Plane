@@ -24,7 +24,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
-from . import spec, tenancy
+from . import contracts, spec, tenancy
 from .shared_services import SHARED
 from .adapters import (
     ComputeAdapter,
@@ -1323,9 +1323,12 @@ def run_new_order(body: OrderCreate, adapter: ComputeAdapter) -> ServiceOrder:
             storage_gbps=body.storage_gbps,
             managed_k8s=body.managed_k8s,
             k8s_version=body.k8s_version if body.managed_k8s else "",
+            contract_id=body.contract_id,
             history=[LifecycleEvent(state=OS.received.value, at=_now())],
         )
         s.orders[oid] = order
+        if body.contract_id:
+            contracts.link_order(body.contract_id, oid)
         emit("Portal/API", "NeoCloudOS.M1", "REST", f"POST /orders → {oid}",
              f"신규 개통 주문 접수 — {body.blueprint_key} x {body.racks} rack"
              + (f" · Managed K8s {body.k8s_version}" if body.managed_k8s else "")
@@ -1689,6 +1692,8 @@ def reconcile(adapter: ComputeAdapter) -> ReconcileReport:
 @router.post("/orders", status_code=201, response_model=ServiceOrder)
 def create_order(body: OrderCreate) -> ServiceOrder:
     adapter = get_adapter()
+    if body.contract_id:                   # F06: racks/blueprint/placement from the contract
+        contracts.apply_contract_to_order(body)
     if body.kind == OrderKind.new:
         return run_new_order(body, adapter)
     if body.kind == OrderKind.terminate:
