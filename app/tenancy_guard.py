@@ -72,7 +72,10 @@ _PUBLIC_PREFIXES = (
     "/api/v1/status",
     "/api/v1/public/",
     "/api/v1/spec",
+    "/api/v1/signup",      # F07 self signup (handlers check operator/tenant themselves)
 )
+# F07 OIDC endpoints authenticate clients themselves (Basic client auth, RFC 6750 errors)
+_OIDC_PREFIXES = ("/realms/", "/oauth2/")
 
 # single/sub surfaces with a resource id in the path — owner tenant check
 _TENANT_PATH_RE = re.compile(r"^/api/v1/tenants/(?P<tid>[^/]+)")
@@ -246,7 +249,9 @@ class TenancyGuardMiddleware(BaseHTTPMiddleware):
         try:
             ident = auth.resolve(request, _SSE_PATHS)
         except auth.AuthError as e:
-            return _unauthorized(str(e))
+            if not path.startswith(_OIDC_PREFIXES):
+                return _unauthorized(str(e))
+            ident = None
         if (ident is None and _guarded(path)
                 and (request.method, path) not in _WEBHOOKS
                 and request.method != "OPTIONS"):

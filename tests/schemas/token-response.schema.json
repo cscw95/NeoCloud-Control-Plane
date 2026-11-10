@@ -1,0 +1,8 @@
+{"$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "Access Token Response (RFC 6749 §5.1) + Keycloak TokenEndpoint fields",
+ "source": "https://www.rfc-editor.org/rfc/rfc6749#section-5.1",
+ "type": "object", "required": ["access_token", "token_type", "expires_in"],
+ "properties": {"access_token": {"type": "string"}, "token_type": {"const": "Bearer"},
+                "expires_in": {"type": "integer"}, "refresh_token": {"type": "string"},
+                "refresh_expires_in": {"type": "integer"}, "scope": {"type": "string"},
+                "id_token": {"type": "string"}}}
