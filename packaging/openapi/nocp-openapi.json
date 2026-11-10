@@ -25,6 +25,37 @@
     "title": "AcceptanceDecision",
     "type": "object"
    },
+   "Actions": {
+    "properties": {
+     "cordon": {
+      "default": true,
+      "title": "Cordon",
+      "type": "boolean"
+     },
+     "drain": {
+      "default": true,
+      "title": "Drain",
+      "type": "boolean"
+     },
+     "gpu_reset": {
+      "default": true,
+      "title": "Gpu Reset",
+      "type": "boolean"
+     },
+     "replace": {
+      "default": true,
+      "title": "Replace",
+      "type": "boolean"
+     },
+     "rma": {
+      "default": true,
+      "title": "Rma",
+      "type": "boolean"
+     }
+    },
+    "title": "Actions",
+    "type": "object"
+   },
    "Allocation": {
     "properties": {
      "dpu_mode": {
@@ -136,6 +167,51 @@
      "checklist"
     ],
     "title": "BackupConfirmBody",
+    "type": "object"
+   },
+   "BundleIn": {
+    "properties": {
+     "components": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "title": "Components",
+      "type": "object"
+     },
+     "version": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+     }
+    },
+    "required": [
+     "version",
+     "components"
+    ],
+    "title": "BundleIn",
+    "type": "object"
+   },
+   "Cable": {
+    "properties": {
+     "a": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "A",
+      "type": "string"
+     },
+     "b": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "B",
+      "type": "string"
+     }
+    },
+    "required": [
+     "a",
+     "b"
+    ],
+    "title": "Cable",
     "type": "object"
    },
    "ChatBody": {
@@ -727,6 +803,24 @@
     "title": "ContractPatch",
     "type": "object"
    },
+   "CurtailBody": {
+    "properties": {
+     "gpus": {
+      "title": "Gpus",
+      "type": "integer"
+     },
+     "reason": {
+      "default": "grid curtailment",
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "gpus"
+    ],
+    "title": "CurtailBody",
+    "type": "object"
+   },
    "DPUMode": {
     "enum": [
      "nic",
@@ -735,6 +829,72 @@
     ],
     "title": "DPUMode",
     "type": "string"
+   },
+   "DcimRackIn": {
+    "properties": {
+     "blueprint_key": {
+      "default": "vr-nvl72",
+      "title": "Blueprint Key",
+      "type": "string"
+     },
+     "cable_plan": {
+      "items": {
+       "$ref": "#/components/schemas/Cable"
+      },
+      "maxItems": 2048,
+      "title": "Cable Plan",
+      "type": "array"
+     },
+     "position": {
+      "maxLength": 32,
+      "minLength": 1,
+      "title": "Position",
+      "type": "string"
+     },
+     "row": {
+      "maxLength": 32,
+      "minLength": 1,
+      "title": "Row",
+      "type": "string"
+     },
+     "serial": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Serial",
+      "type": "string"
+     },
+     "site": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Site",
+      "type": "string"
+     }
+    },
+    "required": [
+     "serial",
+     "site",
+     "row",
+     "position"
+    ],
+    "title": "DcimRackIn",
+    "type": "object"
+   },
+   "DcimRackPatch": {
+    "properties": {
+     "cable_plan": {
+      "items": {
+       "$ref": "#/components/schemas/Cable"
+      },
+      "maxItems": 2048,
+      "title": "Cable Plan",
+      "type": "array"
+     }
+    },
+    "required": [
+     "cable_plan"
+    ],
+    "title": "DcimRackPatch",
+    "type": "object"
    },
    "DemoReset": {
     "properties": {
@@ -747,6 +907,82 @@
      "tenant_id"
     ],
     "title": "DemoReset",
+    "type": "object"
+   },
+   "DeployBody": {
+    "properties": {
+     "cluster_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cluster Id"
+     },
+     "model": {
+      "title": "Model",
+      "type": "string"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "queue": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Queue"
+     },
+     "racks": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Racks"
+     },
+     "tenant_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tenant Id"
+     },
+     "tier": {
+      "default": "serverless",
+      "title": "Tier",
+      "type": "string"
+     }
+    },
+    "required": [
+     "model"
+    ],
+    "title": "DeployBody",
     "type": "object"
    },
    "DomainCreate": {
@@ -927,6 +1163,56 @@
     "title": "EquipmentStateUpdate",
     "type": "object"
    },
+   "ExceptionCreate": {
+    "properties": {
+     "contract_clause": {
+      "default": "",
+      "title": "Contract Clause",
+      "type": "string"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "scope": {
+      "$ref": "#/components/schemas/Scope"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "kind",
+     "start"
+    ],
+    "title": "ExceptionCreate",
+    "type": "object"
+   },
+   "ExceptionPatch": {
+    "properties": {
+     "end": {
+      "title": "End",
+      "type": "string"
+     }
+    },
+    "required": [
+     "end"
+    ],
+    "title": "ExceptionPatch",
+    "type": "object"
+   },
    "FlexEvent": {
     "properties": {
      "domain": {
@@ -1079,6 +1365,92 @@
      "display"
     ],
     "title": "IamRealm",
+    "type": "object"
+   },
+   "InjectBody": {
+    "properties": {
+     "gpu": {
+      "default": 0,
+      "title": "Gpu",
+      "type": "integer"
+     },
+     "machine_id": {
+      "title": "Machine Id",
+      "type": "string"
+     },
+     "persistent": {
+      "default": false,
+      "title": "Persistent",
+      "type": "boolean"
+     },
+     "xid": {
+      "default": 79,
+      "title": "Xid",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "machine_id"
+    ],
+    "title": "InjectBody",
+    "type": "object"
+   },
+   "InjectIn": {
+    "properties": {
+     "a": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "A"
+     },
+     "actual_b": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Actual B"
+     },
+     "kind": {
+      "pattern": "^(miswire|attestation_fail|clear)$",
+      "title": "Kind",
+      "type": "string"
+     },
+     "machine": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Machine"
+     },
+     "rack": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rack"
+     }
+    },
+    "required": [
+     "kind"
+    ],
+    "title": "InjectIn",
     "type": "object"
    },
    "InquiryBody": {
@@ -2054,6 +2426,95 @@
     "title": "NodePoolUpdate",
     "type": "object"
    },
+   "NoticeIn": {
+    "properties": {
+     "components": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Components",
+      "type": "array"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
+     },
+     "kind": {
+      "enum": [
+       "incident",
+       "maintenance",
+       "grid_curtailment"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "message_en": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Message En",
+      "type": "string"
+     },
+     "message_ko": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Message Ko",
+      "type": "string"
+     },
+     "ref": {
+      "anyOf": [
+       {
+        "maxLength": 128,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "related object id (curtailment, incident, leak)",
+      "title": "Ref"
+     },
+     "source": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source"
+     },
+     "start": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start"
+     }
+    },
+    "required": [
+     "kind",
+     "components",
+     "message_ko",
+     "message_en"
+    ],
+    "title": "NoticeIn",
+    "type": "object"
+   },
    "OidcClient": {
     "properties": {
      "client_id": {
@@ -2405,40 +2866,63 @@
     "title": "PaymentMethodCreate",
     "type": "object"
    },
-   "PolicyBody": {
+   "PlanIn": {
     "properties": {
-     "blocked_terms": {
-      "items": {
-       "type": "string"
-      },
-      "maxItems": 200,
-      "title": "Blocked Terms",
-      "type": "array"
-     },
-     "categories": {
+     "bundle": {
       "anyOf": [
        {
-        "items": {
-         "type": "string"
-        },
-        "type": "array"
+        "type": "string"
        },
        {
         "type": "null"
        }
       ],
-      "title": "Categories"
+      "title": "Bundle"
+     },
+     "rack": {
+      "title": "Rack",
+      "type": "string"
+     },
+     "window": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Window"
+     }
+    },
+    "required": [
+     "rack"
+    ],
+    "title": "PlanIn",
+    "type": "object"
+   },
+   "Policy": {
+    "properties": {
+     "actions": {
+      "$ref": "#/components/schemas/Actions"
+     },
+     "kpi_replace_minutes": {
+      "default": 60,
+      "title": "Kpi Replace Minutes",
+      "type": "integer"
+     },
+     "max_parallel_per_rack": {
+      "default": 1,
+      "title": "Max Parallel Per Rack",
+      "type": "integer"
      },
      "mode": {
-      "pattern": "^(off|monitor|enforce)$",
+      "default": "monitor",
       "title": "Mode",
       "type": "string"
      }
     },
-    "required": [
-     "mode"
-    ],
-    "title": "PolicyBody",
+    "title": "Policy",
     "type": "object"
    },
    "PowerPolicyUpdate": {
@@ -2552,6 +3036,56 @@
      "unit_price"
     ],
     "title": "PriceItem",
+    "type": "object"
+   },
+   "QueueCreate": {
+    "properties": {
+     "display_name": {
+      "default": "",
+      "title": "Display Name",
+      "type": "string"
+     },
+     "limit_gpus": {
+      "default": -1,
+      "title": "Limit Gpus",
+      "type": "number"
+     },
+     "name": {
+      "pattern": "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$",
+      "title": "Name",
+      "type": "string"
+     },
+     "over_quota_weight": {
+      "default": 1,
+      "title": "Over Quota Weight",
+      "type": "number"
+     },
+     "parent_queue": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parent Queue"
+     },
+     "priority": {
+      "default": 100,
+      "title": "Priority",
+      "type": "integer"
+     },
+     "quota_gpus": {
+      "default": 0,
+      "title": "Quota Gpus",
+      "type": "number"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "QueueCreate",
     "type": "object"
    },
    "QuotaPut": {
@@ -2732,6 +3266,23 @@
     "title": "ResetBody",
     "type": "object"
    },
+   "ResolveIn": {
+    "properties": {
+     "end": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
+     }
+    },
+    "title": "ResolveIn",
+    "type": "object"
+   },
    "RmaCreate": {
     "properties": {
      "component": {
@@ -2806,6 +3357,24 @@
     "title": "RunBody",
     "type": "object"
    },
+   "RunCreate": {
+    "properties": {
+     "machine_id": {
+      "title": "Machine Id",
+      "type": "string"
+     },
+     "reason": {
+      "default": "operator",
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "machine_id"
+    ],
+    "title": "RunCreate",
+    "type": "object"
+   },
    "SanitizeReport": {
     "properties": {
      "host_id": {
@@ -2829,6 +3398,118 @@
      "passed"
     ],
     "title": "SanitizeReport",
+    "type": "object"
+   },
+   "ScenarioBody": {
+    "additionalProperties": false,
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "policy": {
+      "default": "compare",
+      "title": "Policy",
+      "type": "string"
+     },
+     "profile": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       }
+      ],
+      "default": "max-p",
+      "title": "Profile"
+     },
+     "pue": {
+      "default": 1.25,
+      "title": "Pue",
+      "type": "number"
+     },
+     "racks": {
+      "default": 104,
+      "title": "Racks",
+      "type": "integer"
+     },
+     "site_mw": {
+      "default": 30.0,
+      "title": "Site Mw",
+      "type": "number"
+     },
+     "workload_mix": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "type": "number"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workload Mix"
+     }
+    },
+    "title": "ScenarioBody",
+    "type": "object"
+   },
+   "Scope": {
+    "properties": {
+     "racks": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Racks"
+     },
+     "site": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Site"
+     },
+     "tenants": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tenants"
+     }
+    },
+    "title": "Scope",
     "type": "object"
    },
    "ServiceOrder": {
@@ -3195,6 +3876,61 @@
     "title": "SsoLoginBody",
     "type": "object"
    },
+   "StartBody": {
+    "properties": {
+     "domain": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Domain"
+     },
+     "duration_s": {
+      "default": 900,
+      "exclusiveMinimum": 0.0,
+      "maximum": 86400.0,
+      "title": "Duration S",
+      "type": "integer"
+     },
+     "load_target_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Load Target Id"
+     },
+     "requested_kw": {
+      "exclusiveMinimum": 0.0,
+      "maximum": 1000000.0,
+      "title": "Requested Kw",
+      "type": "number"
+     },
+     "site": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Site"
+     }
+    },
+    "required": [
+     "requested_kw"
+    ],
+    "title": "StartBody",
+    "type": "object"
+   },
    "Tenant": {
     "properties": {
      "id": {
@@ -3339,6 +4075,13 @@
       ],
       "title": "Ref"
      },
+     "refs": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Refs",
+      "type": "array"
+     },
      "routed_to": {
       "default": "ops",
       "title": "Routed To",
@@ -3433,6 +4176,13 @@
       ],
       "title": "Ref"
      },
+     "refs": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Refs",
+      "type": "array"
+     },
      "severity": {
       "default": "medium",
       "title": "Severity",
@@ -3490,6 +4240,35 @@
      }
     },
     "title": "TicketUpdate",
+    "type": "object"
+   },
+   "TierModel": {
+    "properties": {
+     "match": {
+      "title": "Match",
+      "type": "object"
+     },
+     "max_reduction_pct": {
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Max Reduction Pct",
+      "type": "number"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "order": {
+      "default": 50,
+      "title": "Order",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "name",
+     "max_reduction_pct"
+    ],
+    "title": "TierModel",
     "type": "object"
    },
    "TopographRequest": {
@@ -3842,6 +4621,76 @@
      }
     },
     "title": "VerifyBody",
+    "type": "object"
+   },
+   "WorkloadCreate": {
+    "properties": {
+     "gpus": {
+      "title": "Gpus",
+      "type": "integer"
+     },
+     "gpus_per_pod": {
+      "default": 4,
+      "title": "Gpus Per Pod",
+      "type": "integer"
+     },
+     "kind": {
+      "default": "PyTorchJob",
+      "title": "Kind",
+      "type": "string"
+     },
+     "labels": {
+      "title": "Labels",
+      "type": "object"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "pattern": "^[a-z0-9]([-a-z0-9]{0,50}[a-z0-9])?$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "namespace": {
+      "default": "default",
+      "title": "Namespace",
+      "type": "string"
+     },
+     "preemptibility": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Preemptibility"
+     },
+     "priority_class": {
+      "default": "train",
+      "title": "Priority Class",
+      "type": "string"
+     },
+     "queue": {
+      "default": "default-queue",
+      "title": "Queue",
+      "type": "string"
+     },
+     "topology": {
+      "default": "preferred",
+      "title": "Topology",
+      "type": "string"
+     }
+    },
+    "required": [
+     "gpus"
+    ],
+    "title": "WorkloadCreate",
     "type": "object"
    },
    "_AddonBody": {
@@ -4255,6 +5104,43 @@
     "title": "TokenRequest",
     "type": "object"
    },
+   "app__curtailment__PolicyBody": {
+    "properties": {
+     "commitments": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "type": "string"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Commitments"
+     },
+     "protect": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Protect",
+      "type": "array"
+     },
+     "tiers": {
+      "items": {
+       "$ref": "#/components/schemas/TierModel"
+      },
+      "title": "Tiers",
+      "type": "array"
+     }
+    },
+    "required": [
+     "tiers"
+    ],
+    "title": "PolicyBody",
+    "type": "object"
+   },
    "app__shared_services__TokenRequest": {
     "properties": {
      "client_id": {
@@ -4266,6 +5152,42 @@
      "client_id"
     ],
     "title": "TokenRequest",
+    "type": "object"
+   },
+   "app__token_guard__PolicyBody": {
+    "properties": {
+     "blocked_terms": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Blocked Terms",
+      "type": "array"
+     },
+     "categories": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Categories"
+     },
+     "mode": {
+      "pattern": "^(off|monitor|enforce)$",
+      "title": "Mode",
+      "type": "string"
+     }
+    },
+    "required": [
+     "mode"
+    ],
+    "title": "PolicyBody",
     "type": "object"
    }
   }
@@ -4750,6 +5672,72 @@
     "summary": "Revoke Api Key",
     "tags": [
      "customer-ops"
+    ]
+   }
+  },
+  "/api/v1/audit/export": {
+   "get": {
+    "operationId": "audit_export_api_v1_audit_export_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "period",
+      "required": true,
+      "schema": {
+       "title": "Period",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "format",
+      "required": false,
+      "schema": {
+       "default": "json",
+       "title": "Format",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "action",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Action"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Audit Export",
+    "tags": [
+     "compliance"
     ]
    }
   },
@@ -5526,6 +6514,263 @@
     ]
    }
   },
+  "/api/v1/bringup/demo/reset": {
+   "post": {
+    "description": "Deterministic demo start: drop the demo rack record and clear its LLDP faults.",
+    "operationId": "demo_reset_api_v1_bringup_demo_reset_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Demo Reset Api V1 Bringup Demo Reset Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Demo Reset",
+    "tags": [
+     "dcim-bringup"
+    ]
+   }
+  },
+  "/api/v1/bringup/inject": {
+   "post": {
+    "description": "Demo fault injection through the emulators' hooks (operator only).",
+    "operationId": "inject_api_v1_bringup_inject_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/InjectIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Inject Api V1 Bringup Inject Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Inject",
+    "tags": [
+     "dcim-bringup"
+    ]
+   }
+  },
+  "/api/v1/bringup/racks/{rack_id}": {
+   "get": {
+    "operationId": "status_api_v1_bringup_racks__rack_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "rack_id",
+      "required": true,
+      "schema": {
+       "title": "Rack Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Status Api V1 Bringup Racks  Rack Id  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Status",
+    "tags": [
+     "dcim-bringup"
+    ]
+   }
+  },
+  "/api/v1/bringup/racks/{rack_id}:start": {
+   "post": {
+    "operationId": "start_api_v1_bringup_racks__rack_id__start_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "rack_id",
+      "required": true,
+      "schema": {
+       "title": "Rack Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Start Api V1 Bringup Racks  Rack Id  Start Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Start",
+    "tags": [
+     "dcim-bringup"
+    ]
+   }
+  },
+  "/api/v1/capacity/scenarios": {
+   "get": {
+    "operationId": "list_scenarios_api_v1_capacity_scenarios_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response List Scenarios Api V1 Capacity Scenarios Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Scenarios",
+    "tags": [
+     "capacity"
+    ]
+   },
+   "post": {
+    "operationId": "create_scenario_api_v1_capacity_scenarios_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ScenarioBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Create Scenario Api V1 Capacity Scenarios Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Scenario",
+    "tags": [
+     "capacity"
+    ]
+   }
+  },
+  "/api/v1/capacity/scenarios/{scenario_id}": {
+   "get": {
+    "operationId": "get_scenario_api_v1_capacity_scenarios__scenario_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "scenario_id",
+      "required": true,
+      "schema": {
+       "title": "Scenario Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Scenario Api V1 Capacity Scenarios  Scenario Id  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Scenario",
+    "tags": [
+     "capacity"
+    ]
+   }
+  },
   "/api/v1/catalog": {
    "get": {
     "operationId": "catalog_api_v1_catalog_get",
@@ -5545,6 +6790,72 @@
     "summary": "Catalog",
     "tags": [
      "dsx-platform"
+    ]
+   }
+  },
+  "/api/v1/compliance/controls": {
+   "get": {
+    "operationId": "compliance_controls_api_v1_compliance_controls_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "domain",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Domain"
+      }
+     },
+     {
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Compliance Controls Api V1 Compliance Controls Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Compliance Controls",
+    "tags": [
+     "compliance"
     ]
    }
   },
@@ -5841,6 +7152,263 @@
     "summary": "List Cpu Nodes",
     "tags": [
      "lifecycle"
+    ]
+   }
+  },
+  "/api/v1/dcim/cables": {
+   "get": {
+    "description": "NetBox-style cables from the DCIM cable plans; status `connected` once LLDP\nvalidated the link (step 04 passed), `planned` before, mismatched links flagged.",
+    "operationId": "cables_api_v1_dcim_cables_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "rack",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Rack"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Cables Api V1 Dcim Cables Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Cables",
+    "tags": [
+     "dcim-bringup"
+    ]
+   }
+  },
+  "/api/v1/dcim/racks": {
+   "get": {
+    "operationId": "list_racks_api_v1_dcim_racks_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "state",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "State"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response List Racks Api V1 Dcim Racks Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Racks",
+    "tags": [
+     "dcim-bringup"
+    ]
+   },
+   "post": {
+    "operationId": "create_rack_api_v1_dcim_racks_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DcimRackIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Create Rack Api V1 Dcim Racks Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Rack",
+    "tags": [
+     "dcim-bringup"
+    ]
+   }
+  },
+  "/api/v1/dcim/racks/{rack_id}": {
+   "get": {
+    "operationId": "get_rack_api_v1_dcim_racks__rack_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "rack_id",
+      "required": true,
+      "schema": {
+       "title": "Rack Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Rack Api V1 Dcim Racks  Rack Id  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Rack",
+    "tags": [
+     "dcim-bringup"
+    ]
+   },
+   "patch": {
+    "operationId": "patch_rack_api_v1_dcim_racks__rack_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "rack_id",
+      "required": true,
+      "schema": {
+       "title": "Rack Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DcimRackPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Patch Rack Api V1 Dcim Racks  Rack Id  Patch",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Patch Rack",
+    "tags": [
+     "dcim-bringup"
+    ]
+   }
+  },
+  "/api/v1/dcim/sellable": {
+   "get": {
+    "operationId": "sellable_api_v1_dcim_sellable_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Sellable Api V1 Dcim Sellable Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Sellable",
+    "tags": [
+     "dcim-bringup"
     ]
    }
   },
@@ -7001,6 +8569,135 @@
     ]
    }
   },
+  "/api/v1/finops/cost": {
+   "get": {
+    "operationId": "get_cost_api_v1_finops_cost_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "period",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Period"
+      }
+     },
+     {
+      "in": "query",
+      "name": "by",
+      "required": false,
+      "schema": {
+       "default": "rack",
+       "enum": [
+        "rack",
+        "tenant",
+        "model"
+       ],
+       "title": "By",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "source",
+      "required": false,
+      "schema": {
+       "default": "auto",
+       "enum": [
+        "auto",
+        "model"
+       ],
+       "title": "Source",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Cost Api V1 Finops Cost Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Cost",
+    "tags": [
+     "finops"
+    ]
+   }
+  },
+  "/api/v1/finops/dr-settlements": {
+   "get": {
+    "operationId": "get_dr_settlements_api_v1_finops_dr_settlements_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "period",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Period"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Dr Settlements Api V1 Finops Dr Settlements Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Dr Settlements",
+    "tags": [
+     "finops"
+    ]
+   }
+  },
   "/api/v1/firmware/baseline": {
    "get": {
     "operationId": "firmware_baseline_api_v1_firmware_baseline_get",
@@ -7023,6 +8720,68 @@
     ]
    }
   },
+  "/api/v1/firmware/bundles": {
+   "get": {
+    "operationId": "list_bundles_api_v1_firmware_bundles_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response List Bundles Api V1 Firmware Bundles Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Bundles",
+    "tags": [
+     "firmware-bundles"
+    ]
+   },
+   "post": {
+    "operationId": "create_bundle_api_v1_firmware_bundles_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BundleIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Create Bundle Api V1 Firmware Bundles Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Bundle",
+    "tags": [
+     "firmware-bundles"
+    ]
+   }
+  },
   "/api/v1/firmware/drift": {
    "get": {
     "operationId": "firmware_drift_api_v1_firmware_drift_get",
@@ -7042,6 +8801,154 @@
     "summary": "Firmware Drift",
     "tags": [
      "ncp"
+    ]
+   }
+  },
+  "/api/v1/firmware/plans": {
+   "get": {
+    "operationId": "list_plans_api_v1_firmware_plans_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response List Plans Api V1 Firmware Plans Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Plans",
+    "tags": [
+     "firmware-bundles"
+    ]
+   },
+   "post": {
+    "operationId": "create_plan_api_v1_firmware_plans_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PlanIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Create Plan Api V1 Firmware Plans Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Plan",
+    "tags": [
+     "firmware-bundles"
+    ]
+   }
+  },
+  "/api/v1/firmware/plans/{plan_id}": {
+   "get": {
+    "operationId": "get_plan_api_v1_firmware_plans__plan_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "plan_id",
+      "required": true,
+      "schema": {
+       "title": "Plan Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Plan Api V1 Firmware Plans  Plan Id  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Plan",
+    "tags": [
+     "firmware-bundles"
+    ]
+   }
+  },
+  "/api/v1/firmware/plans/{plan_id}:execute": {
+   "post": {
+    "operationId": "execute_plan_api_v1_firmware_plans__plan_id__execute_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "plan_id",
+      "required": true,
+      "schema": {
+       "title": "Plan Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Execute Plan Api V1 Firmware Plans  Plan Id  Execute Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Execute Plan",
+    "tags": [
+     "firmware-bundles"
     ]
    }
   },
@@ -7070,7 +8977,7 @@
   },
   "/api/v1/infra/{path}": {
    "delete": {
-    "operationId": "infra_proxy_api_v1_infra__path__patch",
+    "operationId": "infra_proxy_api_v1_infra__path__post",
     "parameters": [
      {
       "in": "path",
@@ -7108,7 +9015,7 @@
     ]
    },
    "get": {
-    "operationId": "infra_proxy_api_v1_infra__path__patch",
+    "operationId": "infra_proxy_api_v1_infra__path__post",
     "parameters": [
      {
       "in": "path",
@@ -7146,7 +9053,7 @@
     ]
    },
    "patch": {
-    "operationId": "infra_proxy_api_v1_infra__path__patch",
+    "operationId": "infra_proxy_api_v1_infra__path__post",
     "parameters": [
      {
       "in": "path",
@@ -7184,7 +9091,7 @@
     ]
    },
    "post": {
-    "operationId": "infra_proxy_api_v1_infra__path__patch",
+    "operationId": "infra_proxy_api_v1_infra__path__post",
     "parameters": [
      {
       "in": "path",
@@ -7222,7 +9129,7 @@
     ]
    },
    "put": {
-    "operationId": "infra_proxy_api_v1_infra__path__patch",
+    "operationId": "infra_proxy_api_v1_infra__path__post",
     "parameters": [
      {
       "in": "path",
@@ -8592,6 +10499,248 @@
     ]
    }
   },
+  "/api/v1/marketplace/deploy": {
+   "post": {
+    "operationId": "deploy_api_v1_marketplace_deploy_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DeployBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Deploy Api V1 Marketplace Deploy Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Deploy",
+    "tags": [
+     "marketplace"
+    ]
+   }
+  },
+  "/api/v1/marketplace/deployments": {
+   "get": {
+    "operationId": "list_deployments_api_v1_marketplace_deployments_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "tenant_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Tenant Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {},
+         "title": "Response List Deployments Api V1 Marketplace Deployments Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Deployments",
+    "tags": [
+     "marketplace"
+    ]
+   }
+  },
+  "/api/v1/marketplace/deployments/{did}": {
+   "delete": {
+    "operationId": "delete_deployment_api_v1_marketplace_deployments__did__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "did",
+      "required": true,
+      "schema": {
+       "title": "Did",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Delete Deployment Api V1 Marketplace Deployments  Did  Delete",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete Deployment",
+    "tags": [
+     "marketplace"
+    ]
+   },
+   "get": {
+    "operationId": "get_deployment_api_v1_marketplace_deployments__did__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "did",
+      "required": true,
+      "schema": {
+       "title": "Did",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Deployment Api V1 Marketplace Deployments  Did  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Deployment",
+    "tags": [
+     "marketplace"
+    ]
+   }
+  },
+  "/api/v1/marketplace/models": {
+   "get": {
+    "operationId": "list_models_api_v1_marketplace_models_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response List Models Api V1 Marketplace Models Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Models",
+    "tags": [
+     "marketplace"
+    ]
+   }
+  },
+  "/api/v1/marketplace/models/{model_id}": {
+   "get": {
+    "operationId": "get_model_api_v1_marketplace_models__model_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "model_id",
+      "required": true,
+      "schema": {
+       "title": "Model Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Model Api V1 Marketplace Models  Model Id  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Model",
+    "tags": [
+     "marketplace"
+    ]
+   }
+  },
   "/api/v1/members": {
    "get": {
     "operationId": "list_members_api_v1_members_get",
@@ -9881,6 +12030,135 @@
     ]
    }
   },
+  "/api/v1/nvke/clusters/{cluster_id}/apis/kai.scheduler/v1alpha1/topologies": {
+   "get": {
+    "operationId": "k8s_topologies_api_v1_nvke_clusters__cluster_id__apis_kai_scheduler_v1alpha1_topologies_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response K8S Topologies Api V1 Nvke Clusters  Cluster Id  Apis Kai Scheduler V1Alpha1 Topologies Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "K8S Topologies",
+    "tags": [
+     "kai-scheduler"
+    ]
+   }
+  },
+  "/api/v1/nvke/clusters/{cluster_id}/apis/scheduling.run.ai/v2/queues": {
+   "get": {
+    "operationId": "k8s_queues_api_v1_nvke_clusters__cluster_id__apis_scheduling_run_ai_v2_queues_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response K8S Queues Api V1 Nvke Clusters  Cluster Id  Apis Scheduling Run Ai V2 Queues Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "K8S Queues",
+    "tags": [
+     "kai-scheduler"
+    ]
+   }
+  },
+  "/api/v1/nvke/clusters/{cluster_id}/apis/scheduling.run.ai/v2alpha2/podgroups": {
+   "get": {
+    "operationId": "k8s_podgroups_api_v1_nvke_clusters__cluster_id__apis_scheduling_run_ai_v2alpha2_podgroups_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response K8S Podgroups Api V1 Nvke Clusters  Cluster Id  Apis Scheduling Run Ai V2Alpha2 Podgroups Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "K8S Podgroups",
+    "tags": [
+     "kai-scheduler"
+    ]
+   }
+  },
   "/api/v1/nvke/clusters/{cluster_id}/capi": {
    "get": {
     "operationId": "get_capi_api_v1_nvke_clusters__cluster_id__capi_get",
@@ -10494,6 +12772,470 @@
     ]
    }
   },
+  "/api/v1/nvke/clusters/{cluster_id}/queues": {
+   "get": {
+    "operationId": "list_queues_api_v1_nvke_clusters__cluster_id__queues_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {},
+         "title": "Response List Queues Api V1 Nvke Clusters  Cluster Id  Queues Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Queues",
+    "tags": [
+     "kai-scheduler"
+    ]
+   },
+   "post": {
+    "operationId": "create_queue_api_v1_nvke_clusters__cluster_id__queues_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/QueueCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Create Queue Api V1 Nvke Clusters  Cluster Id  Queues Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Queue",
+    "tags": [
+     "kai-scheduler"
+    ]
+   }
+  },
+  "/api/v1/nvke/clusters/{cluster_id}/queues/{name}": {
+   "delete": {
+    "operationId": "delete_queue_api_v1_nvke_clusters__cluster_id__queues__name__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Delete Queue Api V1 Nvke Clusters  Cluster Id  Queues  Name  Delete",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete Queue",
+    "tags": [
+     "kai-scheduler"
+    ]
+   },
+   "get": {
+    "operationId": "get_queue_api_v1_nvke_clusters__cluster_id__queues__name__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Queue Api V1 Nvke Clusters  Cluster Id  Queues  Name  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Queue",
+    "tags": [
+     "kai-scheduler"
+    ]
+   }
+  },
+  "/api/v1/nvke/clusters/{cluster_id}/scheduler": {
+   "delete": {
+    "description": "Drop queues / workloads of this cluster (demo reset).",
+    "operationId": "reset_cluster_api_v1_nvke_clusters__cluster_id__scheduler_delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Reset Cluster Api V1 Nvke Clusters  Cluster Id  Scheduler Delete",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Reset Cluster",
+    "tags": [
+     "kai-scheduler"
+    ]
+   },
+   "get": {
+    "operationId": "scheduler_view_api_v1_nvke_clusters__cluster_id__scheduler_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Scheduler View Api V1 Nvke Clusters  Cluster Id  Scheduler Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Scheduler View",
+    "tags": [
+     "kai-scheduler"
+    ]
+   }
+  },
+  "/api/v1/nvke/clusters/{cluster_id}/scheduler/curtail": {
+   "delete": {
+    "operationId": "release_curtail_api_v1_nvke_clusters__cluster_id__scheduler_curtail_delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Release Curtail Api V1 Nvke Clusters  Cluster Id  Scheduler Curtail Delete",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Release Curtail",
+    "tags": [
+     "kai-scheduler"
+    ]
+   },
+   "post": {
+    "description": "x-neocloud: grid curtailment fences GPUs; preemptible gangs go first.",
+    "operationId": "curtail_api_v1_nvke_clusters__cluster_id__scheduler_curtail_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CurtailBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Curtail Api V1 Nvke Clusters  Cluster Id  Scheduler Curtail Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Curtail",
+    "tags": [
+     "kai-scheduler"
+    ]
+   }
+  },
+  "/api/v1/nvke/clusters/{cluster_id}/scheduler/cycle": {
+   "post": {
+    "operationId": "run_cycle_api_v1_nvke_clusters__cluster_id__scheduler_cycle_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Run Cycle Api V1 Nvke Clusters  Cluster Id  Scheduler Cycle Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Run Cycle",
+    "tags": [
+     "kai-scheduler"
+    ]
+   }
+  },
+  "/api/v1/nvke/clusters/{cluster_id}/scheduler/nodes": {
+   "get": {
+    "operationId": "scheduler_nodes_api_v1_nvke_clusters__cluster_id__scheduler_nodes_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {},
+         "title": "Response Scheduler Nodes Api V1 Nvke Clusters  Cluster Id  Scheduler Nodes Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Scheduler Nodes",
+    "tags": [
+     "kai-scheduler"
+    ]
+   }
+  },
   "/api/v1/nvke/clusters/{cluster_id}/upgrade": {
    "post": {
     "operationId": "upgrade_api_v1_nvke_clusters__cluster_id__upgrade_post",
@@ -10544,6 +13286,236 @@
     "summary": "Upgrade",
     "tags": [
      "nvke"
+    ]
+   }
+  },
+  "/api/v1/nvke/clusters/{cluster_id}/workloads": {
+   "get": {
+    "operationId": "list_workloads_api_v1_nvke_clusters__cluster_id__workloads_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "queue",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Queue"
+      }
+     },
+     {
+      "in": "query",
+      "name": "state",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "State"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {},
+         "title": "Response List Workloads Api V1 Nvke Clusters  Cluster Id  Workloads Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Workloads",
+    "tags": [
+     "kai-scheduler"
+    ]
+   },
+   "post": {
+    "operationId": "submit_workload_api_v1_nvke_clusters__cluster_id__workloads_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/WorkloadCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Submit Workload Api V1 Nvke Clusters  Cluster Id  Workloads Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Submit Workload",
+    "tags": [
+     "kai-scheduler"
+    ]
+   }
+  },
+  "/api/v1/nvke/clusters/{cluster_id}/workloads/{name}": {
+   "delete": {
+    "description": "Job finished / deleted: frees its GPUs, then a session reschedules pending gangs.",
+    "operationId": "delete_workload_api_v1_nvke_clusters__cluster_id__workloads__name__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Delete Workload Api V1 Nvke Clusters  Cluster Id  Workloads  Name  Delete",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete Workload",
+    "tags": [
+     "kai-scheduler"
+    ]
+   },
+   "get": {
+    "operationId": "get_workload_api_v1_nvke_clusters__cluster_id__workloads__name__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Workload Api V1 Nvke Clusters  Cluster Id  Workloads  Name  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Workload",
+    "tags": [
+     "kai-scheduler"
     ]
    }
   },
@@ -10675,6 +13647,29 @@
     ]
    }
   },
+  "/api/v1/observability/otlp": {
+   "get": {
+    "description": "OTLP push state (NeoCloud ext): endpoint, pushes, last HTTP status.",
+    "operationId": "otlp_status_api_v1_observability_otlp_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Otlp Status Api V1 Observability Otlp Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Otlp Status",
+    "tags": [
+     "observability"
+    ]
+   }
+  },
   "/api/v1/oob/events": {
    "get": {
     "operationId": "list_events_api_v1_oob_events_get",
@@ -10771,6 +13766,115 @@
     "summary": "Receive Events",
     "tags": [
      "oob"
+    ]
+   }
+  },
+  "/api/v1/oob/leak-responses": {
+   "get": {
+    "operationId": "list_responses_api_v1_oob_leak_responses_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "state",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "State"
+      }
+     },
+     {
+      "in": "query",
+      "name": "tenant_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Tenant Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response List Responses Api V1 Oob Leak Responses Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Responses",
+    "tags": [
+     "leak-response"
+    ]
+   }
+  },
+  "/api/v1/oob/leak-responses/{rid}": {
+   "get": {
+    "operationId": "get_response_api_v1_oob_leak_responses__rid__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "rid",
+      "required": true,
+      "schema": {
+       "title": "Rid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Response Api V1 Oob Leak Responses  Rid  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Response",
+    "tags": [
+     "leak-response"
     ]
    }
   },
@@ -11402,6 +14506,290 @@
     ]
    }
   },
+  "/api/v1/power/curtailment-policy": {
+   "get": {
+    "operationId": "get_policy_api_v1_power_curtailment_policy_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Policy Api V1 Power Curtailment Policy Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Policy",
+    "tags": [
+     "grid-curtailment"
+    ]
+   },
+   "put": {
+    "operationId": "put_policy_api_v1_power_curtailment_policy_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/app__curtailment__PolicyBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Put Policy Api V1 Power Curtailment Policy Put",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Put Policy",
+    "tags": [
+     "grid-curtailment"
+    ]
+   }
+  },
+  "/api/v1/power/curtailments": {
+   "get": {
+    "operationId": "list_curtailments_api_v1_power_curtailments_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "state",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "State"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response List Curtailments Api V1 Power Curtailments Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Curtailments",
+    "tags": [
+     "grid-curtailment"
+    ]
+   },
+   "post": {
+    "operationId": "create_curtailment_api_v1_power_curtailments_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StartBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Create Curtailment Api V1 Power Curtailments Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Curtailment",
+    "tags": [
+     "grid-curtailment"
+    ]
+   }
+  },
+  "/api/v1/power/curtailments-quota-overrides": {
+   "get": {
+    "description": "Token-quota overrides opened by curtailment runs (applied via F02 token_quota).",
+    "operationId": "list_quota_overrides_api_v1_power_curtailments_quota_overrides_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response List Quota Overrides Api V1 Power Curtailments Quota Overrides Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Quota Overrides",
+    "tags": [
+     "grid-curtailment"
+    ]
+   }
+  },
+  "/api/v1/power/curtailments-settlements": {
+   "get": {
+    "description": "Demand-response settlement records (input for F27 /finops/dr-settlements).",
+    "operationId": "list_settlements_api_v1_power_curtailments_settlements_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response List Settlements Api V1 Power Curtailments Settlements Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Settlements",
+    "tags": [
+     "grid-curtailment"
+    ]
+   }
+  },
+  "/api/v1/power/curtailments/{cid}": {
+   "get": {
+    "operationId": "get_curtailment_api_v1_power_curtailments__cid__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Curtailment Api V1 Power Curtailments  Cid  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Curtailment",
+    "tags": [
+     "grid-curtailment"
+    ]
+   }
+  },
+  "/api/v1/power/curtailments/{cid}/end": {
+   "post": {
+    "operationId": "end_curtailment_api_v1_power_curtailments__cid__end_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response End Curtailment Api V1 Power Curtailments  Cid  End Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "End Curtailment",
+    "tags": [
+     "grid-curtailment"
+    ]
+   }
+  },
   "/api/v1/power/domains": {
    "get": {
     "operationId": "list_domains_api_v1_power_domains_get",
@@ -12001,6 +15389,222 @@
     ]
    }
   },
+  "/api/v1/readiness/clusters/{cluster_id}": {
+   "get": {
+    "operationId": "cluster_gate_api_v1_readiness_clusters__cluster_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cluster_id",
+      "required": true,
+      "schema": {
+       "title": "Cluster Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Cluster Gate Api V1 Readiness Clusters  Cluster Id  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Cluster Gate",
+    "tags": [
+     "readiness"
+    ]
+   }
+  },
+  "/api/v1/readiness/evaluate": {
+   "post": {
+    "operationId": "evaluate_api_v1_readiness_evaluate_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "title": "Body",
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Evaluate Api V1 Readiness Evaluate Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Evaluate",
+    "tags": [
+     "readiness"
+    ]
+   }
+  },
+  "/api/v1/readiness/inject": {
+   "post": {
+    "operationId": "post_inject_api_v1_readiness_inject_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "title": "Body",
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Post Inject Api V1 Readiness Inject Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Post Inject",
+    "tags": [
+     "readiness"
+    ]
+   }
+  },
+  "/api/v1/readiness/inject/{node}": {
+   "delete": {
+    "operationId": "delete_inject_api_v1_readiness_inject__node__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "node",
+      "required": true,
+      "schema": {
+       "title": "Node",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Delete Inject Api V1 Readiness Inject  Node  Delete",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete Inject",
+    "tags": [
+     "readiness"
+    ]
+   }
+  },
+  "/api/v1/readiness/reset": {
+   "post": {
+    "operationId": "post_reset_api_v1_readiness_reset_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Post Reset Api V1 Readiness Reset Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Post Reset",
+    "tags": [
+     "readiness"
+    ]
+   }
+  },
+  "/api/v1/readiness/rules": {
+   "get": {
+    "operationId": "get_rules_api_v1_readiness_rules_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Rules Api V1 Readiness Rules Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Rules",
+    "tags": [
+     "readiness"
+    ]
+   }
+  },
   "/api/v1/reconcile/run": {
    "post": {
     "operationId": "run_reconcile_api_v1_reconcile_run_post",
@@ -12019,6 +15623,395 @@
     "summary": "Run Reconcile",
     "tags": [
      "lifecycle"
+    ]
+   }
+  },
+  "/api/v1/remediation/demo/setup": {
+   "post": {
+    "description": "Deterministic demo state: clear F10/F09 records, reuse (or create) the\ndemo BMaaS tenant with one delivered vr-nvl72 rack, policy → auto.",
+    "operationId": "demo_setup_api_v1_remediation_demo_setup_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Demo Setup Api V1 Remediation Demo Setup Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Demo Setup",
+    "tags": [
+     "remediation"
+    ]
+   }
+  },
+  "/api/v1/remediation/health-events": {
+   "get": {
+    "operationId": "list_health_events_api_v1_remediation_health_events_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 100,
+       "maximum": 1000,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {},
+         "title": "Response List Health Events Api V1 Remediation Health Events Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Health Events",
+    "tags": [
+     "remediation"
+    ]
+   },
+   "post": {
+    "description": "PlatformConnector.HealthEventOccurredV1 — JSON of `HealthEvents`.",
+    "operationId": "post_health_events_api_v1_remediation_health_events_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "title": "Body",
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Post Health Events Api V1 Remediation Health Events Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Post Health Events",
+    "tags": [
+     "remediation"
+    ]
+   }
+  },
+  "/api/v1/remediation/inject": {
+   "post": {
+    "operationId": "inject_route_api_v1_remediation_inject_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/InjectBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Inject Route Api V1 Remediation Inject Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Inject Route",
+    "tags": [
+     "remediation"
+    ]
+   }
+  },
+  "/api/v1/remediation/policy": {
+   "get": {
+    "operationId": "get_policy_api_v1_remediation_policy_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Policy Api V1 Remediation Policy Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Policy",
+    "tags": [
+     "remediation"
+    ]
+   },
+   "put": {
+    "operationId": "put_policy_api_v1_remediation_policy_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Policy"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Put Policy Api V1 Remediation Policy Put",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Put Policy",
+    "tags": [
+     "remediation"
+    ]
+   }
+  },
+  "/api/v1/remediation/reset": {
+   "post": {
+    "operationId": "reset_route_api_v1_remediation_reset_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Reset Route Api V1 Remediation Reset Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Reset Route",
+    "tags": [
+     "remediation"
+    ]
+   }
+  },
+  "/api/v1/remediation/runs": {
+   "get": {
+    "operationId": "list_runs_api_v1_remediation_runs_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "tenant_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Tenant Id"
+      }
+     },
+     {
+      "description": "running | completed",
+      "in": "query",
+      "name": "state",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "running | completed",
+       "title": "State"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {},
+         "title": "Response List Runs Api V1 Remediation Runs Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Runs",
+    "tags": [
+     "remediation"
+    ]
+   },
+   "post": {
+    "operationId": "create_run_api_v1_remediation_runs_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Create Run Api V1 Remediation Runs Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Run",
+    "tags": [
+     "remediation"
+    ]
+   }
+  },
+  "/api/v1/remediation/runs/{run_id}": {
+   "get": {
+    "operationId": "get_run_api_v1_remediation_runs__run_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Run Api V1 Remediation Runs  Run Id  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Run",
+    "tags": [
+     "remediation"
     ]
    }
   },
@@ -12567,6 +16560,1187 @@
     ]
    }
   },
+  "/api/v1/sla/downtime": {
+   "get": {
+    "operationId": "get_downtime_api_v1_sla_downtime_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "tenant_id",
+      "required": true,
+      "schema": {
+       "title": "Tenant Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "period",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Period"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {},
+         "title": "Response Get Downtime Api V1 Sla Downtime Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Downtime",
+    "tags": [
+     "sla"
+    ]
+   }
+  },
+  "/api/v1/sla/exceptions": {
+   "get": {
+    "operationId": "list_exceptions_api_v1_sla_exceptions_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {},
+         "title": "Response List Exceptions Api V1 Sla Exceptions Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Exceptions",
+    "tags": [
+     "sla"
+    ]
+   },
+   "post": {
+    "operationId": "post_exception_api_v1_sla_exceptions_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ExceptionCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Post Exception Api V1 Sla Exceptions Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Post Exception",
+    "tags": [
+     "sla"
+    ]
+   }
+  },
+  "/api/v1/sla/exceptions/{ex_id}": {
+   "patch": {
+    "operationId": "patch_exception_api_v1_sla_exceptions__ex_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "ex_id",
+      "required": true,
+      "schema": {
+       "title": "Ex Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ExceptionPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Patch Exception Api V1 Sla Exceptions  Ex Id  Patch",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Patch Exception",
+    "tags": [
+     "sla"
+    ]
+   }
+  },
+  "/api/v1/sla/kpi": {
+   "get": {
+    "operationId": "get_kpi_api_v1_sla_kpi_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "tenant_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Tenant Id"
+      }
+     },
+     {
+      "in": "query",
+      "name": "period",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Period"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Kpi Api V1 Sla Kpi Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Kpi",
+    "tags": [
+     "sla"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters": {
+   "get": {
+    "operationId": "list_clusters_api_v1_slurm_clusters_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {},
+         "title": "Response List Clusters Api V1 Slurm Clusters Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Clusters",
+    "tags": [
+     "slurm-slinky"
+    ]
+   },
+   "post": {
+    "operationId": "post_cluster_api_v1_slurm_clusters_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "default": {},
+        "title": "Body",
+        "type": "object"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Post Cluster Api V1 Slurm Clusters Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Post Cluster",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}": {
+   "delete": {
+    "operationId": "delete_cluster_api_v1_slurm_clusters__cid__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Delete Cluster Api V1 Slurm Clusters  Cid  Delete",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete Cluster",
+    "tags": [
+     "slurm-slinky"
+    ]
+   },
+   "get": {
+    "operationId": "get_cluster_api_v1_slurm_clusters__cid__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Cluster Api V1 Slurm Clusters  Cid  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Cluster",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}/crs": {
+   "get": {
+    "operationId": "get_crs_api_v1_slurm_clusters__cid__crs_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {},
+         "title": "Response Get Crs Api V1 Slurm Clusters  Cid  Crs Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Crs",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}/jobs": {
+   "get": {
+    "operationId": "list_jobs_api_v1_slurm_clusters__cid__jobs_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response List Jobs Api V1 Slurm Clusters  Cid  Jobs Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Jobs",
+    "tags": [
+     "slurm-slinky"
+    ]
+   },
+   "post": {
+    "description": "sbatch emulation (plan F31) — slurmrestd JobSubmitReq in, job_submit response out,\nplus the job record (x-neocloud: placement, prolog verdicts, history).",
+    "operationId": "sbatch_api_v1_slurm_clusters__cid__jobs_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "title": "Body",
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Sbatch Api V1 Slurm Clusters  Cid  Jobs Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Sbatch",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}/jobs/{job_id}:complete": {
+   "post": {
+    "description": "Emulator: the batch script exits (exit_code 0 → COMPLETED, else FAILED).",
+    "operationId": "complete_job_api_v1_slurm_clusters__cid__jobs__job_id__complete_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "title": "Job Id",
+       "type": "integer"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "default": {},
+        "title": "Body",
+        "type": "object"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Complete Job Api V1 Slurm Clusters  Cid  Jobs  Job Id  Complete Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Complete Job",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}/nodes/{name}:fail": {
+   "post": {
+    "description": "Emulator (operator): node failure while running → S4 recovery.",
+    "operationId": "post_fail_node_api_v1_slurm_clusters__cid__nodes__name__fail_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "default": {},
+        "title": "Body",
+        "type": "object"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Post Fail Node Api V1 Slurm Clusters  Cid  Nodes  Name  Fail Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Post Fail Node",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}/slurm/v0.0.42/job/submit": {
+   "post": {
+    "operationId": "rest_submit_api_v1_slurm_clusters__cid__slurm_v0_0_42_job_submit_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "title": "Body",
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Rest Submit Api V1 Slurm Clusters  Cid  Slurm V0 0 42 Job Submit Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rest Submit",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}/slurm/v0.0.42/job/{job_id}": {
+   "delete": {
+    "description": "scancel → CANCELLED (pending or running).",
+    "operationId": "rest_cancel_api_v1_slurm_clusters__cid__slurm_v0_0_42_job__job_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "title": "Job Id",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Rest Cancel Api V1 Slurm Clusters  Cid  Slurm V0 0 42 Job  Job Id  Delete",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rest Cancel",
+    "tags": [
+     "slurm-slinky"
+    ]
+   },
+   "get": {
+    "operationId": "rest_job_api_v1_slurm_clusters__cid__slurm_v0_0_42_job__job_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "title": "Job Id",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Rest Job Api V1 Slurm Clusters  Cid  Slurm V0 0 42 Job  Job Id  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rest Job",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}/slurm/v0.0.42/jobs": {
+   "get": {
+    "operationId": "rest_jobs_api_v1_slurm_clusters__cid__slurm_v0_0_42_jobs_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Rest Jobs Api V1 Slurm Clusters  Cid  Slurm V0 0 42 Jobs Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rest Jobs",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}/slurm/v0.0.42/node/{name}": {
+   "get": {
+    "operationId": "rest_node_api_v1_slurm_clusters__cid__slurm_v0_0_42_node__name__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Rest Node Api V1 Slurm Clusters  Cid  Slurm V0 0 42 Node  Name  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rest Node",
+    "tags": [
+     "slurm-slinky"
+    ]
+   },
+   "post": {
+    "description": "scontrol update NodeName= State=DRAIN|RESUME Reason= (update_node_msg).",
+    "operationId": "rest_update_node_api_v1_slurm_clusters__cid__slurm_v0_0_42_node__name__post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "title": "Body",
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Rest Update Node Api V1 Slurm Clusters  Cid  Slurm V0 0 42 Node  Name  Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rest Update Node",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}/slurm/v0.0.42/nodes": {
+   "get": {
+    "operationId": "rest_nodes_api_v1_slurm_clusters__cid__slurm_v0_0_42_nodes_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Rest Nodes Api V1 Slurm Clusters  Cid  Slurm V0 0 42 Nodes Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rest Nodes",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}/slurm/v0.0.42/partitions": {
+   "get": {
+    "operationId": "rest_partitions_api_v1_slurm_clusters__cid__slurm_v0_0_42_partitions_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Rest Partitions Api V1 Slurm Clusters  Cid  Slurm V0 0 42 Partitions Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rest Partitions",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}/slurm/v0.0.42/ping": {
+   "get": {
+    "operationId": "rest_ping_api_v1_slurm_clusters__cid__slurm_v0_0_42_ping_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Rest Ping Api V1 Slurm Clusters  Cid  Slurm V0 0 42 Ping Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rest Ping",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/clusters/{cid}/topology.conf": {
+   "get": {
+    "operationId": "get_topology_api_v1_slurm_clusters__cid__topology_conf_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "cid",
+      "required": true,
+      "schema": {
+       "title": "Cid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "plugin",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Plugin"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "text/plain": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Topology",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
+  "/api/v1/slurm/reset": {
+   "post": {
+    "operationId": "post_reset_api_v1_slurm_reset_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Post Reset Api V1 Slurm Reset Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Post Reset",
+    "tags": [
+     "slurm-slinky"
+    ]
+   }
+  },
   "/api/v1/spec": {
    "get": {
     "description": "Expose generation-agnostic constants + blueprint catalog.",
@@ -12610,6 +17784,248 @@
     "summary": "Status Page",
     "tags": [
      "scenario"
+    ]
+   }
+  },
+  "/api/v1/status/notices": {
+   "get": {
+    "operationId": "get_notices_api_v1_status_notices_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "kind",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Kind"
+      }
+     },
+     {
+      "in": "query",
+      "name": "state",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "State"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Notices Api V1 Status Notices Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Notices",
+    "tags": [
+     "status-notices"
+    ]
+   },
+   "post": {
+    "operationId": "post_notice_api_v1_status_notices_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/NoticeIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Post Notice Api V1 Status Notices Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Post Notice",
+    "tags": [
+     "status-notices"
+    ]
+   }
+  },
+  "/api/v1/status/notices/demo/reset": {
+   "post": {
+    "description": "Drop notices created by the demo runner (source \"demo\"); others stay.",
+    "operationId": "demo_reset_api_v1_status_notices_demo_reset_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Demo Reset Api V1 Status Notices Demo Reset Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Demo Reset",
+    "tags": [
+     "status-notices"
+    ]
+   }
+  },
+  "/api/v1/status/notices/{notice_id}": {
+   "get": {
+    "operationId": "get_notice_api_v1_status_notices__notice_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "notice_id",
+      "required": true,
+      "schema": {
+       "title": "Notice Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Notice Api V1 Status Notices  Notice Id  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Notice",
+    "tags": [
+     "status-notices"
+    ]
+   }
+  },
+  "/api/v1/status/notices/{notice_id}/resolve": {
+   "post": {
+    "operationId": "resolve_notice_api_v1_status_notices__notice_id__resolve_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "notice_id",
+      "required": true,
+      "schema": {
+       "title": "Notice Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/ResolveIn"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Body"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Resolve Notice Api V1 Status Notices  Notice Id  Resolve Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Resolve Notice",
+    "tags": [
+     "status-notices"
     ]
    }
   },
@@ -14155,7 +19571,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/PolicyBody"
+        "$ref": "#/components/schemas/app__token_guard__PolicyBody"
        }
       }
      },
@@ -17425,6 +22841,26 @@
     "summary": "Http Create Webhook Endpoint",
     "tags": [
      "lago-emulator"
+    ]
+   }
+  },
+  "/metrics": {
+   "get": {
+    "description": "Prometheus scrape target (text 0.0.4; OpenMetrics 1.0 via Accept).",
+    "operationId": "metrics_endpoint_metrics_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Metrics Endpoint",
+    "tags": [
+     "observability"
     ]
    }
   },
