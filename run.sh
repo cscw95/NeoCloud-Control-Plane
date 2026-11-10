@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 if [ ! -d .venv ]; then
-  python3 -m venv .venv
+  "$(command -v python3.11 || command -v python3)" -m venv .venv   # Python >= 3.10 (starlette 1.x)
   . .venv/bin/activate
   pip install --quiet --upgrade pip
   pip install --quiet -r requirements.txt
