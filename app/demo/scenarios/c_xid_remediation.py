@@ -22,9 +22,15 @@ def _policy_ok(res, ctx):
 
 def _inject(ctx):
     """XID 79 as a Redfish Event — fed through the EventService receiver path."""
-    from ... import oob
+    from ... import dsx, oob
     host = first_node_host(ctx)
     ctx["machine"] = host
+    # the hardware fault itself goes into the twin first (NICo gpu/fault drives
+    # the AI-Infra gpu-faults twin, persistent → GpuReset Task ends in Exception);
+    # offline builds keep it in the NOCP fault table via the bus listener
+    st_twin, _ = dsx.nico_send("POST", dsx.nico_rest_path("machine_gpu_reset", id=host)
+                               .replace("/gpu/reset", "/gpu/fault"),
+                               json={"xid": 79, "gpu": 0, "persistent": True})
     ev = {"Events": [{
         "EventType": "Alert", "EventId": f"xid-{ctx['run_id']}",
         "MessageId": "NvidiaGPU.1.0.XidError",
@@ -34,7 +40,8 @@ def _inject(ctx):
         "OriginOfCondition": {"@odata.id": f"/redfish/v1/Systems/{host}"}}]}
     recs = oob.ingest(ev)
     return Result(202, {"accepted": len(recs), "ids": [r["id"] for r in recs],
-                        "machine": host, "event": ev})
+                        "machine": host, "event": ev,
+                        "twin_fault": "nico→ai-infra" if st_twin and st_twin < 400 else "local"})
 
 
 def _injected(res, ctx):

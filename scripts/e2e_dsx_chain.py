@@ -413,7 +413,9 @@ if section("token"):
         if ir.status_code == 404:
             print("  SKIP token invoice line (F05 billing not in this build)")
         else:
-            lines = [ln for inv in (ir.json().get("invoices") or []) for ln in inv.get("lines", [])]
+            # invoices:run returns summaries; the lines are on GET /billing/invoices/{id}
+            lines = [ln for inv in (ir.json().get("invoices") or [])
+                     for ln in op.get(f"/api/v1/billing/invoices/{inv['id']}").json().get("lines", [])]
             check("token line on invoice", any(ln.get("metric") == "token" for ln in lines),
                   str(ir.status_code))
 

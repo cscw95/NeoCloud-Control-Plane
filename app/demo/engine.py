@@ -41,6 +41,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
+import httpx
+
 from .. import auth
 
 STEP_STATES = ("waiting", "running", "passed", "failed", "pending", "skipped")
@@ -194,12 +196,21 @@ class Client:
     def _upstream(self, service: str, method: str, path: str, body, params):
         from .. import dsx
         base = dsx.ai_infra_url() if service == "ai" else dsx.nico_url()
-        st, resp = dsx.call(method, base + path, json=body, params=params)
         req = {"service": service, "method": method, "url": base + path,
                "headers": _redact(dsx.emu_headers()), "body": body}
-        if st is None:
-            return Result(0, {"error": str(resp)}), req
-        return Result(st, resp), req
+        if dsx.offline():
+            return Result(0, {"error": "offline"}), req
+        try:          # own request: keep headers + raw text (Prometheus /metrics, SSE)
+            with httpx.Client(timeout=30) as c:
+                r = c.request(method, base + path, json=body, params=params,
+                              headers=dsx.emu_headers())
+        except Exception as e:                       # noqa: BLE001 — upstream down
+            return Result(0, {"error": str(e)}), req
+        try:
+            parsed = r.json() if "json" in r.headers.get("content-type", "") else r.text
+        except ValueError:
+            parsed = r.text
+        return Result(r.status_code, parsed, dict(r.headers), r.text), req
 
 
 def _summary(res: Result) -> str:

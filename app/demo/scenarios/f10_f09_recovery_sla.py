@@ -80,7 +80,9 @@ def _rma(res, ctx):
 
 def _report_ok(res, ctx):
     b = _body(res)
-    return (b.get("violated") is False and b.get("downtime_min") == ctx["mttr2"],
+    # downtime is clipped at wall-clock seconds, MTTR is rounded to 0.1 min
+    return (b.get("violated") is False
+            and abs(float(b.get("downtime_min") or 0) - float(ctx["mttr2"] or 0)) <= 0.1,
             f"가용성 {b.get('availability_pct')}% (최악 노드 {b.get('downtime_min')}분) · 위반 없음",
             f"availability {b.get('availability_pct')}% (worst node {b.get('downtime_min')} min) · no violation")
 
