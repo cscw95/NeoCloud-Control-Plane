@@ -25,9 +25,9 @@ Rubin**). Two NVIDIA reference documents are codified into its data model and AP
 | **Multi-tenancy & Isolation** | ✅ Implemented | Tenant lifecycle, capacity allocation (SU/rack-set/HAC), NVLink partitions (GFM model), automatic VNI/VRF binding, 4-layer isolation verification report |
 | **Service Lifecycle (M1/M3/M4-lite)** | ✅ Implemented | Order pipeline (with saga compensation), NodeInstance/ServiceOrder state machines, NVL-domain-integrity placement, reclamation & sanitization, NICo reconcile (GHOST/ORPHAN/MISMATCH) |
 | **ComputeAdapter by NICo** | ✅ Implemented | ComputeAdapter contract (Local/HTTP implementations), NICo Day 0/1/2 simulator (job polling, fault injection) — swap only the adapter to integrate with a real NICo |
-| Health & Telemetry | 🔜 Roadmap | Unified GPU/DPU/network/facility monitoring (NVSentinel integration) |
-| Power & Cooling Integration | 🔜 Roadmap | DSX Exchange (MQTT) IT-OT, CDU/TCS, Coordinated Leak Response |
-| Billing & Metering | 🔜 Roadmap | Per-tenant usage metering and billing (NeoCloud revenue layer) |
+| Health & Telemetry | ✅ DSX baseline | OOB monitoring (Redfish EventService), RMA workflow, NVSentinel → NVKE node replace |
+| Power & Cooling Integration | ✅ DSX baseline | MaxLPS (DPS proxy, WPPS, simulate, DSX Flex), Exchange-style event bus (SSE) |
+| Billing & Metering | ✅ DSX baseline | GPU-hour, instance-hour, K8s node-hour metering |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed design and roadmap.
 
@@ -39,6 +39,102 @@ NOCP is one tier of a four-tier local stack — consoles (:8090) → **NOCP (:80
 physical twin). See **[docs/E2E_RUNBOOK.md](docs/E2E_RUNBOOK.md)** for the full
 bring-up order, demo staging and verification commands
 (`scripts/e2e_full_chain.py` — 12 PASS across the chain).
+
+## DSX OS Baseline (2026-11)
+
+NOCP is aligned to **NVIDIA DSX OS (2026.05)** and its four layers:
+Provisioning (NICo REST adapter, BMaaS pipeline, firmware) · Runtime (NVKE managed
+K8s, AICR recipe) · Workload (metering) · Fleet Health (OOB, RMA, NVSentinel → node
+replace). Contract: `../PLAN.md` §C.
+
+### DSX OS baseline version matrix
+
+Same values in every repo and in `GET /api/v1/platform/versions`:
+
+| Component | Version |
+|---|---|
+| DSX OS | 2026.05 |
+| NICo (infra-controller) | 2.3.0 |
+| NVKE | 0.23.1 |
+| DPS (MaxLPS) | 0.10 |
+| Mission Control | 2.5 |
+| DOCA | 3.x |
+| GPU Operator | AICR recipe |
+| Kubernetes | 1.33, 1.34 |
+| Platform | Vera Rubin NVL72 |
+
+### NICo adapter
+
+| Env | Effect |
+|---|---|
+| `NOCP_NICO_URL` | NICo emulator root (or the old `/nico-bridge` base). Unset = in-process FakeNico |
+| `NOCP_NICO_API=rest\|bridge` | `rest` (default): host reads use `GET /v2/org/{org}/nico/machine[/{id}]` (`lifecycleState` → host state, SKU from `controllerMachineType`); `bridge`: legacy `/nico-bridge` only |
+| `NOCP_NICO_ORG` | `{org}` path segment, default `neocloud` |
+
+The order pipeline's host-state steps (reserve, provision job, allocate, release,
+sanitize, segments) stay on the deprecated `/nico-bridge`, which shares state with
+the REST surface: a REST Instance needs a tenant VPC and gets its own id, and REST
+reports reserved/provisioned/allocated all as `assigned` (re-read on the bridge).
+Path table: `app/adapters.py` `NICO_REST_PATHS`; contract:
+`NICo-Emulator/docs/nico-rest-paths.md`.
+
+### New endpoints
+
+| Area | Method · Path | Notes |
+|---|---|---|
+| Platform | `GET /api/v1/platform/versions` | Matrix + layers + live emulator versions |
+| Catalog | `GET /api/v1/catalog` | `bmaas`, `managed-k8s` (engine `nvke`) |
+| NVKE | `GET /api/v1/nvke/releases` | Releases (k8s 1.33/1.34), AICR components |
+| NVKE | `GET, POST /api/v1/nvke/clusters` · `GET, PATCH, DELETE /api/v1/nvke/clusters/{id}` | List includes legacy NKD clusters (`source: nkd`, read-only here) |
+| NVKE | `GET, POST /api/v1/nvke/clusters/{id}/nodepools` · `GET, PATCH(count), DELETE …/nodepools/{np}` | Each node = NICo instance (reserve → provision → allocate); GPU pools claim a whole NVL72 rack for the tenant |
+| NVKE | `GET /api/v1/nvke/clusters/{id}/kubeconfig[?format=yaml]` | **Owning tenant only** |
+| NVKE | `POST /api/v1/nvke/clusters/{id}/upgrade` · `GET …/aicr-recipe` · `POST …/nodes/{node}/replace` | Rolling upgrade; NVSentinel node replacement |
+| MaxLPS | `GET, POST /api/v1/power/domains` · `GET, PATCH /api/v1/power/domains/{id}` | Proxy to AI-Infra DPS + ComputeBlock `power_mw` budget check (422 above budget) |
+| MaxLPS | `GET /api/v1/power/profiles` · `POST /api/v1/power/simulate` · `GET, POST /api/v1/power/flex-events` · `GET /api/v1/power/telemetry?domain=` | WPPS, static vs dynamic, DSX Flex |
+| MaxLPS | `POST /api/v1/racks/{rack}/power-policy` `{policy, profile?}` | Adds `dps-dynamic` and WPPS (`max-p`, `max-q`, `training`, `inference`, `balanced`; also accepted as `policy`). Cap pushed to AI-Infra (DPS rack profile + Redfish PowerLimit) |
+| OOB | `GET /api/v1/oob/summary?site=` · `GET /api/v1/oob/racks/{id}` · `GET /api/v1/oob/sel/{machine}` | BMC/PSU/leak/inlet/SEL/power per rack |
+| OOB | `POST /api/v1/oob/events` (Redfish EventService webhook) · `GET /api/v1/oob/events` · `POST /api/v1/oob/subscribe` | Auto-subscribes on startup (`NOCP_OOB_AUTOSUBSCRIBE=1`) |
+| OOB | `POST /api/v1/oob/machines/{m}/actions/{ac-power-cycle\|gpu-reset}` | NICo `PATCH /machine/{id}/power ACPowercycle`, `POST /machine/{id}/gpu/reset`; Redfish fallback |
+| Machines | `GET /api/v1/machines` · `GET /api/v1/machines/{id}` · `…/hardware` · `…/sanitize-report` | NICo REST Machine view |
+| Infra proxy | `GET, POST, PATCH, PUT, DELETE /api/v1/infra/{AI-Infra path}` | Allow-list: `emulator/v1/`, `ufm/v1/`, `netq/v1/`, `vast/v1/`, `converged/v1/`, `redfish/v1/`, `dps/v1/`, `exchange/v1/topics` |
+| NCP | `GET /api/v1/metering/usage?tenant=` | GPU-hour, instance-hour, K8s node-hour |
+| NCP | `GET /api/v1/isolation/{tenant}` | VPC/VRF, IB P_Key, NVLink, Spectrum-X, NSG + uniqueness check |
+| NCP | `GET, POST /api/v1/rma` · `GET /api/v1/rma/{id}` · `POST /api/v1/rma/{id}/advance[?to=]` | `health_event → cordon_drain → isolate → replace → burn_in → pool_return` |
+| NCP | `GET /api/v1/firmware/baseline` · `GET /api/v1/firmware/drift` | NICo ext when up, else local |
+| Events | `GET /api/v1/events` (SSE) · `GET /api/v1/events/recent` · `GET /api/v1/events/topics` | DSX Exchange topics `power, thermal, leak, grid, health, rma, firmware` |
+| Auth | `POST /api/v1/auth/tokens` · `POST /api/v1/events/token` · `GET /api/v1/auth/whoami` | See Security |
+
+Upstream-backed views answer with `"source": "ai-infra" | "nico"`, or
+`"local-fallback"` when the emulator is down.
+
+### Security
+
+| Env | Default | Effect |
+|---|---|---|
+| `NOCP_TOKENS` | — | Static bearer tokens: `tok=operator,tok2=tenant:tnt-a[:viewer]` or JSON |
+| `NOCP_TOKEN_SECRET` | random per process | HMAC key for `nocp1.*` tokens from `POST /api/v1/auth/tokens` (operator only) |
+| `NOCP_DEV_INSECURE_HEADERS` | `0` | `1` = trust `X-Tenant-Id` / `X-Tenant-Role` / `X-Operator` (tests, local demo) |
+| `NOCP_DEV_OPERATOR_DEFAULT` | `0` | `1` = no identity means operator (tests, `run.sh`) |
+| `NOCP_CORS_ORIGINS` | `http://localhost:8090,http://127.0.0.1:8090` | Allowed console origins |
+| `NOCP_WEBHOOK_SOURCES` | `127.0.0.1,::1,testclient` | IPs/CIDRs allowed to POST `/api/v1/oob/events` |
+| `NOCP_WEBHOOK_SECRET` | — | When set, the webhook requires `X-Webhook-Token` |
+| `NOCP_WEBHOOK_DESTINATIONS` | `http://127.0.0.1:8000/api/v1/oob/events,http://localhost:8000/api/v1/oob/events` | Allowed EventService destinations |
+
+- No identity on `/api/*` → 401. Without `NOCP_DEV_INSECURE_HEADERS=1`, client identity headers are stripped and replaced by the token's identity.
+- SSE: `EventSource` cannot set headers, so `GET /api/v1/events?token=` takes a 5-minute signed token from `POST /api/v1/events/token`. `?operator=true` is not accepted.
+- Tenants get 403 on operator surfaces (`oob`, `infra`, `power`, `rma`, `firmware`, `machines`, `events`, `admin`) and on resources owned by other tenants (tenants, orders, k8s/NVKE clusters, tickets, nodes, isolation). Lists are filtered to the caller's tenant.
+- Kubeconfigs (NVKE and legacy `/k8s/.../kubeconfigs`) are released only to the owning tenant. Listings never include the body, and it is never written to the trace log.
+- `/api/v1/infra/*` rejects `..`, encoded separators, `//`, `@`, and absolute URLs, and checks that the target host is AI-Infra.
+
+`run.sh` sets both dev switches to `1` so the bundled static pages keep working.
+Production leaves them `0`, and clients send `Authorization: Bearer`.
+
+### DSX tests & smoke
+
+```bash
+.venv/bin/python -m pytest -q                                      # 187 tests
+NOCP_NICO_URL=http://127.0.0.1:9000 .venv/bin/python scripts/dsx_smoke.py   # live NICo chain
+```
 
 ## Quick Start
 
@@ -73,7 +169,7 @@ curl -XPOST "localhost:8000/api/v1/admin/reseed?blueprints=gb200-nvl72,gb300-nvl
 
 ```bash
 . .venv/bin/activate
-pytest -q                                        # 45 tests (including the E2E scenario)
+pytest -q                                        # 187 tests (including the E2E scenario and DSX suites)
 python scripts/demo_scenario.py                  # full end-to-end demo runner (11 acts, 37 checks)
 python scripts/demo_scenario.py --pause          # presentation mode
 ```
