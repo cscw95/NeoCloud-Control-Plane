@@ -215,6 +215,11 @@ def seed_default(store: Store, *, blueprints: list[str] | None = None) -> None:
                                        nico_host_id=f"nh-{nid}")
 
 
+DEMO_TENANTS = (("fin-corp", "bare_metal_dedicated", "premium"),
+                ("hyperscale-x", "bare_metal_dedicated", "standard"),
+                ("gamma-labs", "k8s_namespace", "standard"))
+
+
 def seed_demo_samples(store: Store) -> None:
     """Seed sample data so the console menus (alerts·incidents·tickets) are not
     empty right after a demo reset/seed — distinguished by the "(sample)" marker
@@ -231,6 +236,15 @@ def seed_demo_samples(store: Store) -> None:
     from .tray_emu import EMULATOR
 
     EMULATOR.seed_sample_faults()
+
+    # demo tenants — the customer console's default session (tnt-fin-corp) and its
+    # demo-login switcher must exist in NOCP so tenant-scoped reads return 200.
+    from .models import IsolationTier, TenantCreate
+    from .tenancy import create_tenant
+    for name, tier, sla in DEMO_TENANTS:
+        if f"tnt-{name}" not in store.tenants:
+            create_tenant(TenantCreate(name=name, isolation_tier=IsolationTier(tier),
+                                       sla_tier=sla, notes="demo tenant (sample)"))
 
     if not store.tickets:
         now = datetime.now(timezone.utc).isoformat()

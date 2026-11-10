@@ -482,8 +482,11 @@ def get_termination(tenant_id: str) -> dict:
     with STORE.lock:
         rec = _latest_termination_locked(tenant_id)
         if not rec:
-            raise HTTPException(404, f"tenant '{tenant_id}'의 종료 워크플로우 "
-                                     "없음")
+            if tenant_id not in STORE.tenants:
+                raise HTTPException(404, f"tenant '{tenant_id}' not found")
+            # known tenant, no termination requested yet → 200 with state "none"
+            return {"termination_id": None, "tenant_id": tenant_id, "state": "none",
+                    "requested_at": None, "checklist": [], "progress": 0}
         out = {"termination_id": rec["termination_id"],
                "tenant_id": tenant_id,
                "state": rec["state"], "requested_at": rec["requested_at"],

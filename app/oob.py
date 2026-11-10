@@ -471,21 +471,47 @@ def _adapter():
     return get_adapter()
 
 
+NICO_PAGE = 100                                    # NICo REST spec page size cap
+
+
 @router.get("/machines")
 def list_machines(rack: Optional[str] = None, status: Optional[str] = None,
                   tenant_id: Optional[str] = None,
-                  limit: int = Query(200, ge=1, le=1000)) -> dict:
+                  limit: int = Query(200, ge=1, le=1000),
+                  offset: int = Query(0, ge=0)) -> dict:
+    """Machines page [offset, offset+limit). NICo is read page by page (pageSize 100);
+    `next_offset` is set while more rows remain, so clients page instead of asking
+    for more than `limit` max (1000)."""
     params = {k: v for k, v in (("rackId", rack), ("status", status),
                                 ("tenantId", tenant_id)) if v}
-    body = dsx.nico_get(dsx.nico_rest_path("machine"), params={**params, "pageSize": 100})
+    path = dsx.nico_rest_path("machine")
+    first = offset // NICO_PAGE + 1
+    body = dsx.nico_get(path, params={**params, "pageSize": NICO_PAGE, "pageNumber": first})
     if body is not None:
         from .adapters import _items
-        return {"source": "nico", "machines": _items(body)[:limit]}
+        rows, page, chunk = [], first, _items(body)
+        while True:
+            rows += chunk
+            if len(chunk) < NICO_PAGE or len(rows) >= (offset - (first - 1) * NICO_PAGE) + limit:
+                break
+            page += 1
+            chunk = _items(dsx.nico_get(path, params={**params, "pageSize": NICO_PAGE,
+                                                      "pageNumber": page}) or [])
+            if not chunk:
+                break
+        skip = offset - (first - 1) * NICO_PAGE
+        out = rows[skip:skip + limit]
+        more = len(rows) > skip + limit or len(chunk) == NICO_PAGE
+        return {"source": "nico", "machines": out, "offset": offset, "limit": limit,
+                "next_offset": offset + len(out) if more and out else None}
     rows = [_local_machine(h) for h in _adapter().list_hosts()]
     rows = [r for r in rows if (not rack or r["rackId"] == rack)
             and (not status or r["status"].lower() == status.lower())
             and (not tenant_id or r["tenantId"] == tenant_id)]
-    return {"source": "local-fallback", "machines": rows[:limit]}
+    out = rows[offset:offset + limit]
+    return {"source": "local-fallback", "machines": out, "offset": offset, "limit": limit,
+            "total": len(rows),
+            "next_offset": offset + limit if offset + limit < len(rows) else None}
 
 
 def _machine_or_404(machine_id: str) -> dict:

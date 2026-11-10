@@ -22,8 +22,10 @@ def test_reset_all_local_ok_even_when_emulators_down(client, dead_emulators):
     assert body["nocp"]["reseeded"] is True
     assert body["nico_emulator"]["status"] == "unreachable"
     assert body["ai_infra"]["status"] == "unreachable"
-    # The local store is actually reset — no tenants/orders
-    assert client.get("/api/v1/tenants").json() == []
+    # The local store is actually reset — only the demo-seed tenants, no orders
+    from app.seed import DEMO_TENANTS
+    assert {t["id"] for t in client.get("/api/v1/tenants").json()} == \
+        {f"tnt-{n}" for n, _, _ in DEMO_TENANTS}
     assert client.get("/api/v1/orders").json() == []
 
 
