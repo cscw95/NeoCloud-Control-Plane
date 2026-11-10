@@ -59,8 +59,22 @@ ai = httpx.Client(base_url=AI, timeout=30, headers=emu_h)
 nico = httpx.Client(base_url=NICO, timeout=30, headers=emu_h)
 
 
+NREST = "/v2/org/neocloud/nico"           # F08: e2e reads NICo REST too (no /nico-bridge)
+_LC = {"assigned": "allocated", "ready": "pool_ready"}
+
+
+def _as_host(m):
+    return {"host_id": m.get("id"), "state": _LC.get(m.get("lifecycleState"), m.get("lifecycleState")),
+            "tenant_ref": m.get("tenantId"), "instance_id": m.get("instanceId"),
+            "cordoned": bool(m.get("maintenanceMessage"))}
+
+
 def host(hid):
-    return nico.get(f"/nico-bridge/hosts/{hid}").json()
+    return _as_host(nico.get(f"{NREST}/machine/{hid}").json())
+
+
+def bridge_calls():
+    return nico.get("/emulator/v1/bridge-calls").json().get("count", -1)
 
 
 def wait(fn, pred, tries=90, delay=1.0):
@@ -74,6 +88,7 @@ def wait(fn, pred, tries=90, delay=1.0):
 
 
 print(f"DSX chain E2E — {'SECURE' if SECURE else 'dev'} mode, NOCP {NOCP}")
+BRIDGE0 = bridge_calls()
 
 # ---------------------------------------------------------------------------
 if section("reach"):
@@ -105,7 +120,7 @@ if section("security") and SECURE:
     check("cross-tenant isolation view → 403", r.status_code == 403, str(r.status_code))
     r = httpx.post(AI + "/emulator/v1/oob/recover", json={}, timeout=10)
     check("AI-Infra mutation without key → 401", r.status_code == 401, str(r.status_code))
-    r = httpx.post(NICO + "/nico-bridge/hosts/nh-x/cordon", json={}, timeout=10)
+    r = httpx.patch(NICO + NREST + "/machine/nh-x", json={"maintenanceMessage": "x"}, timeout=10)
     check("NICo mutation without key → 401", r.status_code == 401, str(r.status_code))
 
 # ---------------------------------------------------------------------------
@@ -119,8 +134,8 @@ if section("bmaas"):
     check("order delivered", fin.get("state") == "delivered", fin.get("state"))
     alloc = next((a["id"] for a in ta.get(f"/api/v1/tenants/{TA}").json()
                   .get("allocations", [])), None)
-    hosts = [h for h in nico.get("/nico-bridge/hosts?limit=5000").json()
-             if h.get("tenant_ref") == TA]
+    hosts = [_as_host(m) for m in nico.get(f"{NREST}/machine", params={
+        "tenantId": TA, "pageSize": 100}).json()]
     check("NICo hosts allocated to tenant", hosts and all(h["state"] == "allocated"
                                                           for h in hosts), f"{len(hosts)} hosts")
     m = ta.get(f"/api/v1/metering/usage?tenant={TA}").json()
@@ -352,6 +367,23 @@ if section("infra"):
     check("infra proxy blocks traversal", r.status_code in (400, 403, 404))
     r = op.post("/api/v1/infra/emulator/v1/oob/recover", json={})
     check("infra proxy POST (emulator key forwarded)", r.status_code == 200, str(r.status_code))
+
+# ---------------------------------------------------------------------------
+if section("nico-rest"):
+    n = bridge_calls()
+    check("F08: zero /nico-bridge calls during the run (NICo call log)",
+          n == BRIDGE0 == 0, f"before={BRIDGE0} after={n}")
+    evs = nico.get("/emulator/v1/events?limit=2000").json()
+    ids = {e["message_id"] for e in evs}
+    check("F08: NICo saw REST instance create + delete",
+          {"NICo.2.3.InstanceCreated", "NICo.2.3.InstanceDeleted"} <= ids)
+    check("F08: no DeprecatedBridgeCall event", "NICo.2.3.DeprecatedBridgeCall" not in ids)
+    mev = wait(lambda: op.get("/api/v1/events/recent?topic=machine&limit=1000").json(),
+               lambda e: any(x["data"].get("instance_state") == "ready" for x in e), tries=10)
+    check("F12: NICo machine state (assigned/ready) on NOCP bus topic machine",
+          any(x["data"].get("instance_state") == "ready" for x in mev), f"{len(mev)} events")
+    check("F12: upstream channel NICO/v1/machine/{id}/state",
+          all(x["data"]["channel"].startswith("NICO/v1/machine/") for x in mev) and mev)
 
 failed = [n for n, ok in results if not ok]
 print(f"\n{len(results) - len(failed)}/{len(results)} PASS")

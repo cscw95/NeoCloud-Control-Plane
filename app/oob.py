@@ -30,7 +30,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 import httpx
 from fastapi.responses import JSONResponse, Response
 
-from . import dsx, events
+from . import dsx, events, nico_events
 from .store import STORE
 
 router = APIRouter(prefix="/api/v1", tags=["oob"])
@@ -61,6 +61,7 @@ class _OobState:
             self.sel.clear()
             self.subscription = None
             self.seq = 0
+        nico_events.reset()
 
 
 OOB = _OobState()
@@ -220,6 +221,11 @@ def ingest(raw: dict) -> list[dict]:
     out = []
     for e in batch:
         if not isinstance(e, dict):
+            continue
+        if nico_events.is_machine_event(e):       # F12: NICo state → bus topic machine
+            rec = nico_events.handle(e)
+            if rec is not None:
+                out.append(rec)
             continue
         origin = e.get("OriginOfCondition")
         if isinstance(origin, dict):

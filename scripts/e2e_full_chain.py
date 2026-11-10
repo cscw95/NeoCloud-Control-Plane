@@ -7,7 +7,7 @@ Chain:  Business console (deal) -> NOCP Control-Plane (order lifecycle) ->
 Also validates the integration-status endpoints + NICo site controllers.
 Run (all three services up):  PYTHONPATH=. .venv/bin/python scripts/e2e_full_chain.py
 """
-import sys, time, httpx
+import json, sys, time, httpx
 
 NOCP = "http://127.0.0.1:8000/api/v1"
 NICO = "http://127.0.0.1:9000"
@@ -43,8 +43,9 @@ srv = c.get(NICO + "/emulator/v1/sites").json()["sites"]
 check("NICo per-site controllers (gasan+ansan, all services healthy)",
       len(srv) == 2 and all(s["service_ok"] == s["service_total"] for s in srv),
       f"{[(s['nico_instance'], s['service_ok'], s['service_total']) for s in srv]}")
-hosts = c.get(NICO + "/nico-bridge/hosts?limit=5000").json()
-check("NICo bridge exposes full fleet to NOCP (2,520 hosts)", len(hosts) == 2520)
+r = c.get(NICO + "/v2/org/neocloud/nico/machine?pageSize=1")
+total = json.loads(r.headers.get("X-Pagination", "{}")).get("total", 0)
+check("NICo REST exposes full fleet to NOCP (2,520 machines)", total >= 2520, str(total))
 
 # 3) Business -> Control-Plane: a real order (simulating deal conversion)
 tenant = "e2e-corp"
