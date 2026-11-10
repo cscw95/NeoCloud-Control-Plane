@@ -347,6 +347,10 @@ def flex_event(body: FlexEvent) -> dict:
     with POWER.lock:
         POWER.flex_events.append(rec)
     from . import events
+    from . import curtailment                      # F21: shorthand opens a run
+    run = curtailment.on_flex_event(rec)
+    if run:
+        rec = {**rec, "curtailment_id": run["id"]}
     events.publish("grid", {"event": "flex", **rec}, source="nocp.power")
     return rec
 

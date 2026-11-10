@@ -56,6 +56,7 @@ from . import (
 )
 from .seed import seed_default, seed_demo_samples
 from .store import STORE
+from . import curtailment, leak_response  # noqa: E402  F21/F22
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -76,6 +77,8 @@ async def lifespan(app: FastAPI):
     power.POWER.reset()
     events.BUS.reset()
     oob.OOB.reset()
+    curtailment.reset()
+    leak_response.reset()
     ncp.RMA.reset()
     token_quota.reset()            # F02 quota buckets·overrides
     metering.reset()               # F04 metering log
@@ -146,6 +149,8 @@ app.include_router(compliance.router)
 app.include_router(capacity.router)
 app.include_router(remediation.router)
 app.include_router(sla.router)
+app.include_router(curtailment.router)
+app.include_router(leak_response.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
@@ -214,6 +219,8 @@ def reseed(blueprints: str | None = None) -> dict:
     power.POWER.reset()
     events.BUS.reset()
     oob.OOB.reset()
+    curtailment.reset()
+    leak_response.reset()
     ncp.RMA.reset()
     token_api.reset()
     token_quota.reset()            # F02 quota buckets·overrides

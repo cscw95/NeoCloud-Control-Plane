@@ -302,7 +302,8 @@ def _replace(run: dict, t: dict) -> dict:
 
 def _rma(run: dict, clock: _Clock, t: dict) -> None:
     from .ncp import RMA_STAGES, RmaCreate, _run_stage, open_case, _publish as rma_pub
-    case = open_case(RmaCreate(machine=t["machine_id"], component="GPU",
+    leak = run["trigger"]["kind"] == "leak"     # F22: facility repair, case stays open at isolate
+    case = open_case(RmaCreate(machine=t["machine_id"], component="Tray" if leak else "GPU",
                                reason=run["reason"], rack=t["rack_id"],
                                tenant=t["tenant_id"], source="nvsentinel"))
     run["rma_id"] = case["id"]
@@ -322,6 +323,8 @@ def _rma(run: dict, clock: _Clock, t: dict) -> None:
         if name:
             _step(run, clock, name, rma_stage=stage, **({"validation": rec["validation"]}
                                                        if "validation" in rec else {}))
+        if leak and stage == "isolate":
+            return
     case["closed_at"] = clock.t.isoformat(timespec="seconds")
 
 
@@ -428,7 +431,9 @@ def _start(machine_id: str, reason: str, trigger: dict, ev: Optional[dict] = Non
                                 instance_id=t["instance_id"], rack_id=t["rack_id"],
                                 start=_iso(detected),
                                 end=_iso(restored if run["outcome"] != "failed" else clock.t),
-                                cause=f"xid:{(ev.get('errorCode') or ['?'])[0]}",
+                                cause=(f"xid:{(ev.get('errorCode') or ['?'])[0]}"
+                                       if run["trigger"]["kind"] == "xid"
+                                       else f"{run['trigger']['kind']}:{(ev.get('errorCode') or ['?'])[0]}"),
                                 ref=rid)
         _publish("RemediationCompleted", run, outcome=run["outcome"], mttr_min=run["mttr_min"])
         return run
@@ -445,9 +450,18 @@ def _uncordon(host: str) -> None:
 
 
 def start_run(machine_id: str, reason: str = "operator",
-              trigger: Optional[dict] = None) -> dict:
-    """Explicit start (operator, F22 leak response) — runs whatever the mode."""
-    return _start(machine_id, reason, trigger or {"kind": "manual"})
+              trigger: Optional[dict] = None, health_event: Optional[dict] = None) -> dict:
+    """Explicit start (operator, F22 leak response) — runs whatever the mode.
+    A caller-built NVSentinel HealthEvent (F22 LeakDetection, recommendedAction
+    REPLACE_VM) is used as-is, so no GPU reset is tried for a non-GPU fault."""
+    ev_rec = None
+    if health_event is not None:
+        ev_rec = {"createdAt": _iso(_utcnow()), "healthEvent": health_event,
+                  "healthEventStatus": _status()}
+        with REM.lock:
+            REM.health_events.append(ev_rec)
+    return _start(machine_id, reason, trigger or {"kind": "manual"},
+                  health_event, ev_rec)
 
 
 def inject(body: InjectBody) -> dict:
