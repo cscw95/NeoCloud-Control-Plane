@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Run the NeoCloud CLI from a source checkout (no install needed).
+D="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHONPATH="$D/sdk:$D/cli${PYTHONPATH:+:$PYTHONPATH}" exec "${PYTHON:-python3}" -m neocloud_cli "$@"

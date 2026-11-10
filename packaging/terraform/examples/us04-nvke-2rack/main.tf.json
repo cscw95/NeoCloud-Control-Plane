@@ -1,0 +1,31 @@
+{
+  "//": "US-04 (F11): an NVKE cluster with a 2-rack vr-nvl72 node pool (36 trays, 144 GPUs).\nGenerated HCL twin: main.tf (tfemu.py hcl).",
+  "terraform": {
+    "required_providers": {"neocloud": {"source": "neocloud/neocloud", "version": "~> 0.1"}}
+  },
+  "variable": {
+    "base_url": {"type": "string", "default": "http://127.0.0.1:8000"},
+    "tenant_name": {"type": "string", "default": "tf-us04"}
+  },
+  "provider": {
+    "neocloud": {"base_url": "${var.base_url}", "operator": true}
+  },
+  "resource": {
+    "neocloud_tenant": {
+      "k8s": {"name": "${var.tenant_name}", "isolation_tier": "bare_metal_dedicated"}
+    },
+    "neocloud_nvke_cluster": {
+      "train": {
+        "name": "tf-us04",
+        "tenant_id": "${neocloud_tenant.k8s.id}",
+        "k8s_version": "1.33",
+        "nodepool": [{"name": "gpu", "instance_type": "vr-nvl72", "count": 36}]
+      }
+    }
+  },
+  "output": {
+    "cluster_id": {"value": "${neocloud_nvke_cluster.train.id}"},
+    "node_count": {"value": "${neocloud_nvke_cluster.train.node_count}"},
+    "kubeconfig": {"value": "${neocloud_nvke_cluster.train.kubeconfig}", "sensitive": true}
+  }
+}
