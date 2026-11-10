@@ -967,6 +967,17 @@ def host_health(host_id: str) -> dict:
 
 @router.get("/hosts/{host_id}/attestation")
 def host_attestation(host_id: str) -> dict:
+    # F25: NICo REST GET /machine/{id}/attestation when reachable; fake otherwise
+    from . import dsx
+    rest = dsx.nico_get(dsx.nico_rest_path("machine_attestation", id=host_id), timeout=1.5)
+    if isinstance(rest, dict) and "measuredBoot" in rest:
+        return {"host_id": host_id, "attested": bool(rest.get("attested")),
+                "measured_boot": str(rest["measuredBoot"]).lower(),
+                "tpm": {f"PCR{k}": str(v)[:32]
+                        for k, v in ((rest.get("tpm") or {}).get("pcrs") or {}).items()},
+                "dpu": rest.get("dpu"), "verified_at": rest.get("verifiedAt"),
+                "policy": rest.get("policy") or "firmware-baseline + secure-boot chain",
+                "source": "nico"}
     host = FAKE_NICO.get_host(host_id)
     def pcr(n: int) -> str:
         return hashlib.sha256(f"{host_id}:pcr{n}".encode()).hexdigest()[:32]
@@ -974,7 +985,7 @@ def host_attestation(host_id: str) -> dict:
             "measured_boot": "passed" if host.attested else "pending",
             "tpm": {"PCR0": pcr(0), "PCR2": pcr(2),
                     "PCR4": pcr(4), "PCR7": pcr(7)},
-            "policy": "firmware-baseline + secure-boot chain"}
+            "policy": "firmware-baseline + secure-boot chain", "source": "fake-nico"}
 
 
 @router.get("/sanitize-reports")

@@ -250,6 +250,7 @@ NICO_REST_PATHS = {
     "machine_health":    "/v2/org/{org}/nico/machine/{id}/health-report",
     "machine_validation": "/v2/org/{org}/nico/machine/{id}/validation/result",
     "machine_gpu_reset": "/v2/org/{org}/nico/machine/{id}/gpu/reset",   # emulator ext
+    "machine_attestation": "/v2/org/{org}/nico/machine/{id}/attestation",
     "instance":          "/v2/org/{org}/nico/instance",
     "instance_one":      "/v2/org/{org}/nico/instance/{id}",
     "instance_type":     "/v2/org/{org}/nico/instance/type",

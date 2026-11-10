@@ -19,7 +19,8 @@ from typing import Optional
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
 
-TOPICS = ("power", "thermal", "leak", "grid", "health", "rma", "firmware")
+TOPICS = ("power", "thermal", "leak", "grid", "health", "rma", "firmware",
+          "dcim")
 
 router = APIRouter(prefix="/api/v1", tags=["dsx-events"])
 

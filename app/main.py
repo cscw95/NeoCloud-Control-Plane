@@ -42,6 +42,7 @@ from . import (
     tray_emu,
     vast_fake,
 )
+from . import bringup, firmware_bundles
 from .seed import seed_default, seed_demo_samples
 from .store import STORE
 
@@ -64,6 +65,8 @@ async def lifespan(app: FastAPI):
     events.BUS.reset()
     oob.OOB.reset()
     ncp.RMA.reset()
+    bringup.DCIM.reset()
+    firmware_bundles.FW.reset()
     metrics.METRICS.reset()        # reset real-time API call counters
     lifecycle.bootstrap_nodes()
     # compute-tray emulation — background tick (2s)
@@ -111,6 +114,8 @@ app.include_router(power.router)
 app.include_router(events.router)
 app.include_router(oob.router)
 app.include_router(ncp.router)
+app.include_router(bringup.router)
+app.include_router(firmware_bundles.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
@@ -178,6 +183,8 @@ def reseed(blueprints: str | None = None) -> dict:
     events.BUS.reset()
     oob.OOB.reset()
     ncp.RMA.reset()
+    bringup.DCIM.reset()
+    firmware_bundles.FW.reset()
     lifecycle.bootstrap_nodes()
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()
