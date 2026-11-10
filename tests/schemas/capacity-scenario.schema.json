@@ -1,0 +1,275 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "x-neocloud": true,
+ "$id": "https://neocloud.example/schemas/capacity-scenario.v1.json",
+ "title": "NeoCloud capacity scenario (F35)",
+ "description": "NeoCloud extension. Bundles AI-Infra POST /dps/v1/simulate (DPS static vs dynamic provisioning, NVIDIA DPS 공개 문서 기준) per power profile.",
+ "type": "object",
+ "required": [
+  "id",
+  "name",
+  "created_at",
+  "inputs",
+  "it_limit_kw",
+  "results",
+  "recommendation",
+  "fits",
+  "summary",
+  "source"
+ ],
+ "properties": {
+  "id": {
+   "type": "string",
+   "pattern": "^cap-[0-9]{4}$"
+  },
+  "name": {
+   "type": "string"
+  },
+  "created_at": {
+   "type": "string"
+  },
+  "inputs": {
+   "type": "object",
+   "required": [
+    "racks",
+    "policy",
+    "profiles",
+    "site_mw",
+    "pue"
+   ],
+   "properties": {
+    "racks": {
+     "type": "integer"
+    },
+    "policy": {
+     "enum": [
+      "static",
+      "dynamic",
+      "compare"
+     ]
+    },
+    "profiles": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "max-p",
+       "training",
+       "balanced",
+       "inference",
+       "max-q"
+      ]
+     }
+    },
+    "site_mw": {
+     "type": "number"
+    },
+    "pue": {
+     "type": "number"
+    }
+   }
+  },
+  "it_limit_kw": {
+   "type": "number"
+  },
+  "source": {
+   "enum": [
+    "dps-simulate",
+    "local-blueprint"
+   ]
+  },
+  "results": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "required": [
+     "profile",
+     "source",
+     "request"
+    ],
+    "properties": {
+     "profile": {
+      "type": "string"
+     },
+     "source": {
+      "enum": [
+       "dps-simulate",
+       "local-blueprint"
+      ]
+     },
+     "request": {
+      "type": "object",
+      "required": [
+       "operating_limit_kw",
+       "profile",
+       "gpus_per_rack"
+      ]
+     },
+     "static": {
+      "type": [
+       "object",
+       "null"
+      ],
+      "required": [
+       "rack_budget_kw",
+       "racks_supported",
+       "gpus_supported",
+       "expected_draw_kw",
+       "headroom_kw",
+       "fits",
+       "racks_requested",
+       "shortfall_racks",
+       "requested_budget_kw",
+       "requested_headroom_kw"
+      ],
+      "properties": {
+       "rack_budget_kw": {
+        "type": "number"
+       },
+       "racks_supported": {
+        "type": "integer"
+       },
+       "gpus_supported": {
+        "type": "integer"
+       },
+       "expected_draw_kw": {
+        "type": "number"
+       },
+       "headroom_kw": {
+        "type": "number"
+       },
+       "tokens_per_s": {
+        "type": [
+         "integer",
+         "number",
+         "null"
+        ]
+       },
+       "tokens_per_mw": {
+        "type": [
+         "integer",
+         "number",
+         "null"
+        ]
+       },
+       "fits": {
+        "type": "boolean"
+       },
+       "racks_requested": {
+        "type": "integer"
+       },
+       "shortfall_racks": {
+        "type": "integer"
+       },
+       "spare_racks": {
+        "type": "integer"
+       },
+       "requested_budget_kw": {
+        "type": "number"
+       },
+       "requested_headroom_kw": {
+        "type": "number"
+       },
+       "requested_tokens_per_s": {
+        "type": [
+         "integer",
+         "number",
+         "null"
+        ]
+       }
+      }
+     },
+     "dynamic": {
+      "type": [
+       "object",
+       "null"
+      ],
+      "required": [
+       "rack_budget_kw",
+       "racks_supported",
+       "gpus_supported",
+       "expected_draw_kw",
+       "headroom_kw",
+       "fits",
+       "racks_requested",
+       "shortfall_racks",
+       "requested_budget_kw",
+       "requested_headroom_kw"
+      ],
+      "properties": {
+       "rack_budget_kw": {
+        "type": "number"
+       },
+       "racks_supported": {
+        "type": "integer"
+       },
+       "gpus_supported": {
+        "type": "integer"
+       },
+       "expected_draw_kw": {
+        "type": "number"
+       },
+       "headroom_kw": {
+        "type": "number"
+       },
+       "tokens_per_s": {
+        "type": [
+         "integer",
+         "number",
+         "null"
+        ]
+       },
+       "tokens_per_mw": {
+        "type": [
+         "integer",
+         "number",
+         "null"
+        ]
+       },
+       "fits": {
+        "type": "boolean"
+       },
+       "racks_requested": {
+        "type": "integer"
+       },
+       "shortfall_racks": {
+        "type": "integer"
+       },
+       "spare_racks": {
+        "type": "integer"
+       },
+       "requested_budget_kw": {
+        "type": "number"
+       },
+       "requested_headroom_kw": {
+        "type": "number"
+       },
+       "requested_tokens_per_s": {
+        "type": [
+         "integer",
+         "number",
+         "null"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "recommendation": {
+   "type": [
+    "object",
+    "null"
+   ]
+  },
+  "fits": {
+   "type": "boolean"
+  },
+  "summary": {
+   "type": "object",
+   "required": [
+    "ko",
+    "en"
+   ]
+  }
+ }
+}

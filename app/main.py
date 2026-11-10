@@ -119,6 +119,9 @@ app.include_router(contracts.router)
 app.include_router(billing.router)
 app.include_router(billing_lago.router)
 app.include_router(billing_stripe.router)
+from . import capacity, compliance  # noqa: E402  (F34/F35)
+app.include_router(compliance.router)
+app.include_router(capacity.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
