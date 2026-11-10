@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neocloud-cli"
+version = "0.1.0"
+description = "NeoCloud CLI generated from the NOCP OpenAPI document (F29)"
+requires-python = ">=3.9"
+dependencies = ["neocloud-sdk==0.1.0"]
+
+[project.scripts]
+neocloud = "neocloud_cli.__main__:main"
+
+[tool.setuptools]
+packages = ["neocloud_cli"]

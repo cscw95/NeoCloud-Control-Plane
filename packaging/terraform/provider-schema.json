@@ -1,0 +1,340 @@
+{
+  "format_version": "1.0",
+  "provider_schemas": {
+    "registry.terraform.io/neocloud/neocloud": {
+      "provider": {
+        "version": 0,
+        "block": {
+          "attributes": {
+            "base_url": {
+              "type": "string",
+              "description_kind": "plain",
+              "description": "NOCP base URL (env NEOCLOUD_BASE_URL)",
+              "optional": true
+            },
+            "token": {
+              "type": "string",
+              "description_kind": "plain",
+              "description": "Bearer token (env NEOCLOUD_TOKEN)",
+              "optional": true,
+              "sensitive": true
+            },
+            "operator": {
+              "type": "bool",
+              "description_kind": "plain",
+              "description": "send X-Operator (dev stacks only)",
+              "optional": true
+            }
+          },
+          "description_kind": "plain"
+        }
+      },
+      "resource_schemas": {
+        "neocloud_bmaas_order": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "id": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              },
+              "tenant_id": {
+                "type": "string",
+                "description_kind": "plain",
+                "required": true
+              },
+              "contract_id": {
+                "type": "string",
+                "description_kind": "plain",
+                "optional": true
+              },
+              "blueprint_key": {
+                "type": "string",
+                "description_kind": "plain",
+                "optional": true,
+                "computed": true
+              },
+              "racks": {
+                "type": "number",
+                "description_kind": "plain",
+                "optional": true,
+                "computed": true
+              },
+              "state": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              },
+              "node_count": {
+                "type": "number",
+                "description_kind": "plain",
+                "computed": true
+              },
+              "allocation_ids": {
+                "type": [
+                  "list",
+                  "string"
+                ],
+                "description_kind": "plain",
+                "computed": true
+              }
+            },
+            "description_kind": "plain",
+            "description": "Bare-metal order (POST /api/v1/orders kind=new; destroy = kind=terminate)."
+          }
+        },
+        "neocloud_contract": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "id": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              },
+              "tenant_id": {
+                "type": "string",
+                "description_kind": "plain",
+                "required": true
+              },
+              "product": {
+                "type": "string",
+                "description_kind": "plain",
+                "optional": true
+              },
+              "commitment": {
+                "type": "string",
+                "description_kind": "plain",
+                "optional": true
+              },
+              "racks": {
+                "type": "number",
+                "description_kind": "plain",
+                "required": true
+              },
+              "blueprint_key": {
+                "type": "string",
+                "description_kind": "plain",
+                "optional": true
+              },
+              "term_months": {
+                "type": "number",
+                "description_kind": "plain",
+                "required": true
+              },
+              "start_date": {
+                "type": "string",
+                "description_kind": "plain",
+                "description": "YYYY-MM-DD",
+                "required": true
+              },
+              "unit_price": {
+                "type": "number",
+                "description_kind": "plain",
+                "description": "KRW per rack-month",
+                "required": true
+              },
+              "same_ib_zone": {
+                "type": "bool",
+                "description_kind": "plain",
+                "optional": true
+              },
+              "sla_tier": {
+                "type": "string",
+                "description_kind": "plain",
+                "optional": true
+              },
+              "activate": {
+                "type": "bool",
+                "description_kind": "plain",
+                "optional": true
+              },
+              "status": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              },
+              "end_date": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              },
+              "currency": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              }
+            },
+            "description_kind": "plain",
+            "description": "Reserved (committed) contract, F06 (POST /api/v1/contracts + /activate)."
+          }
+        },
+        "neocloud_nvke_cluster": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "id": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              },
+              "name": {
+                "type": "string",
+                "description_kind": "plain",
+                "required": true
+              },
+              "tenant_id": {
+                "type": "string",
+                "description_kind": "plain",
+                "required": true
+              },
+              "k8s_version": {
+                "type": "string",
+                "description_kind": "plain",
+                "optional": true
+              },
+              "nodepool": {
+                "type": [
+                  "list",
+                  [
+                    "object",
+                    {
+                      "name": "string",
+                      "instance_type": "string",
+                      "count": "number"
+                    }
+                  ]
+                ],
+                "description_kind": "plain",
+                "required": true
+              },
+              "status": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              },
+              "node_count": {
+                "type": "number",
+                "description_kind": "plain",
+                "computed": true
+              },
+              "kubeconfig": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true,
+                "sensitive": true
+              }
+            },
+            "description_kind": "plain",
+            "description": "Managed Kubernetes cluster, F11 (POST /api/v1/nvke/clusters)."
+          }
+        },
+        "neocloud_tenant": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "id": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              },
+              "name": {
+                "type": "string",
+                "description_kind": "plain",
+                "required": true
+              },
+              "isolation_tier": {
+                "type": "string",
+                "description_kind": "plain",
+                "optional": true
+              },
+              "status": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              }
+            },
+            "description_kind": "plain",
+            "description": "Customer organisation (POST /api/v1/tenants)."
+          }
+        },
+        "neocloud_token_key": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "id": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              },
+              "tenant_id": {
+                "type": "string",
+                "description_kind": "plain",
+                "required": true
+              },
+              "name": {
+                "type": "string",
+                "description_kind": "plain",
+                "required": true
+              },
+              "key": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true,
+                "sensitive": true
+              },
+              "prefix": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              }
+            },
+            "description_kind": "plain",
+            "description": "Token-API key, F01 (POST /api/v1/token/keys); secret only at create."
+          }
+        },
+        "neocloud_token_quota": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "id": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              },
+              "tenant_id": {
+                "type": "string",
+                "description_kind": "plain",
+                "required": true
+              },
+              "tier": {
+                "type": "string",
+                "description_kind": "plain",
+                "optional": true
+              },
+              "tpm": {
+                "type": "number",
+                "description_kind": "plain",
+                "required": true
+              },
+              "rpm": {
+                "type": "number",
+                "description_kind": "plain",
+                "required": true
+              },
+              "source": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              }
+            },
+            "description_kind": "plain",
+            "description": "TPM/RPM quota per tier, F02 (PUT /api/v1/token/quotas/{tenant_id})."
+          }
+        }
+      },
+      "data_source_schemas": {}
+    }
+  }
+}
