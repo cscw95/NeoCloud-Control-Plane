@@ -385,6 +385,38 @@ if section("nico-rest"):
     check("F12: upstream channel NICO/v1/machine/{id}/state",
           all(x["data"]["channel"].startswith("NICO/v1/machine/") for x in mev) and mev)
 
+if section("token"):
+    # F01 gateway: key → /v1/chat/completions (Dynamo) → usage once → billing line (F05)
+    op.post("/api/v1/tenants", json={"name": "e2e-tok", "isolation_tier": "k8s_namespace"})
+    kr = op.post("/api/v1/token/keys", json={"tenant_id": "tnt-e2e-tok", "name": "e2e"})
+    check("token key issued", kr.status_code == 201, str(kr.status_code))
+    if kr.status_code == 201:
+        kh = {"Authorization": f"Bearer {kr.json()['key']}", "x-request-id": "e2e-tok-1"}
+        body = {"model": "llama-3.3-70b-instruct", "max_tokens": 8,
+                "messages": [{"role": "user", "content": "hello"}]}
+        gw = httpx.Client(base_url=NOCP, timeout=60)
+        r1 = gw.post("/v1/chat/completions", json=body, headers=kh)
+        check("token chat via Dynamo", r1.status_code == 200
+              and r1.headers.get("x-neocloud-engine") == "dynamo",
+              f"{r1.status_code} engine={r1.headers.get('x-neocloud-engine')}")
+        r2 = gw.post("/v1/chat/completions", json=body, headers=kh)
+        u = op.get("/api/v1/token/usage", params={"tenant_id": "tnt-e2e-tok"}).json()
+        n = sum(1 for x in u.get("records", []) if x["request_id"] == "e2e-tok-1")
+        check("token retry billed once", r2.headers.get("x-idempotent-replay") == "true" and n == 1,
+              f"records={n}")
+        st = gw.post("/v1/chat/completions", json={**body, "stream": True},
+                     headers={**kh, "x-request-id": "e2e-tok-sse"})
+        check("token SSE usage in last chunk", '"choices": []' in st.text
+              and '"usage"' in st.text and st.text.rstrip().endswith("data: [DONE]"))
+        ir = op.post("/api/v1/billing/invoices:run", json={"tenant_id": "tnt-e2e-tok",
+                                                           "period": time.strftime("%Y-%m", time.gmtime())})
+        if ir.status_code == 404:
+            print("  SKIP token invoice line (F05 billing not in this build)")
+        else:
+            lines = [ln for inv in (ir.json().get("invoices") or []) for ln in inv.get("lines", [])]
+            check("token line on invoice", any(ln.get("metric") == "token" for ln in lines),
+                  str(ir.status_code))
+
 failed = [n for n, ok in results if not ok]
 print(f"\n{len(results) - len(failed)}/{len(results)} PASS")
 for n in failed:

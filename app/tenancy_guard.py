@@ -246,6 +246,9 @@ class TenancyGuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         from . import auth
         path = request.url.path
+        # OpenAI-compatible token API authenticates its own API keys (token_api.py)
+        if path.startswith("/v1/"):
+            return await call_next(request)
         try:
             ident = auth.resolve(request, _SSE_PATHS)
         except auth.AuthError as e:

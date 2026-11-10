@@ -38,6 +38,8 @@ from . import (
     power,
     shared_services,
     tenancy,
+    token_api,
+    token_guard,
     topology,
     trace,
     tray_emu,
@@ -67,6 +69,7 @@ async def lifespan(app: FastAPI):
     oob.OOB.reset()
     ncp.RMA.reset()
     metrics.METRICS.reset()        # reset real-time API call counters
+    token_api.reset()              # F01/F03 token gateway keys·usage·guard
     lifecycle.bootstrap_nodes()
     # compute-tray emulation — background tick (2s)
     tray_emu.EMULATOR.reset()
@@ -114,6 +117,9 @@ app.include_router(events.router)
 app.include_router(oob.router)
 app.include_router(ncp.router)
 app.include_router(identity.router)
+app.include_router(token_api.router)
+app.include_router(token_api.ops)
+app.include_router(token_guard.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
@@ -183,6 +189,7 @@ def reseed(blueprints: str | None = None) -> dict:
     events.BUS.reset()
     oob.OOB.reset()
     ncp.RMA.reset()
+    token_api.reset()
     lifecycle.bootstrap_nodes()
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()
