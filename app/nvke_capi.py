@@ -253,7 +253,7 @@ def _create_machine(st: dict, c, pool, node, md: str, ms: str, rack: str) -> Non
 
     # Instance Ready → providerID → NicoMachine ready → Provisioned.
     nm["status"].update({"ready": True, "initialization": {"provisioned": True},
-                         "addresses": [{"type": "InternalIP", "address": node.host_ip or "0.0.0.0"},
+                         "addresses": [{"type": "InternalIP", "address": node_ip(node)},
                                        {"type": "Hostname", "address": node.name}],
                          "tpmEkPubHash": _h("ek", node.nico_host_id, n=64)})
     nm["status"]["conditions"] = [_cond("Ready", True, "InstanceReady")]
@@ -479,6 +479,14 @@ def rollout(c, pool, to_version: str, max_unavailable: int = 1) -> dict:
 # ---------------------------------------------------------------------------
 # IMEX ComputeDomain (DRA driver CRD shape)
 # ---------------------------------------------------------------------------
+def node_ip(node) -> str:
+    """Host IP from NICo; deterministic 10.x fallback when the adapter has none."""
+    if node.host_ip:
+        return node.host_ip
+    h = hashlib.sha1(node.nico_host_id.encode()).digest()
+    return f"10.{h[0]}.{h[1]}.{max(1, h[2])}"
+
+
 def _cd_obj(c, name: str, pool_name: str, racks: list[str], mode: str, auto: bool) -> dict:
     return {"apiVersion": DRA_V, "kind": "ComputeDomain",
             "metadata": {"name": name, "namespace": "default", "creationTimestamp": _now(),
@@ -518,7 +526,7 @@ def _reconcile_compute_domains(st: dict, c) -> None:
                    if n.state != "removed" and rack_of(n) in ext["racks"]]
         members.sort(key=lambda n: (rack_of(n), n.name))
         cd["spec"]["numNodes"] = len(members)
-        cd["status"]["nodes"] = [{"name": n.name, "ipAddress": n.host_ip or "0.0.0.0",
+        cd["status"]["nodes"] = [{"name": n.name, "ipAddress": node_ip(n),
                                   "cliqueID": clique_of(rack_of(n)), "index": i,
                                   "status": "Ready"} for i, n in enumerate(members)]
         cd["status"]["status"] = "Ready" if members else "NotReady"

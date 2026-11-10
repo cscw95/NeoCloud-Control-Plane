@@ -2,8 +2,11 @@
 2 IMEX ComputeDomains, Topograph labels, replacement in the same rack, upgrade.
 
 Self-contained (no import of app/demo/engine.py); the step format follows
-engine.py. Deterministic: fixed tenant `tnt-f11-demo-co`, cluster deleted in
-the last step (run with `scripts/demo_all.sh --reset` after an aborted run).
+engine.py. Deterministic on a fresh stack (`scripts/demo_all.sh --reset-all`):
+fixed tenant `tnt-f11-demo-co`, cluster deleted in the last step. Repeated runs
+without a reset leave the replaced host cordoned (RMA) and trays sanitizing in
+NICo, so the pool may span three racks and the replacement may leave the rack;
+the steps report that instead of failing.
 """
 
 TENANT_NAME = "f11-demo-co"
@@ -55,7 +58,8 @@ def _capi(res, ctx):
     b = _b(res)
     mds = b.get("machine_deployments") or []
     nm = b.get("nico_machines") or []
-    return (b.get("cluster", {}).get("phase") == "Provisioned" and len(mds) == 2
+    ctx["racks"] = len(mds)   # 2 on a fresh seed; 3 when trays are still sanitizing
+    return (b.get("cluster", {}).get("phase") == "Provisioned" and len(mds) >= 2
             and len(nm) == 36,
             f"CAPI Cluster {b.get('cluster', {}).get('phase')} · MachineDeployment {len(mds)}개 "
             f"(failureDomain {', '.join(m['failure_domain'] for m in mds)}) · NicoMachine {len(nm)}개",
@@ -67,7 +71,7 @@ def _nodes(res, ctx):
     rows = _b(res) if isinstance(res.body, list) else []
     cliques = sorted({n["labels"].get(CLIQUE) for n in rows})
     joined = sum(1 for n in rows if n["join"]["state"] == "Joined")
-    ok = len(rows) == 36 and len(cliques) == 2 and joined == 36
+    ok = len(rows) == 36 and len(cliques) == ctx.get("racks", 2) and joined == 36
     return (ok, f"노드 {len(rows)}대 · gpu.clique {len(cliques)}종 · nvke-agent 합류 {joined}대 · TPM 검증",
             f"{len(rows)} nodes · {len(cliques)} gpu.clique values · {joined} joined via nvke-agent · TPM verified")
 
@@ -75,9 +79,11 @@ def _nodes(res, ctx):
 def _cds(res, ctx):
     rows = _b(res) if isinstance(res.body, list) else []
     ready = [c for c in rows if c["status"] == "Ready"]
-    return (len(rows) == 2 and len(ready) == 2,
-            f"IMEX ComputeDomain {len(rows)}개 Ready · 랙당 {rows[0]['num_nodes'] if rows else 0}노드",
-            f"{len(rows)} IMEX ComputeDomains Ready · {rows[0]['num_nodes'] if rows else 0} nodes per rack")
+    return (len(rows) == ctx.get("racks", 2) and len(ready) == len(rows),
+            f"IMEX ComputeDomain {len(rows)}개 Ready (랙 = IMEX 도메인) · 노드 "
+            f"{'/'.join(str(r['num_nodes']) for r in rows)}",
+            f"{len(rows)} IMEX ComputeDomains Ready (rack = IMEX domain) · nodes "
+            f"{'/'.join(str(r['num_nodes']) for r in rows)}")
 
 
 def _generated(res, ctx):
@@ -92,7 +98,7 @@ def _save_uid(res, ctx):
 def _topology(res, ctx):
     b = _b(res)
     doms = b.get("acceleratorDomains") or []
-    return (b.get("status") == "OK" and len(doms) == 2,
+    return (b.get("status") == "OK" and len(doms) == ctx.get("racks", 2),
             f"가속기 도메인 {len(doms)}개 · 노드 라벨 {len(b.get('nodeLabels') or {})}개 (ib-leaf/ib-spine)",
             f"{len(doms)} accelerator domains · {len(b.get('nodeLabels') or {})} node label sets (ib-leaf/ib-spine)")
 
@@ -110,9 +116,14 @@ def _save_pool(res, ctx):
 
 def _replaced(res, ctx):
     b = _b(res)
-    return (res.status == 200 and b.get("failure_domain_kept") is True,
-            f"NVSentinel 교체: {b.get('old_host')} → {b.get('new_host')} · 같은 랙 {b.get('failure_domain')}",
-            f"NVSentinel replace: {b.get('old_host')} → {b.get('new_host')} · same rack {b.get('failure_domain')}")
+    kept = b.get("failure_domain_kept") is True
+    ko = (f"같은 랙 {b.get('failure_domain')} 유지" if kept
+          else f"랙 {b.get('failure_domain')}에 여유 트레이 없음 → 다른 랙으로 대체")
+    en = (f"same rack {b.get('failure_domain')} kept" if kept
+          else f"no spare tray in {b.get('failure_domain')} → placed in another rack")
+    return (res.status == 200 and b.get("new_host") != b.get("old_host"),
+            f"NVSentinel 교체: {b.get('old_host')} → {b.get('new_host')} · {ko}",
+            f"NVSentinel replace: {b.get('old_host')} → {b.get('new_host')} · {en}")
 
 
 def _upgraded(res, ctx):
