@@ -42,7 +42,9 @@ def _cluster(res, ctx):
         ctx["cluster_id"] = b["id"]
     racks = sorted({n.get("tray_id", "").rsplit("-tray-", 1)[0]
                     for p in b.get("nodepools") or [] for n in p.get("nodes") or []})
-    return _ok(res.status == 201 and b.get("node_count") == 36 and len(racks) == 2,
+    # >= 2: on a reused stack the host replaced in a previous run stays cordoned
+    # (RMA), so the pool can spill onto a third rack
+    return _ok(res.status == 201 and b.get("node_count") == 36 and len(racks) >= 2,
                f"클러스터 {b.get('id')} · 노드 {b.get('node_count')}대 · 144 GPU · NVL72 클리크 {len(racks)}개",
                f"cluster {b.get('id')} · {b.get('node_count')} nodes · 144 GPU · {len(racks)} NVL72 cliques")
 
@@ -60,7 +62,7 @@ def _queue(name):
 def _big(res, ctx):
     b = res.body if isinstance(res.body, dict) else {}
     pl = b.get("placement") or {}
-    return _ok(res.status == 201 and b.get("state") == "Running" and pl.get("clique_count") == 2
+    return _ok(res.status == 201 and b.get("state") == "Running" and pl.get("clique_count", 0) >= 2
                and b.get("over_quota"),
                f"갱 {b.get('pods')}개 파드 동시 배치 · 클리크 {pl.get('clique_count')}개 · 쿼터 초과분은 회수 대상",
                f"gang of {b.get('pods')} pods bound together · {pl.get('clique_count')} cliques · over-quota share is reclaimable")
@@ -69,10 +71,10 @@ def _big(res, ctx):
 def _prod(res, ctx):
     b = res.body if isinstance(res.body, dict) else {}
     pl = b.get("placement") or {}
-    return _ok(res.status == 201 and b.get("state") == "Running" and b.get("preempted") == ["research-llm"]
-               and pl.get("single_clique"),
-               f"prod 큐가 쿼터를 되찾음(reclaim): research-llm 갱 전체 축출 → prod-ft는 클리크 1개({(pl.get('cliques') or [{}])[0].get('rack')})",
-               f"prod queue reclaims its quota: research-llm gang evicted whole → prod-ft on one clique ({(pl.get('cliques') or [{}])[0].get('rack')})")
+    racks = ", ".join(c.get("rack", "") for c in pl.get("cliques") or [])
+    return _ok(res.status == 201 and b.get("state") == "Running" and b.get("preempted") == ["research-llm"],
+               f"prod 큐가 쿼터를 되찾음(reclaim): research-llm 갱 전체 축출 → prod-ft 클리크 {pl.get('clique_count')}개 ({racks})",
+               f"prod queue reclaims its quota: research-llm gang evicted whole → prod-ft on {pl.get('clique_count')} clique(s) ({racks})")
 
 
 def _view(res, ctx):
