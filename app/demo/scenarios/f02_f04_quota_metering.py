@@ -41,7 +41,9 @@ except ImportError:                       # runner not merged yet: same helpers
         return bool(cond), ko, en
 
 TENANT = "f02-f04-demo"
-TID = f"tnt-{TENANT}"
+TID = f"tnt-{TENANT}"                     # metering part (fixed numbers)
+QTENANT = "f02-quota-demo"
+QTID = f"tnt-{QTENANT}"                   # quota / 429 part (real gateway usage lands here)
 MODEL = "llama-3.3-70b-instruct"
 PERIOD = datetime.now(timezone.utc).strftime("%Y-%m")
 TS = datetime.now(timezone.utc).replace(day=1, hour=9, minute=0, second=0,
@@ -82,8 +84,8 @@ def _rid(ctx, n):
 
 # -- expectations -------------------------------------------------------------
 def _tenant_ok(res, ctx):
-    return check(res.status in (201, 409), f"테넌트 {TID} 준비 (HTTP {res.status})",
-                 f"tenant {TID} ready (HTTP {res.status})")
+    return check(res.status in (201, 409), f"테넌트 준비 (HTTP {res.status})",
+                 f"tenant ready (HTTP {res.status})")
 
 
 def _put_ok(res, ctx):
@@ -182,7 +184,7 @@ def _usage_ok(res, ctx):
 
 
 def _ce_ok(res, ctx):
-    d = res.body.get("data", [])
+    d = res.body.get("events", [])
     return check(res.status == 200 and d and d[0].get("specversion") == "1.0",
                  f"CloudEvents 1.0 봉투 {len(d)}건 (type {d[0].get('type') if d else '-'})",
                  f"{len(d)} CloudEvents 1.0 envelopes (type {d[0].get('type') if d else '-'})")
@@ -204,24 +206,24 @@ SCENARIO = {
     "steps": [
         {"id": "01-tenant", "title_ko": "데모 테넌트", "title_en": "Demo tenant",
          "call": http("POST", "/api/v1/tenants",
-                      {"name": TENANT, "isolation_tier": "bare_metal_dedicated"}),
+                      {"name": QTENANT, "isolation_tier": "bare_metal_dedicated"}),
          "expect": _tenant_ok},
         {"id": "02-quota", "feature": "F02", "title_ko": "batch 등급 쿼터 설정",
          "title_en": "Set batch-tier quota",
          "narration_ko": "테넌트·등급별 토큰 버킷. 용량 = 분당 한도, 연속 리필.",
          "narration_en": "Token bucket per tenant × tier; capacity = per-minute limit, continuous refill.",
-         "call": http("PUT", f"/api/v1/token/quotas/{TID}",
+         "call": http("PUT", f"/api/v1/token/quotas/{QTID}",
                       {"tier": "batch", "tpm": 6000, "rpm": 6, "monthly_token_cap": 10_000_000}),
          "expect": _put_ok, "links": _link("token-quotas", "운영 · 쿼터", "Ops · quotas")},
         {"id": "03-override", "feature": "F02", "title_ko": "감축 override ×0.3 (F21 경로)",
          "title_en": "Curtailment override ×0.3 (F21 path)",
-         "call": http("POST", f"/api/v1/token/quotas/{TID}/override",
+         "call": http("POST", f"/api/v1/token/quotas/{QTID}/override",
                       lambda c: {"tier": "batch", "factor": 0.3, "until": _until(c),
                                  "reason": "demo: grid load target"}),
          "expect": _override_ok},
         {"id": "04-key", "feature": "F01", "title_ko": "API 키 발급", "title_en": "Issue API key",
          "requires": ["POST /api/v1/token/keys"],
-         "call": http("POST", "/api/v1/token/keys", {"tenant_id": TID, "name": "f02-demo"}),
+         "call": http("POST", "/api/v1/token/keys", {"tenant_id": QTID, "name": "f02-demo"}),
          "expect": _key_ok, "save": lambda r, c: c.update(api_key=r.body["key"])},
         {"id": "05-chat-ok", "feature": "F01", "title_ko": "batch 요청 1 (통과)",
          "title_en": "Batch call 1 (admitted)", "requires": ["POST /v1/chat/completions"],
@@ -243,28 +245,32 @@ SCENARIO = {
          "expect": _chat2_429},
         {"id": "07-clear", "feature": "F02", "title_ko": "override 해제 (복원)",
          "title_en": "Clear override (restore)",
-         "call": http("DELETE", f"/api/v1/token/quotas/{TID}/override", params={"tier": "batch"}),
+         "call": http("DELETE", f"/api/v1/token/quotas/{QTID}/override", params={"tier": "batch"}),
          "expect": _clear_ok},
-        {"id": "08-events", "feature": "F04", "title_ko": "게이트웨이 usage 이벤트 (토큰 유형별)",
+        {"id": "08-tenant", "title_ko": "계측 데모 테넌트", "title_en": "Metering demo tenant",
+         "call": http("POST", "/api/v1/tenants",
+                      {"name": TENANT, "isolation_tier": "bare_metal_dedicated"}),
+         "expect": _tenant_ok},
+        {"id": "09-events", "feature": "F04", "title_ko": "게이트웨이 usage 이벤트 (토큰 유형별)",
          "title_en": "Gateway usage events (per token type)",
          "narration_ko": "멱등 키 gw:<x-request-id>:<token_type>. input은 cached 제외, output은 reasoning 제외.",
          "narration_en": "Idempotency key gw:<x-request-id>:<token_type>; input excludes cached, "
                          "output excludes reasoning.",
          "call": http("POST", "/api/v1/metering/events/batch", {"events": _gw_events()}),
          "expect": _batch_ok, "links": _link("dsx-metering", "운영 · 미터링", "Ops · metering")},
-        {"id": "09-duplicate", "feature": "F04", "title_ko": "같은 키 재전송 → 중복",
+        {"id": "10-duplicate", "feature": "F04", "title_ko": "같은 키 재전송 → 중복",
          "title_en": "Same key again → duplicate",
          "call": http("POST", "/api/v1/metering/events", _gw_events()[0]), "expect": _dup_ok},
-        {"id": "10-engine", "feature": "F04", "title_ko": "엔진 usage 수집 (AI-Infra /dynamo/v1/usage 형식)",
+        {"id": "11-engine", "feature": "F04", "title_ko": "엔진 usage 수집 (AI-Infra /dynamo/v1/usage 형식)",
          "title_en": "Engine usage ingest (AI-Infra /dynamo/v1/usage shape)",
          "call": http("POST", "/api/v1/metering/engine/sync", {"records": ENGINE}),
          "expect": _engine_ok},
-        {"id": "11-reconcile", "feature": "F04", "title_ko": "게이트웨이 ↔ 엔진 대조",
+        {"id": "12-reconcile", "feature": "F04", "title_ko": "게이트웨이 ↔ 엔진 대조",
          "title_en": "Gateway ↔ engine reconciliation",
          "call": http("GET", "/api/v1/metering/reconcile",
                       params={"period": PERIOD, "tenant_id": TID}),
          "expect": _recon_ok},
-        {"id": "12-nico-open", "feature": "F04", "title_ko": "NICo 상태 이벤트: 할당 시작",
+        {"id": "13-nico-open", "feature": "F04", "title_ko": "NICo 상태 이벤트: 할당 시작",
          "title_en": "NICo state event: allocation start",
          "call": http("POST", "/api/v1/metering/nico/state",
                       {"machine_id": "demo-f04-tray-1", "timestamp": "2026-11-02T00:00:00Z",
@@ -273,18 +279,18 @@ SCENARIO = {
                        "x-neocloud": {"tenant_id": TID, "instance_id": "inst-demo-f04",
                                       "gpus": 4, "rack_id": "rk-demo"}}),
          "expect": _nico_open},
-        {"id": "13-nico-close", "feature": "F04", "title_ko": "NICo 상태 이벤트: 정리 → 시간 이벤트",
+        {"id": "14-nico-close", "feature": "F04", "title_ko": "NICo 상태 이벤트: 정리 → 시간 이벤트",
          "title_en": "NICo state event: cleanup → hour events",
          "call": http("POST", "/api/v1/metering/nico/state",
                       {"machine_id": "demo-f04-tray-1", "timestamp": "2026-11-02T02:30:00Z",
                        "managed_host_state": {"state": "waitingforcleanup",
                                               "cleanup_state": {"state": "hostcleanup"}}}),
          "expect": _nico_close},
-        {"id": "14-usage", "feature": "F04", "title_ko": "/metering/usage 토큰 라인",
+        {"id": "15-usage", "feature": "F04", "title_ko": "/metering/usage 토큰 라인",
          "title_en": "/metering/usage token lines",
          "call": http("GET", "/api/v1/metering/usage", params={"tenant_id": TID}),
          "expect": _usage_ok},
-        {"id": "15-cloudevents", "feature": "F04", "title_ko": "CloudEvents 1.0 봉투 보기",
+        {"id": "16-cloudevents", "feature": "F04", "title_ko": "CloudEvents 1.0 봉투 보기",
          "title_en": "CloudEvents 1.0 envelopes",
          "call": http("GET", "/api/v1/metering/events",
                       params={"tenant_id": TID, "format": "cloudevents", "limit": 3}),

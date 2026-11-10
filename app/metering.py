@@ -538,8 +538,7 @@ def get_events(tenant_id: Optional[str] = None, source: Optional[str] = None,
         data = [{"event": to_lago_event(r)} for r in rows]
     else:
         data = rows
-    return {"object": "list", "data": data, "count": len(data), "total": total,
-            "summary": summary(tenant_id)}
+    return {"events": data, "count": len(data), "total": total, "summary": summary(tenant_id)}
 
 
 @router.get("/reconcile")

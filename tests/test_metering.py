@@ -137,7 +137,7 @@ def test_nico_state_open_close_emits_hours(m):
 def test_cloudevents_contract(m):
     schema = json.loads((CONTRACTS / "cloudevents.json").read_text())
     metering.ingest(_ev("gw:req-ce:input"))
-    data = m.get("/api/v1/metering/events", params={"format": "cloudevents"}).json()["data"]
+    data = m.get("/api/v1/metering/events", params={"format": "cloudevents"}).json()["events"]
     assert data and data[0]["specversion"] == "1.0" and data[0]["id"] == "gw:req-ce:input"
     for ce in data + metering.SINK.buf:
         assert errors(ce, schema, schema) == [], ce
@@ -145,7 +145,7 @@ def test_cloudevents_contract(m):
 
 def test_lago_event_shape(m):
     metering.ingest(_ev("gw:req-l:cached", tt="cached", q=7))
-    ev = m.get("/api/v1/metering/events", params={"format": "lago"}).json()["data"][0]["event"]
+    ev = m.get("/api/v1/metering/events", params={"format": "lago"}).json()["events"][0]["event"]
     assert set(ev) == {"transaction_id", "external_subscription_id", "code", "timestamp",
                        "properties"}
     assert ev["code"] == "cached_tokens" and ev["transaction_id"] == "gw:req-l:cached"
@@ -167,7 +167,7 @@ def test_tenant_scope_and_operator_only(m):
     metering.ingest(_ev("a1", tenant="tnt-a"))
     metering.ingest(_ev("b1", tenant="tnt-b"))
     hdr = {"X-Tenant-Id": "tnt-a"}
-    rows = m.get("/api/v1/metering/events", headers=hdr).json()["data"]
+    rows = m.get("/api/v1/metering/events", headers=hdr).json()["events"]
     assert [r["tenant_id"] for r in rows] == ["tnt-a"]
     assert m.post("/api/v1/metering/events", headers=hdr, json=_ev("c1")).status_code == 403
 
