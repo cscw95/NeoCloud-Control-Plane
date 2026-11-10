@@ -25,17 +25,30 @@ class Upstream:
         self.validate_fail = set()
         self.trays = 18
         self.calls = []
+        self.last = {}
 
     def __call__(self, req):
         p, m = req.url.path, req.method
         body = json.loads(req.content) if req.content else None
         self.calls.append((m, p))
+        self.last[p] = body
         if p == "/config-manager/v1/switches":
             rack = req.url.params.get("rack")
             return 200, {"switches": [{"id": f"{rack}-mgmt-sw-0", "source": "bringup"},
                                       {"id": f"{rack}-leaf-sw-0", "source": "bringup"}]}
         if re.fullmatch(r"/config-manager/v1/switches/[^/]+/ztp", p):
             return 200, {"state": "configured"}
+        if p == "/config-manager/v1/lldp-faults":
+            if m == "POST":
+                self.lldp_faults[body["a"]] = body.get("actual_b")
+            else:
+                self.lldp_faults.clear()
+            return 200, {"faults": self.lldp_faults}
+        mh = re.fullmatch(r"/emulator/v1/rest/machine/([^/]+)/attestation", p)
+        if mh:
+            (self.attest_fail.add if body.get("measuredBoot") == "Failed"
+             else self.attest_fail.discard)(mh.group(1))
+            return 200, {"machineId": mh.group(1)}
         if p == "/config-manager/v1/lldp-validate":
             mm = [{"a": c["a"], "expected_b": c["b"], "actual_b": self.lldp_faults[c["a"]],
                    "kind": "miswired"} for c in body["cable_plan"] if c["a"] in self.lldp_faults]
@@ -45,8 +58,8 @@ class Upstream:
         if mr:
             rid, what = mr.groups()
             if what == "power":
-                self.power = body["state"]
-                return 200, {"state": self.power}
+                self.power = {"POWER_OPERATION_ON": "On"}.get(body.get("operation"), "Off")
+                return 200, {"status": "RETURN_CODE_SUCCESS", "state": self.power}
             if what == "firmware":
                 return 200, {"order": ["bmc", "bf", "gpu", "cx", "nvswitch"]}
             return 200, {"rack_id": rid, "power": self.power,
@@ -57,13 +70,18 @@ class Upstream:
             return 200, {"Id": "fwbundle-1", "TaskState": "Completed",
                          "Oem": {"Nvidia": {"UpdateOrder": ["bmc", "bf", "gpu", "cx",
                                                             "nvswitch"]}}}
-        if p == f"{N}/rack" and m == "POST":
-            if body["name"] in self.racks:
-                return 409, {"message": "exists"}
-            self.racks[body["name"]] = body
+        if p == f"{N}/expected-rack" and m == "POST":
+            rid = body["rackId"]
+            assert set(body) <= {"siteId", "rackId", "rackProfileId", "name", "description",
+                                 "labels"}
+            if rid in self.racks:
+                return 409, {"source": "nico", "message": "exists", "data": None}
+            self.racks[rid] = body
             for i in range(18):
-                self.machines[f"nh-{body['name']}-tray-{i:02d}"] = body["name"]
-            return 201, {"id": body["name"], "operationStatus": "Initializing"}
+                self.machines[f"nh-{rid}-tray-{i:02d}"] = rid
+            return 201, {"id": "00000000-0000-0000-0000-000000000001", "rackId": rid}
+        if re.fullmatch(rf"{N}/rack/[^/]+/bringup", p):
+            return 200, {"taskIds": ["00000000-0000-0000-0000-0000000000aa"]}
         if p == f"{N}/machine":
             rid = req.url.params.get("rackId")
             return 200, [{"id": k} for k, v in self.machines.items() if v == rid]
@@ -130,8 +148,17 @@ def test_bringup_happy_path_to_sellable(client, up):
     assert hist == ["planned", "installed", "bringup", "validating", "sellable"]
     sell = client.get("/api/v1/dcim/sellable").json()
     assert sell["rack_count"] == 1 and sell["gpu_count"] == 72 and sell["tray_count"] == 18
-    assert ("POST", f"{N}/rack") in up.calls
+    assert ("POST", f"{N}/expected-rack") in up.calls
+    assert ("POST", f"{N}/rack/{RID}/bringup") in up.calls
     assert up.power == "On"
+    step5 = s["steps"][4]
+    assert [c["url"].split("/nico")[1] for c in step5["calls"]] == ["/expected-rack",
+                                                                    f"/rack/{RID}/bringup"]
+    assert step5["calls"][0]["status"] == 201 and step5["calls"][0]["request"]["rackId"] == RID
+    cab = client.get("/api/v1/dcim/cables", params={"rack": RID}).json()
+    assert cab["count"] == 18 and cab["results"][0]["status"]["value"] == "connected"
+    rk = client.get(f"/api/v1/dcim/racks/{RID}").json()
+    assert rk["status"] == {"value": "active", "label": "Active"} and rk["name"] == RID
     assert client.post(f"/api/v1/bringup/racks/{RID}:start").status_code == 409
     assert client.get(f"/api/v1/bringup/racks/{RID}").json()["state"] == "sellable"
 
@@ -146,7 +173,10 @@ def test_cable_mismatch_fails_step_04_then_retry(client, up):
     assert all(st[n] == "blocked" for n in range(5, 16))
     assert s["cable_mismatches"][0]["actual_b"] == "leaf-0:swp30"
     assert "mismatch" in s["steps"][3]["detail"]
-    assert ("POST", f"{N}/rack") not in up.calls          # nothing past step 04
+    assert ("POST", f"{N}/expected-rack") not in up.calls  # nothing past step 04
+    cab = client.get("/api/v1/dcim/cables", params={"rack": RID}).json()
+    assert cab["results"][4]["status"]["value"] == "planned"
+    assert cab["results"][4]["lldp_mismatch"]["actual_b"] == "leaf-0:swp30"
     assert client.get("/api/v1/dcim/sellable").json()["rack_count"] == 0
     # field crew fixes the cable → retry passes
     up.lldp_faults.clear()
@@ -167,7 +197,7 @@ def test_sku_attestation_and_validation_failures(client, up):
     up.validate_fail.add(f"nh-{RID}-tray-05")
     s = client.post(f"/api/v1/bringup/racks/{RID}:start").json()
     assert s["failed_step"] == 13
-    assert s["steps"][4]["detail"] == "already registered"   # NICo 409 on retry is ok
+    assert s["steps"][4]["detail"].startswith("already registered")   # 409 on retry is ok
     up.validate_fail.clear()
     assert client.post(f"/api/v1/bringup/racks/{RID}:start").json()["state"] == "sellable"
 
@@ -236,3 +266,93 @@ def test_attestation_fallback_to_fake(client):
 def test_dcim_operator_only(client):
     r = client.get("/api/v1/dcim/racks", headers={"X-Tenant-Id": "t-acme"})
     assert r.status_code == 403
+
+
+# ── upstream message shapes, injection, demo ────────────────────────────────
+from pathlib import Path  # noqa: E402
+
+FIX = json.loads((Path(__file__).parent / "fixtures" / "bringup_upstream.json").read_text())
+
+
+def _schema_check(obj, fields):
+    return [f for f in fields if f not in obj]
+
+
+def test_netbox_shapes(client, up):
+    _register(client)
+    client.post(f"/api/v1/bringup/racks/{RID}:start")
+    lst = client.get("/api/v1/dcim/racks").json()
+    assert _schema_check(lst, FIX["netbox"]["list"]) == []
+    assert _schema_check(lst["results"][0], FIX["netbox"]["rack"]) == []
+    assert lst["results"][0]["status"]["value"] in FIX["netbox"]["rack_status"]
+    cab = client.get("/api/v1/dcim/cables").json()["results"][0]
+    assert _schema_check(cab, FIX["netbox"]["cable"]) == []
+    assert cab["status"]["value"] in FIX["netbox"]["cable_status"]
+    assert cab["a_terminations"][0]["object_type"] == "dcim.interface"
+
+
+def test_firmware_execute_sends_dmtf_simple_update(client, up):
+    from app.store import STORE
+    p = client.post("/api/v1/firmware/plans", json={"rack": next(iter(STORE.racks))}).json()
+    client.post(f"/api/v1/firmware/plans/{p['id']}:execute")
+    sent = up.last["/redfish/v1/UpdateService/Actions/UpdateService.SimpleUpdate"]
+    assert set(sent) - {"Oem"} <= set(FIX["simple_update_parameters"])
+    assert sent["ImageURI"].endswith(".fwpkg")
+    assert sent["Oem"]["Nvidia"]["Bundle"]["components"]["bmc"] == "1.4.2"
+
+
+def test_inject_and_demo_reset(client, up):
+    _register(client)
+    r = client.post("/api/v1/bringup/inject", json={"kind": "miswire", "rack": RID}).json()
+    assert r["calls"][0]["url"].endswith("/config-manager/v1/lldp-faults")
+    assert r["calls"][0]["request"]["a"] == PLAN[0]["a"]
+    assert client.post("/api/v1/bringup/inject", json={"kind": "bogus"}).status_code == 422
+    assert client.post("/api/v1/bringup/inject",
+                       json={"kind": "attestation_fail"}).status_code == 400
+    _register(client, serial="SN-DEMO-0001", position="10")
+    d = client.post("/api/v1/bringup/demo/reset").json()
+    assert d["removed"] is True and d["rack"] == "bu-sn-demo-0001"
+
+
+def _load_scenario(name):
+    import importlib.util
+    path = Path(__file__).parent.parent / "app" / "demo" / "scenarios" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"demo_{name}", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.SCENARIO
+
+
+def _run_scenario(client, sc):
+    """Minimal stand-in for v2-demo's runner: NOCP calls in-process, checks expect."""
+    ctx, out = {}, []
+    for st in sc["steps"]:
+        call = st["call"]
+        r = lambda v: v(ctx) if callable(v) else v  # noqa: E731
+        res = client.request(call["method"], r(call["path"]), json=r(call.get("json")),
+                             params=r(call.get("params")))
+        body = res.json() if res.content else None
+
+        class Res:
+            status, headers = res.status_code, dict(res.headers)
+        Res.body = body
+        exp = st["expect"]
+        ok = exp(Res, ctx) if callable(exp) else res.status_code == exp.get("status", 200)
+        ok = ok[0] if isinstance(ok, tuple) else ok
+        if st.get("save"):
+            st["save"](Res, ctx)
+        out.append((st["id"], ok))
+    return out
+
+
+@pytest.mark.parametrize("name,feature", [("f23_bringup", "F23"), ("f24_firmware", "F24"),
+                                          ("f25_attestation", "F25")])
+def test_demo_scenarios_pass(client, up, name, feature):
+    sc = _load_scenario(name)
+    assert sc["feature"] == feature and sc["title_ko"] and sc["title_en"]
+    for st in sc["steps"]:
+        assert {"id", "title_ko", "title_en", "call", "expect"} <= set(st)
+    first = _run_scenario(client, sc)
+    assert all(ok for _, ok in first), first
+    again = _run_scenario(client, sc)                 # deterministic re-run after reset
+    assert all(ok for _, ok in again), again

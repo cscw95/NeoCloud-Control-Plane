@@ -5,6 +5,10 @@
   GET      /api/v1/firmware/plans/{id}
   POST     /api/v1/firmware/plans/{id}:execute   AI-Infra Redfish SimpleUpdate {bundle}
 
+Upstream: DMTF Redfish UpdateService.v1_17_1 SimpleUpdate (ImageURI, Targets;
+the bundle rides in Oem.Nvidia.Bundle — no DMTF bundle parameter) and NVIDIA
+nvfwupd package flow (one .fwpkg per bundle). Local copy neocloud/ref/upstream/redfish.
+
 Apply order is BMC → BF → GPU, then CX and NVSwitch. The BMC is the Dell
 iDRAC10 and keeps the single fleet number `ncp.IDRAC10_FW` (1.4.2): a bundle
 with any other bmc version is refused.
@@ -166,9 +170,12 @@ def execute_plan(plan_id: str) -> dict:
     targets = [f"/redfish/v1/Systems/{h['host_id']}" for h in p["hosts"]
                if h["action"] == "update"]
     st, res = dsx.ai_send("POST", "/redfish/v1/UpdateService/Actions/UpdateService.SimpleUpdate",
-                          json={"bundle": {"version": b["version"],
-                                           "components": b["components"]},
-                                "Targets": targets})
+                          json={"ImageURI": f"https://fw.neocloud.local/nvfwupd/"
+                                            f"{b['version']}.fwpkg",
+                                "Targets": targets,
+                                "Oem": {"Nvidia": {"Bundle": {
+                                    "version": b["version"],
+                                    "components": b["components"]}}}})
     if st is None:
         p["result"] = {"source": "local-fallback", "order": APPLY_ORDER}
     elif st >= 400:

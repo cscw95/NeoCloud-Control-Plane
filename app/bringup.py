@@ -12,6 +12,27 @@ Steps call AI-Infra (Config Manager, RMS) and NICo REST (POST /rack, machine
 attestation, validation) through `dsx`. An unreachable upstream does not fail a
 step: it runs against NOCP's own record and is tagged `source: local-fallback`.
 A cable-plan mismatch reported by LLDP fails step 04 and the rack goes `failed`.
+
+  GET  /api/v1/dcim/cables                 NetBox-style cable list (?rack=)
+  POST /api/v1/bringup/inject              demo fault injection (operator): miswire |
+                                           attestation_fail | clear
+  POST /api/v1/bringup/demo/reset          remove the demo rack, clear its faults
+
+Upstream message shapes and flow:
+  - NetBox 4.x REST API (netbox-community/netbox, Apache-2.0) dcim/racks and
+    dcim/cables serializers: rack {id, url, display, name, facility_id, site{slug},
+    status{value,label}, serial}; cable {id, display, a_terminations[], b_terminations[],
+    status{value,label}, label}; lists {count, next, previous, results}. NetBox is
+    not in ref/upstream yet — field names follow the public NetBox REST docs.
+  - NICo infra-controller rest-api/openapi/spec.yaml: step 05 is
+    POST /expected-rack (ExpectedRackCreateRequest, labels chassis.* / location.*)
+    then POST /rack/{id}/bringup (BringUpRackRequest → {taskIds}); falls back to the
+    v2 contract POST /rack on an older NICo emulator.
+  - nv-rms fern/proto/rack_manager.proto: SetPowerState{operation} and
+    UpdateFirmware{firmware_targets[{target, filename}]} field names.
+  - nv-config-manager ztp.openapi.json: ZTP stages validate_serial → boot-script →
+    config → firmware → provisioned (run by AI-Infra per switch).
+  Every upstream request/response of a run is kept in `steps[].calls` (clipped).
 """
 
 from __future__ import annotations
@@ -105,8 +126,19 @@ def _rack(rack_id: str) -> dict:
     return r
 
 
+# NetBox Rack.status choices: reserved | available | planned | active | deprecated
+_NETBOX_STATUS = {"planned": "planned", "installed": "planned", "bringup": "planned",
+                  "validating": "planned", "failed": "planned", "sellable": "active"}
+
+
 def _view(r: dict) -> dict:
-    return {k: v for k, v in r.items() if k != "steps"}
+    v = {k: x for k, x in r.items() if k != "steps"}
+    st = _NETBOX_STATUS[r["state"]]
+    v.update(name=r["id"], display=r["id"], url=f"/api/v1/dcim/racks/{r['id']}",
+             facility_id=f"{r['row']}-{r['position']}",
+             site={"slug": r["site"], "display": r["site"]},
+             status={"value": st, "label": st.title()})
+    return v
 
 
 @router.post("/dcim/racks", status_code=201)
@@ -141,7 +173,8 @@ def list_racks(state: Optional[str] = Query(None)) -> dict:
         raise HTTPException(400, f"state must be one of {list(STATES)}")
     with DCIM.lock:
         items = [_view(r) for r in DCIM.racks.values() if not state or r["state"] == state]
-    return {"racks": items, "count": len(items), "states": list(STATES)}
+    return {"count": len(items), "next": None, "previous": None, "results": items,
+            "racks": items, "states": list(STATES)}
 
 
 @router.get("/dcim/racks/{rack_id}")
@@ -172,12 +205,88 @@ def sellable() -> dict:
                 "gpu_count": sum(r["gpus"] for r in racks)}
 
 
+@router.get("/dcim/cables")
+def cables(rack: Optional[str] = Query(None)) -> dict:
+    """NetBox-style cables from the DCIM cable plans; status `connected` once LLDP
+    validated the link (step 04 passed), `planned` before, mismatched links flagged."""
+    out = []
+    with DCIM.lock:
+        for r in DCIM.racks.values():
+            if rack and r["id"] != rack:
+                continue
+            validated = any(s["key"] == "cable_validation" and s["status"] == "passed"
+                            for s in r["steps"])
+            bad = {m["a"]: m for m in r.get("cable_mismatches") or []}
+            for i, c in enumerate(r["cable_plan"], 1):
+                def term(end: str) -> list:
+                    dev, _, port = end.partition(":")
+                    return [{"object_type": "dcim.interface",
+                             "object": {"device": {"name": dev}, "name": port or end}}]
+                st = "connected" if validated else "planned"
+                out.append({"id": len(out) + 1, "display": f"#{r['id']}-{i}",
+                            "label": f"{r['id']}-{i}", "rack": r["id"],
+                            "a_terminations": term(c["a"]), "b_terminations": term(c["b"]),
+                            "status": {"value": st, "label": st.title()},
+                            "lldp_mismatch": bad.get(c["a"])})
+    return {"count": len(out), "next": None, "previous": None, "results": out}
+
+
+class InjectIn(BaseModel):
+    kind: str = Field(pattern="^(miswire|attestation_fail|clear)$")
+    rack: Optional[str] = None
+    a: Optional[str] = None
+    actual_b: Optional[str] = None
+    machine: Optional[str] = None
+
+
+@router.post("/bringup/inject")
+def inject(body: InjectIn) -> dict:
+    """Demo fault injection through the emulators' hooks (operator only)."""
+    _CALLS.clear()
+    if body.kind == "miswire":
+        r = _rack(body.rack or "")
+        a = body.a or (r["cable_plan"][0]["a"] if r["cable_plan"] else None)
+        if not a:
+            raise HTTPException(400, "rack has no cable plan")
+        _ai("POST", "/config-manager/v1/lldp-faults",
+            {"rack": r["id"], "a": a, "actual_b": body.actual_b or f"{r['id']}-leaf-sw-0:swp99"})
+    elif body.kind == "attestation_fail":
+        if not body.machine:
+            raise HTTPException(400, "machine is required")
+        _logged("PUT", f"{dsx.nico_url()}/emulator/v1/rest/machine/{body.machine}/attestation",
+                json={"measuredBoot": "Failed"})
+    else:
+        if body.rack:
+            _ai("DELETE", f"/config-manager/v1/lldp-faults?rack={body.rack}")
+        if body.machine:
+            _logged("PUT", f"{dsx.nico_url()}/emulator/v1/rest/machine/{body.machine}/attestation",
+                    json={})
+    calls = list(_CALLS)
+    ok = bool(calls) and all(c["status"] is not None and c["status"] < 400 for c in calls)
+    return {"kind": body.kind, "applied": ok,
+            "source": "upstream" if ok else "local-fallback", "calls": calls}
+
+
+DEMO_SERIAL = "SN-DEMO-0001"
+
+
+@router.post("/bringup/demo/reset")
+def demo_reset() -> dict:
+    """Deterministic demo start: drop the demo rack record and clear its LLDP faults."""
+    rid = f"bu-{_slug(DEMO_SERIAL)}"
+    with DCIM.lock:
+        removed = DCIM.racks.pop(rid, None) is not None
+    dsx.call("DELETE", dsx.ai_infra_url() + f"/config-manager/v1/lldp-faults?rack={rid}")
+    return {"rack": rid, "removed": removed, "serial": DEMO_SERIAL}
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 def _fresh_steps() -> list[dict]:
     return [{"no": n, "key": k, "name": name, "owner": o, "status": "pending",
-             "detail": None, "source": None, "started_at": None, "finished_at": None}
+             "detail": None, "source": None, "started_at": None, "finished_at": None,
+             "calls": []}
             for n, k, name, o in STEPS]
 
 
@@ -185,8 +294,27 @@ class StepFailed(Exception):
     pass
 
 
+_CALLS: list = []          # upstream calls of the step being run (raw request/response)
+
+
+def _clip(v: Any, n: int = 600) -> Any:
+    import json as _j
+    try:
+        txt = _j.dumps(v, ensure_ascii=False)
+    except (TypeError, ValueError):
+        txt = str(v)
+    return v if len(txt) <= n else txt[:n] + "…"
+
+
+def _logged(method: str, url: str, json: Any = None, params: Optional[dict] = None):
+    st, body = dsx.call(method, url, json=json, params=params, timeout=5.0)
+    _CALLS.append({"method": method, "url": url, "params": params, "request": _clip(json),
+                   "status": st, "response": _clip(body)})
+    return st, body
+
+
 def _ai(method: str, path: str, json: Any = None):
-    return dsx.call(method, dsx.ai_infra_url() + path, json=json, timeout=5.0)
+    return _logged(method, dsx.ai_infra_url() + path, json=json)
 
 
 def _nico(method: str, path: str, json: Any = None):
@@ -194,8 +322,8 @@ def _nico(method: str, path: str, json: Any = None):
     org = dsx.os.environ.get("NOCP_NICO_ORG", "neocloud")
     url = f"{dsx.nico_url()}/v2/org/{org}/nico{path}"
     if method == "GET":
-        return dsx.call("GET", url, params=json, timeout=5.0)
-    return dsx.call(method, url, json=json, timeout=5.0)
+        return _logged("GET", url, params=json)
+    return _logged(method, url, json=json)
 
 
 def _upstream(st, body, what: str):
@@ -255,18 +383,30 @@ def _step(r: dict, key: str) -> tuple[str, Optional[str]]:
                              f"{m['a']} expected {m['expected_b']} got {m['actual_b']}")
         return f"{res.get('matched')}/{res.get('checked')} links match", None
     if key == "nico_register":
-        st, body = _nico("POST", "/rack", {"name": rid, "siteId": r["site"],
-                                          "serial": r["serial"],
-                                          "location": {"row": r["row"],
-                                                       "position": r["position"]}})
-        if st == 409:
-            r["nico_rack_id"] = rid
-            return "already registered", None
-        res = _upstream(st, body, "NICo POST /rack")
+        labels = {"chassis.manufacturer": "Dell", "chassis.serial-number": r["serial"],
+                  "chassis.model": bp.model, "location.datacenter": r["site"],
+                  "location.room": r["row"], "location.position": r["position"]}
+        st, body = _nico("POST", "/expected-rack", {"siteId": r["site"], "rackId": rid,
+                                                    "name": rid, "labels": labels})
+        if st == 404 or st == 405:                     # NICo without expected-rack
+            st, body = _nico("POST", "/rack", {"name": rid, "siteId": r["site"],
+                                               "serial": r["serial"],
+                                               "location": {"row": r["row"],
+                                                            "position": r["position"]}})
         r["nico_rack_id"] = rid
-        if res is None:
-            return "NICo unreachable", "local-fallback"
-        return f"NICo rack {res.get('id')} {res.get('operationStatus')}", None
+        if st == 409:
+            detail = "already registered"
+        else:
+            res = _upstream(st, body, "NICo expected-rack")
+            if res is None:
+                return "NICo unreachable", "local-fallback"
+            detail = f"expected-rack {res.get('rackId') or res.get('id')}"
+        bst, bbody = _nico("POST", f"/rack/{rid}/bringup", {"siteId": r["site"],
+                                                            "description": "DCIM bring-up"})
+        if bst is not None and bst < 400 and isinstance(bbody, dict):
+            r["nico_task_ids"] = bbody.get("taskIds") or []
+            detail += f", bring-up task {len(r['nico_task_ids'])}"
+        return detail, None
     if key == "redfish_discovery":
         inv = _upstream(*_ai("GET", f"/rms/v1/racks/{rid}/inventory"), "RMS inventory")
         if inv is None:
@@ -284,7 +424,9 @@ def _step(r: dict, key: str) -> tuple[str, Optional[str]]:
                 f"{k} expected {e} got {g}" for k, (e, g) in bad.items()))
         return f"{bp.key}: {found['compute_trays']} trays × {found['gpu_per_tray']} GPU", None
     if key == "rms_power_on":
-        res = _upstream(*_ai("POST", f"/rms/v1/racks/{rid}/power", {"state": "On"}), "RMS power")
+        res = _upstream(*_ai("POST", f"/rms/v1/racks/{rid}/power",
+                                 {"rack_id": rid, "node_id": rid,
+                                  "operation": "POWER_OPERATION_ON"}), "RMS power")
         return ("rack powered on", None) if res is not None else ("RMS unreachable",
                                                                   "local-fallback")
     if key == "tray_power_inventory":
@@ -299,8 +441,10 @@ def _step(r: dict, key: str) -> tuple[str, Optional[str]]:
         from .firmware_bundles import get_bundle
         b = get_bundle(None)
         res = _upstream(*_ai("POST", f"/rms/v1/racks/{rid}/firmware",
-                             {"bundle": {"version": b["version"],
-                                         "components": b["components"]}}), "RMS firmware")
+                             {"rack_id": rid, "version": b["version"], "activate": True,
+                              "firmware_targets": [{"target": c, "filename": b["components"][c]}
+                                                   for c in b["apply_order"]]}),
+                        "RMS firmware")
         if res is None:
             return f"bundle {b['version']} (RMS unreachable)", "local-fallback"
         return f"bundle {b['version']} order {' > '.join(res.get('order') or [])}", None
@@ -370,6 +514,7 @@ def start(rack_id: str) -> dict:
             if s["no"] == VALIDATING_FROM:
                 _set_state(r, "validating", "health validation")
             s["status"], s["started_at"] = "running", _now()
+            _CALLS.clear()
             try:
                 s["detail"], s["source"] = _step(r, s["key"])
                 s["status"] = "passed"
@@ -377,6 +522,7 @@ def start(rack_id: str) -> dict:
                 s["status"], s["detail"] = "failed", str(exc)
                 r["failed_step"] = s["no"]
             s["finished_at"] = _now()
+            s["calls"] = list(_CALLS)
             if s["source"] == "local-fallback":
                 fallback = True
             if s["status"] == "failed":
