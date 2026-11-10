@@ -1,0 +1,10 @@
+{"$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "Access token claims (RFC 7519 §4.1 registered + Keycloak + NeoCloud tid/trole)",
+ "source": "https://www.rfc-editor.org/rfc/rfc7519#section-4.1",
+ "type": "object", "required": ["iss", "sub", "aud", "exp", "iat", "jti", "typ", "azp", "scope"],
+ "properties": {"iss": {"type": "string", "pattern": "/realms/[^/]+$"}, "sub": {"type": "string"},
+                "aud": {"type": ["string", "array"]}, "exp": {"type": "integer"},
+                "iat": {"type": "integer"}, "jti": {"type": "string"}, "typ": {"const": "Bearer"},
+                "azp": {"type": "string"}, "scope": {"type": "string"},
+                "realm_access": {"type": "object", "required": ["roles"]},
+                "tid": {"type": "string"}, "trole": {"enum": ["admin", "member", "viewer"]}}}

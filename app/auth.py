@@ -45,7 +45,7 @@ class Identity:
     tenant_id: Optional[str] = None
     tenant_role: str = "member"
     scope: str = "api"                        # api | events
-    via: str = "token"                        # token | header | dev-default
+    via: str = "token"                        # token | jwt | header | dev-default
 
     @property
     def is_operator(self) -> bool:
@@ -143,8 +143,14 @@ def _verify_static(token: str) -> Optional[Identity]:
     return None
 
 
+def _verify_jwt(token: str) -> Optional[Identity]:
+    # F07: OIDC access tokens (JWT) issued by app/identity.py, alongside HMAC tokens
+    from .identity import identity_from_jwt
+    return identity_from_jwt(token)
+
+
 def verify(token: str) -> Optional[Identity]:
-    return _verify_static(token) or _verify_signed(token)
+    return _verify_static(token) or _verify_signed(token) or _verify_jwt(token)
 
 
 class AuthError(Exception):

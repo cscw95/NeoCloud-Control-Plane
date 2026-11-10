@@ -1,0 +1,19 @@
+{"$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "OpenID Provider Metadata (OIDC Discovery 1.0 §3) — required fields + Keycloak fields used by NeoCloud",
+ "source": "https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata",
+ "type": "object",
+ "required": ["issuer", "authorization_endpoint", "token_endpoint", "jwks_uri",
+              "response_types_supported", "subject_types_supported",
+              "id_token_signing_alg_values_supported", "grant_types_supported"],
+ "properties": {
+  "issuer": {"type": "string", "pattern": "^https?://"},
+  "authorization_endpoint": {"type": "string", "pattern": "^https?://"},
+  "token_endpoint": {"type": "string", "pattern": "^https?://"},
+  "jwks_uri": {"type": "string", "pattern": "^https?://"},
+  "userinfo_endpoint": {"type": "string"},
+  "response_types_supported": {"type": "array", "items": {"type": "string"}},
+  "subject_types_supported": {"type": "array", "items": {"enum": ["public", "pairwise"]}},
+  "id_token_signing_alg_values_supported": {"type": "array", "items": {"type": "string"}},
+  "grant_types_supported": {"type": "array", "items": {"type": "string"}},
+  "token_endpoint_auth_methods_supported": {"type": "array", "items": {"type": "string"}}
+ }}

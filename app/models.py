@@ -166,6 +166,8 @@ class Tenant(BaseModel):
     isolation_tier: IsolationTier
     sla_tier: str = "standard"
     notes: Optional[str] = None
+    status: str = "active"              # F07: pending_verification | active | rejected
+    sector: Optional[str] = None        # F07: "public" for public-sector signups
 
 
 class NetworkIsolation(BaseModel):

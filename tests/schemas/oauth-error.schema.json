@@ -1,0 +1,7 @@
+{"$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "Error Response (RFC 6749 §5.2)",
+ "source": "https://www.rfc-editor.org/rfc/rfc6749#section-5.2",
+ "type": "object", "required": ["error"],
+ "properties": {"error": {"enum": ["invalid_request", "invalid_client", "invalid_grant",
+                                   "unauthorized_client", "unsupported_grant_type", "invalid_scope"]},
+                "error_description": {"type": "string"}}}

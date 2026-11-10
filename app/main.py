@@ -31,6 +31,7 @@ from . import (
     customer_ops,
     dsx,
     events,
+    identity,
     ncp,
     nvke,
     oob,
@@ -58,6 +59,7 @@ async def lifespan(app: FastAPI):
     nico_fake.FAKE_NICO.seed_from_store(STORE)
     vast_fake.FAKE_VAST.reset()
     shared_services.SHARED.reset()
+    identity.reset()
     trace.TRACER.clear()
     nvke.NVKE.reset()
     power.POWER.reset()
@@ -111,6 +113,7 @@ app.include_router(power.router)
 app.include_router(events.router)
 app.include_router(oob.router)
 app.include_router(ncp.router)
+app.include_router(identity.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
@@ -120,6 +123,8 @@ app.include_router(ncp.router)
 from .tenancy_guard import TenancyGuardMiddleware  # noqa: E402
 
 app.add_middleware(TenancyGuardMiddleware)
+# F07: order-type POSTs of an unverified signup tenant → 403 (outside the guard, inside CORS)
+app.add_middleware(identity.SignupGateMiddleware)
 
 # Allow API integration from the three NeoCloud consoles (separate origin :8090)
 import os as _os  # noqa: E402
