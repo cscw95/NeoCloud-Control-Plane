@@ -1,0 +1,52 @@
+{
+ "_source": "DMTF Redfish UpdateService.v1_17_1.json (BSD-3-Clause) SimpleUpdate parameters; NetBox 4.x REST API field names (netbox-community/netbox, Apache-2.0, dcim RackSerializer / CableSerializer / paginated list) \u2014 NetBox not in ref/upstream pack, names from public docs",
+ "simple_update_parameters": [
+  "ExcludeTargets",
+  "ForceUpdate",
+  "ImageURI",
+  "LocalImage",
+  "Password",
+  "Stage",
+  "Targets",
+  "TransferProtocol",
+  "Username"
+ ],
+ "netbox": {
+  "list": [
+   "count",
+   "next",
+   "previous",
+   "results"
+  ],
+  "rack": [
+   "id",
+   "url",
+   "display",
+   "name",
+   "facility_id",
+   "site",
+   "status",
+   "serial"
+  ],
+  "rack_status": [
+   "reserved",
+   "available",
+   "planned",
+   "active",
+   "deprecated"
+  ],
+  "cable": [
+   "id",
+   "display",
+   "a_terminations",
+   "b_terminations",
+   "status",
+   "label"
+  ],
+  "cable_status": [
+   "connected",
+   "planned",
+   "decommissioning"
+  ]
+ }
+}

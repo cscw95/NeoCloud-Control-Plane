@@ -20,7 +20,8 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
 
 TOPICS = ("power", "thermal", "leak", "grid", "health", "rma", "firmware",
-          "machine")                       # machine: F12 NICo host state (app/nico_events.py)
+          "machine",                       # machine: F12 NICo host state (app/nico_events.py)
+          "dcim")                          # dcim: F23 rack bring-up (app/bringup.py)
 
 router = APIRouter(prefix="/api/v1", tags=["dsx-events"])
 

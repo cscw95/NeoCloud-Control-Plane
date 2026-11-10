@@ -63,7 +63,7 @@ _SSE_PATHS = frozenset({"/api/v1/events"})
 # operator-only DSX surfaces (fleet health, power, raw infra) — closed to tenants
 _OPERATOR_ONLY = ("/api/v1/oob", "/api/v1/infra", "/api/v1/power", "/api/v1/rma",
                   "/api/v1/firmware", "/api/v1/machines", "/api/v1/events",
-                  "/api/v1/auth/tokens")
+                  "/api/v1/auth/tokens", "/api/v1/dcim", "/api/v1/bringup")
 _ISOLATION_PATH_RE = re.compile(r"^/api/v1/isolation/(?P<tid>[^/]+)")
 ROLE_HEADER = "x-tenant-role"
 

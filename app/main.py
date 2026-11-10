@@ -54,6 +54,7 @@ from . import (
     billing_lago,
     billing_stripe,
 )
+from . import bringup, firmware_bundles
 from .seed import seed_default, seed_demo_samples
 from .store import STORE
 from . import curtailment, leak_response  # noqa: E402  F21/F22
@@ -84,6 +85,8 @@ async def lifespan(app: FastAPI):
     metering.reset()               # F04 metering log
     remediation.reset()
     sla.reset()
+    bringup.DCIM.reset()
+    firmware_bundles.FW.reset()
     metrics.METRICS.reset()        # reset real-time API call counters
     token_api.reset()              # F01/F03 token gateway keys·usage·guard
     lifecycle.bootstrap_nodes()
@@ -151,6 +154,8 @@ app.include_router(remediation.router)
 app.include_router(sla.router)
 app.include_router(curtailment.router)
 app.include_router(leak_response.router)
+app.include_router(bringup.router)
+app.include_router(firmware_bundles.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
@@ -227,6 +232,8 @@ def reseed(blueprints: str | None = None) -> dict:
     metering.reset()               # F04 metering log
     remediation.reset()
     sla.reset()
+    bringup.DCIM.reset()
+    firmware_bundles.FW.reset()
     lifecycle.bootstrap_nodes()
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()
