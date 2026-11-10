@@ -36,6 +36,7 @@ STORE_ONLY) and nothing is touched.
 
 from __future__ import annotations
 
+import re
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -115,6 +116,7 @@ class _RemState:
         self.health_events: list[dict] = []
         self.faults: dict[str, dict] = {}          # host_id → {xid, gpu, persistent}
         self.rack_busy_until: dict[str, datetime] = {}
+        self.seen_events: set = set()              # bus event keys already turned into HealthEvents
         self.seq = 0
 
 
@@ -595,3 +597,52 @@ def demo_setup() -> dict:
         trays = sorted(x.id for x in STORE.trays.values() if x.tenant_id == t.id)
     REM.policy = Policy(mode="auto")
     return {"tenant_id": t.id, "trays": trays[:3], "policy": REM.policy.model_dump()}
+
+
+# ---------------------------------------------------------------------------
+# bus subscription (integration/v2): GPU XID alerts that reach the NOCP bus —
+# Redfish EventService NvidiaGPU XidError via app.oob.ingest, or the AI-Infra
+# Exchange health/GpuXidError fault source (F10) — become NVSentinel
+# HealthEvents, as gpu-health-monitor would raise them from the same DCGM/SEL
+# signal. Policy still decides (monitor = STORE_ONLY).
+# ---------------------------------------------------------------------------
+_XID_RE = re.compile(r"\bxid\s*[:#]?\s*(\d+)", re.I)
+
+
+def _on_event(ev: dict) -> None:
+    if ev.get("topic") != "health" or str(ev.get("source", "")).startswith("nocp."):
+        return
+    d = ev.get("data") or {}
+    raw = d.get("raw") if isinstance(d.get("raw"), dict) else {}
+    kind = str(d.get("type") or d.get("event") or d.get("message_id") or "")
+    text = f"{d.get('message') or ''} {kind}"
+    if "xid" not in text.lower() and d.get("xid") is None:
+        return
+    if str(d.get("severity") or "Critical") not in ("Critical", "critical", "Fatal", "fatal"):
+        return
+    m = _XID_RE.search(text)
+    xid = int(d.get("xid") or (m.group(1) if m else 79))
+    host = d.get("machine") or d.get("machine_id")
+    if not host:
+        return
+    host = host if str(host).startswith("nh-") else f"nh-{host}"
+    key = raw.get("EventId") or d.get("fault_id") or d.get("id") or ev.get("id")
+    oem = ((raw.get("Oem") or {}).get("Nvidia") or {}) if isinstance(raw.get("Oem"), dict) else {}
+    recovers = d.get("reset_recovers", oem.get("ResetRecovers"))
+    with REM.lock:
+        if (key, host) in REM.seen_events:
+            return
+        REM.seen_events.add((key, host))
+        # the bus alert says nothing about recoverability unless the source
+        # tells (AI-Infra fault source reset_recovers); otherwise the fault is
+        # taken as persistent and the chain proves it by reset → re-validate
+        REM.faults.setdefault(host, {"xid": xid, "gpu": int(d.get("gpu") or 0),
+                                     "persistent": not bool(recovers)})
+    try:
+        ingest(health_event(host, xid, int(d.get("gpu") or 0),
+                            d.get("message") or f"XID {xid} ({kind or 'bus'})"))
+    except Exception:                              # noqa: BLE001 — unknown host etc.
+        pass
+
+
+events.add_listener(_on_event)

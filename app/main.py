@@ -57,6 +57,7 @@ from . import (
 from . import bringup, firmware_bundles
 from . import finops, prom_metrics, status_notices  # noqa: E402 — v2 F13/F26/F27
 from . import kai_scheduler, marketplace  # F30, F32
+from . import demo
 from .seed import seed_default, seed_demo_samples
 from .store import STORE
 from . import curtailment, leak_response  # noqa: E402  F21/F22
@@ -169,6 +170,7 @@ app.include_router(finops.router)           # F27 FinOps cost · DR settlements
 app.include_router(prom_metrics.router)     # F26 /metrics (Prometheus)
 app.include_router(kai_scheduler.router)
 app.include_router(marketplace.router)
+app.include_router(demo.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
