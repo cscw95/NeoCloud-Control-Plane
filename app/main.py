@@ -42,6 +42,7 @@ from . import (
     tray_emu,
     vast_fake,
 )
+from . import kai_scheduler, marketplace  # F30, F32
 from .seed import seed_default, seed_demo_samples
 from .store import STORE
 
@@ -64,6 +65,8 @@ async def lifespan(app: FastAPI):
     events.BUS.reset()
     oob.OOB.reset()
     ncp.RMA.reset()
+    kai_scheduler.reset()
+    marketplace.reset()
     metrics.METRICS.reset()        # reset real-time API call counters
     lifecycle.bootstrap_nodes()
     # compute-tray emulation — background tick (2s)
@@ -111,6 +114,8 @@ app.include_router(power.router)
 app.include_router(events.router)
 app.include_router(oob.router)
 app.include_router(ncp.router)
+app.include_router(kai_scheduler.router)
+app.include_router(marketplace.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
@@ -178,6 +183,8 @@ def reseed(blueprints: str | None = None) -> dict:
     events.BUS.reset()
     oob.OOB.reset()
     ncp.RMA.reset()
+    kai_scheduler.reset()
+    marketplace.reset()
     lifecycle.bootstrap_nodes()
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()
