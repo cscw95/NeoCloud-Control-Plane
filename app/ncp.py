@@ -330,8 +330,11 @@ def advance_rma(rma_id: str, to: Optional[str] = None) -> dict:
 # ---------------------------------------------------------------------------
 # Firmware baseline / drift
 # ---------------------------------------------------------------------------
+# Dell iDRAC10 = AI-Infra-Emulator app/dell.py IDRAC_FW (Redfish Manager FirmwareVersion)
+IDRAC10_COMPONENT = "BMC (Dell iDRAC10)"
+IDRAC10_FW = "1.4.2"
 FIRMWARE_BASELINE = [
-    {"component": "BMC (OpenBMC)", "baseline": "2026.04.2"},
+    {"component": IDRAC10_COMPONENT, "baseline": IDRAC10_FW},
     {"component": "HMC", "baseline": "1.8.0"},
     {"component": "GPU VBIOS (Rubin)", "baseline": "97.10.2C.00.11"},
     {"component": "ConnectX-8 FW", "baseline": "40.44.1036"},
@@ -387,8 +390,8 @@ def firmware_drift() -> dict:
             continue
         tray = _tray_of(h.tray_id or h.host_id)
         drift.append({"machine": h.host_id, "rack": tray.rack_id if tray else None,
-                      "component": "BMC (OpenBMC)", "current": "unknown",
-                      "baseline": FIRMWARE_BASELINE[0]["baseline"],
+                      "component": IDRAC10_COMPONENT, "current": "unknown",
+                      "baseline": IDRAC10_FW,
                       "severity": "warning",
                       "remediation": "idle" if h.state.value == "pool_ready" else "deferred"})
     return {"source": "nocp", "drift": drift, "checked_hosts": len(hosts)}

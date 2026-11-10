@@ -99,7 +99,7 @@ def test_action_refused_by_bmc_is_not_reported_accepted(client, upstream):
 def test_firmware_shapes_from_nico(client, upstream):
     routes, _ = upstream
     routes[("GET", "/v2/org/neocloud/nico/firmware/baseline")] = lambda b: (200, {
-        "baseline": {"Compute": {"BMC": "25.10-1", "GPU": "97.10.42"},
+        "baseline": {"Compute": {"BMC": "1.4.2", "GPU": "97.10.42"},
                      "PowerShelf": {"PSU": "3.4.0"}}})
     routes[("GET", "/v2/org/neocloud/nico/firmware/drift")] = lambda b: (200, {
         "total": 1, "trays": [{"trayId": "su-1-rack-02-nvsw-08", "type": "NVSwitch",
@@ -107,7 +107,7 @@ def test_firmware_shapes_from_nico(client, upstream):
                                    {"component": "NVOS", "expected": "25.02", "actual": "25.01"}]}]})
     b = client.get("/api/v1/firmware/baseline").json()
     assert b["source"] == "nico" and {"component": "Compute BMC", "tray_type": "Compute",
-                                      "baseline": "25.10-1"} in b["components"]
+                                      "baseline": "1.4.2"} in b["components"]
     d = client.get("/api/v1/firmware/drift").json()["drift"]
     assert d == [{"machine": "su-1-rack-02-nvsw-08", "rack": "su-1-rack-02",
                   "tray_type": "NVSwitch", "component": "NVSwitch NVOS", "current": "25.01",
