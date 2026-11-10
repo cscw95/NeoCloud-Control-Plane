@@ -133,9 +133,10 @@ def _ai_infra_faults(limit: int = 100) -> list:
     try:
         import httpx
 
+        from .dsx import emu_headers
         from .integration import AI_INFRA_BASE
         r = httpx.get(f"{AI_INFRA_BASE}/emulator/v1/faults",
-                      params={"limit": limit}, timeout=1.2)
+                      params={"limit": limit}, timeout=1.2, headers=emu_headers())
         if r.status_code != 200:
             return []
         return r.json().get("recent", [])

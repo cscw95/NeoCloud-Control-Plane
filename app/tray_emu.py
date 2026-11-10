@@ -516,9 +516,10 @@ def _emulator_reprov_faults(limit: int) -> list:
     try:
         import httpx
 
+        from .dsx import emu_headers
         from .integration import NICO_BASE
         r = httpx.get(f"{NICO_BASE}/emulator/v1/faults",
-                      params={"limit": limit}, timeout=1.0)
+                      params={"limit": limit}, timeout=1.0, headers=emu_headers())
         if r.status_code != 200:
             return []
         items = r.json().get("recent", [])

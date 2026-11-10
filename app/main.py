@@ -196,7 +196,8 @@ def reseed(blueprints: str | None = None) -> dict:
 def _post_json(url: str, timeout: float = 6.0) -> dict:
     import httpx
     try:
-        r = httpx.post(url, timeout=timeout)
+        from .dsx import emu_headers
+        r = httpx.post(url, timeout=timeout, headers=emu_headers())
         if r.status_code >= 400:
             return {"status": "error", "detail": f"HTTP {r.status_code}"}
         return {"status": "reset", **(r.json() if r.content else {})}

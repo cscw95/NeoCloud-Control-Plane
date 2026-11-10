@@ -62,6 +62,13 @@ def nico_url() -> str:
     return os.environ.get("NICO_EMULATOR_URL", "http://127.0.0.1:9000").rstrip("/")
 
 
+def emu_headers() -> dict:
+    """Auth for NOCP → emulator calls: NOCP_EMU_API_KEY is sent as X-API-Key
+    (matches the emulators' EMU_API_KEY; required on their mutating routes)."""
+    key = os.environ.get("NOCP_EMU_API_KEY", "").strip()
+    return {"X-API-Key": key} if key else {}
+
+
 def offline() -> bool:
     return os.environ.get("NOCP_DSX_OFFLINE", "0") == "1" and _transport is None
 
@@ -73,7 +80,7 @@ def call(method: str, url: str, *, json: Any = None, params: Optional[dict] = No
         return None, None
     try:
         with httpx.Client(transport=_transport, timeout=timeout) as c:
-            r = c.request(method, url, json=json, params=params)
+            r = c.request(method, url, json=json, params=params, headers=emu_headers())
     except Exception:                              # noqa: BLE001 — best effort
         return None, None
     try:

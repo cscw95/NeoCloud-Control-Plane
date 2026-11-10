@@ -40,9 +40,14 @@ def _tenant(x_tenant_id: Optional[str]) -> str:
     return x_tenant_id
 
 
+def emu_headers() -> dict:
+    from .dsx import emu_headers as h
+    return h()
+
+
 def _ai_post(path: str, timeout: float = 6.0) -> dict:
     try:
-        with httpx.Client(timeout=timeout) as c:
+        with httpx.Client(timeout=timeout, headers=emu_headers()) as c:
             r = c.post(f"{AI_INFRA_BASE}{path}")
     except httpx.HTTPError as e:
         raise HTTPException(502, f"AI Infra unreachable: {e}") from e
@@ -53,7 +58,7 @@ def _ai_post(path: str, timeout: float = 6.0) -> dict:
 
 def _ai_get(path: str, timeout: float = 4.0):
     try:
-        with httpx.Client(timeout=timeout) as c:
+        with httpx.Client(timeout=timeout, headers=emu_headers()) as c:
             r = c.get(f"{AI_INFRA_BASE}{path}")
         if r.status_code >= 400:
             return None

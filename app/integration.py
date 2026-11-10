@@ -26,6 +26,11 @@ AI_INFRA_BASE = os.environ.get("AI_INFRA_URL", "http://127.0.0.1:9100")
 CONSOLE_BASE = os.environ.get("NC_CONSOLE_URL", "http://127.0.0.1:8090")
 
 
+
+def _emu_headers() -> dict:
+    from .dsx import emu_headers
+    return emu_headers()
+
 def _adapter_mode() -> str:
     return "http" if _env else "local"
 
@@ -33,7 +38,7 @@ def _adapter_mode() -> str:
 def _probe(url: str, timeout: float = 1.2):
     t0 = time.monotonic()
     try:
-        r = httpx.get(url, timeout=timeout)
+        r = httpx.get(url, timeout=timeout, headers=_emu_headers())
         return {"reachable": r.status_code < 400, "status": r.status_code,
                 "latency_ms": round((time.monotonic() - t0) * 1000, 1),
                 "body": r.json() if "json" in r.headers.get("content-type", "")
@@ -262,7 +267,7 @@ def consistency():
 
     def _get(url, timeout=2.5):
         try:
-            r = httpx.get(url, timeout=timeout)
+            r = httpx.get(url, timeout=timeout, headers=_emu_headers())
             return r.json() if r.status_code < 400 else None
         except Exception:                          # noqa: BLE001
             return None
