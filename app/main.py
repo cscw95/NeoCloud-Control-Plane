@@ -126,6 +126,9 @@ app.include_router(scenario_api.router)
 app.include_router(customer_ops.router)
 app.include_router(fabric.router)
 app.include_router(tray_emu.router)
+from . import readiness as _readiness, slurm as _slurm  # F28 · F31
+app.include_router(_readiness.router)
+app.include_router(_slurm.router)
 app.include_router(nico_fake.router)
 app.include_router(vast_fake.router)
 app.include_router(integration.router)
@@ -241,6 +244,8 @@ def reseed(blueprints: str | None = None) -> dict:
     firmware_bundles.FW.reset()
     lifecycle.bootstrap_nodes()
     tray_emu.EMULATOR.reset()
+    _readiness.reset()
+    _slurm.reset()
     tray_emu.EMULATOR.sync_from_store()
     if bps is None:                # sample faults/tickets only on the default (demo) reseed
         seed_demo_samples(STORE)

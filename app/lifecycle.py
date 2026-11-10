@@ -1083,6 +1083,14 @@ def _k8s_st_acceptance(ctx: dict) -> None:
              "detail": "VAST NFSoRDMA 뷰 mount + GDS 경로 검증",
              "value": views[0] if views else "-"},
         ]}
+    # F28 Cluster Readiness gate — Health Validation rule verdicts decide acceptance
+    from .readiness import acceptance_check
+    hvc = acceptance_check([n.tray_id for n in nodes], cid)
+    cluster.acceptance["readiness"] = hvc        # checks[] stays the 4-kind contract
+    cluster.conditions.append({"check": hvc["name"], "result": hvc["status"].upper(),
+                               "at": _now(), "detail": hvc["detail"]})
+    if hvc["status"] != "pass":
+        cluster.acceptance["status"] = "fail"
 
 
 def _k8s_st_telemetry(ctx: dict) -> None:
