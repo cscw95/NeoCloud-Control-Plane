@@ -142,7 +142,7 @@ def _notice(resp: dict, severity: str) -> None:
     if m and hasattr(m, "create_notice"):
         res = m.create_notice(body)
         resp["notice_id"] = (res or {}).get("id") if isinstance(res, dict) else str(res)
-        resp["notice"] = {"via": "F13"}
+        resp["notice"] = {**(res if isinstance(res, dict) else body), "via": "F13"}
     else:
         resp["notice"] = {**body, "via": "stub"}
 

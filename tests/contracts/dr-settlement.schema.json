@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neocloud.example/schemas/dr-settlement.schema.json",
+  "title": "DemandResponseSettlements",
+  "description": "F27 GET /api/v1/finops/dr-settlements: curtailment performance (achieved kW x hours, from DSX Flex 1.7.0 Load Target Sets via F21) x incentive. No upstream settlement format (OpenADR 3 reports carry the measurement only); NeoCloud extension. NOCP app/finops.py.",
+  "x-neocloud": true,
+  "type": "object",
+  "required": ["currency", "source", "items", "totals", "basis"],
+  "properties": {
+    "currency": {"type": "string", "enum": ["KRW"]},
+    "source": {"type": "string", "enum": ["f21-curtailment", "flex-events"]},
+    "items": {"type": "array", "items": {"type": "object",
+      "required": ["id", "requested_kw", "achieved_kw", "start", "hours", "kwh", "incentive_krw_per_kwh", "incentive_krw", "source"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^drs-"},
+        "curtailment_id": {"type": ["string", "null"]},
+        "load_target_id": {"type": ["string", "null"]},
+        "requested_kw": {"type": "number"},
+        "achieved_kw": {"type": "number"},
+        "start": {"type": ["string", "null"]},
+        "end": {"type": ["string", "null"]},
+        "hours": {"type": "number"},
+        "kwh": {"type": "number"},
+        "incentive_krw_per_kwh": {"type": "number"},
+        "incentive_krw": {"type": "integer"},
+        "source": {"type": "string"}}}},
+    "totals": {"type": "object", "required": ["count", "kwh", "incentive_krw"],
+      "properties": {"count": {"type": "integer"}, "kwh": {"type": "number"}, "incentive_krw": {"type": "integer"}}},
+    "basis": {"type": "string"}
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neocloud.example/schemas/status-notice.schema.json",
+  "title": "StatusNotice",
+  "description": "F13 status-page notice (incident | maintenance | grid_curtailment). No upstream format exists; NeoCloud extension. NOCP app/status_notices.py.",
+  "x-neocloud": true,
+  "type": "object",
+  "required": ["id", "kind", "components", "impact", "start", "end", "message_ko", "message_en", "state", "source", "created_at", "updated_at", "resolved_at"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^ntc-[0-9]{4,}$"},
+    "kind": {"type": "string", "enum": ["incident", "maintenance", "grid_curtailment"]},
+    "components": {"type": "array", "minItems": 1, "items": {"type": "string", "enum": ["Compute", "GPU Fabric", "Storage", "Network", "Portal", "bmaas", "managed-k8s", "token-api"]}},
+    "impact": {"type": "string", "enum": ["degraded", "maintenance"]},
+    "start": {"type": "string", "format": "date-time"},
+    "end": {"type": ["string", "null"], "format": "date-time"},
+    "message_ko": {"type": "string", "minLength": 1},
+    "message_en": {"type": "string", "minLength": 1},
+    "state": {"type": "string", "enum": ["scheduled", "active", "resolved"]},
+    "source": {"type": "string"},
+    "ref": {"type": ["string", "null"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "resolved_at": {"type": ["string", "null"], "format": "date-time"}
+  }
+}
