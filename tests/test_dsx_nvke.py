@@ -49,10 +49,12 @@ def test_cluster_lifecycle_allocates_nico_instances(client):
     assert r.status_code == 201
     assert len(client.get(f"/api/v1/nvke/clusters/{cid}/nodepools").json()) == 2
 
-    # kubeconfig json + yaml
-    k = client.get(f"/api/v1/nvke/clusters/{cid}/kubeconfig").json()
+    # kubeconfig json + yaml — owner tenant only
+    assert client.get(f"/api/v1/nvke/clusters/{cid}/kubeconfig").status_code == 403
+    own = {"X-Tenant-Id": tid}
+    k = client.get(f"/api/v1/nvke/clusters/{cid}/kubeconfig", headers=own).json()
     assert "server: https://" in k["kubeconfig"]
-    y = client.get(f"/api/v1/nvke/clusters/{cid}/kubeconfig?format=yaml")
+    y = client.get(f"/api/v1/nvke/clusters/{cid}/kubeconfig?format=yaml", headers=own)
     assert y.headers["content-type"].startswith("application/yaml")
 
     # upgrade 1.33 → 1.34, recipe follows
@@ -135,6 +137,7 @@ def test_legacy_nkd_cluster_visible_in_nvke_model(client):
         nkd_version="25.06", state="running")
     rows = {c["id"]: c for c in client.get("/api/v1/nvke/clusters").json()}
     assert rows["k8s-legacy"]["source"] == "nkd"
-    assert client.get("/api/v1/nvke/clusters/k8s-legacy/kubeconfig").status_code == 200
+    assert client.get("/api/v1/nvke/clusters/k8s-legacy/kubeconfig",
+                      headers={"X-Tenant-Id": "tnt-old"}).status_code == 200
     assert client.post("/api/v1/nvke/clusters/k8s-legacy/upgrade",
                        json={"k8s_version": "1.34"}).status_code == 409

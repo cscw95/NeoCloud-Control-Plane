@@ -167,12 +167,6 @@ def test_operator_only_surfaces_closed_to_tenants(client):
         assert client.get(p, headers=h).status_code == 403, p
 
 
-def test_sse_operator_query(client, monkeypatch):
-    monkeypatch.setenv("NOCP_DEV_OPERATOR_DEFAULT", "0")
-    assert client.get("/api/v1/events?once=true").status_code == 403
-    assert client.get("/api/v1/events?once=true&operator=true").status_code == 200
-
-
 def test_wpps_policy_from_console(client):
     r = client.post("/api/v1/racks/su-2-rack-00/power-policy", json={"policy": "max-q"}).json()
     assert r["policy"] == "maxq" and r["profile"] == "max-q"

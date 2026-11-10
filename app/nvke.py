@@ -17,7 +17,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -542,8 +542,17 @@ def _kubeconfig_yaml(cid: str, name: str, endpoint: str, tenant: str) -> str:
         f"--oidc-client-id={cid}]\n")
 
 
+def require_owner(request, tenant_id: str) -> None:
+    """Credentials are released only to the owning tenant (never the operator)."""
+    who = getattr(request.state, "identity", None)
+    if who is None or who.role != "tenant":
+        raise HTTPException(403, "kubeconfig is only released to the owning tenant")
+    if who.tenant_id != tenant_id:
+        raise HTTPException(403, "tenant scope violation")
+
+
 @router.get("/clusters/{cluster_id}/kubeconfig")
-def kubeconfig(cluster_id: str, format: str = Query("json")):
+def kubeconfig(cluster_id: str, request: Request, format: str = Query("json")):
     c = NVKE.clusters.get(cluster_id)
     if c is not None and c.state != "deleted":
         name, endpoint, tenant = c.name, c.control_plane["endpoint"], c.tenant_id
@@ -553,6 +562,7 @@ def kubeconfig(cluster_id: str, format: str = Query("json")):
         endpoint = f"https://{k.api_vip or k.id}:6443"
     else:
         raise HTTPException(404, f"nvke cluster '{cluster_id}' not found")
+    require_owner(request, tenant)
     text = _kubeconfig_yaml(cluster_id, name, endpoint, tenant)
     if format == "yaml":
         return PlainTextResponse(text, media_type="application/yaml", headers={

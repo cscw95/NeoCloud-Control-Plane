@@ -19,6 +19,7 @@ import asyncio
 
 from . import (
     __version__,
+    auth,
     business,
     fabric,
     integration,
@@ -104,6 +105,7 @@ app.include_router(vast_fake.router)
 app.include_router(integration.router)
 app.include_router(shared_services.router)
 app.include_router(dsx.router)
+app.include_router(auth.router)
 app.include_router(nvke.router)
 app.include_router(power.router)
 app.include_router(events.router)
@@ -120,11 +122,19 @@ from .tenancy_guard import TenancyGuardMiddleware  # noqa: E402
 app.add_middleware(TenancyGuardMiddleware)
 
 # Allow API integration from the three NeoCloud consoles (separate origin :8090)
+import os as _os  # noqa: E402
+
+# CORS locked to configured console origins (NOCP_CORS_ORIGINS, comma list).
+CORS_ORIGINS = [o.strip() for o in _os.environ.get(
+    "NOCP_CORS_ORIGINS", "http://localhost:8090,http://127.0.0.1:8090").split(",")
+    if o.strip() and o.strip() != "*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:8090", "http://localhost:8090"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Tenant-Id", "X-Tenant-Role",
+                   "X-Operator", "X-Webhook-Token"],
+    allow_credentials=False,
 )
 
 

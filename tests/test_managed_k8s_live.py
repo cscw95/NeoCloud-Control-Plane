@@ -255,8 +255,14 @@ def test_kubeconfig_issue_revoke_and_rbac_templates(client):
     o = _k8s_order(client, tid).json()
     cid = o["k8s_cluster_id"]
 
+    # credentials are released only to the owning tenant (security hardening)
+    assert client.post(f"/api/v1/k8s/clusters/{cid}/kubeconfigs",
+                       json={"role": "admin"}).status_code == 403
+    assert client.post(f"/api/v1/k8s/clusters/{cid}/kubeconfigs", json={"role": "admin"},
+                       headers={"X-Tenant-Id": "tnt-other"}).status_code == 403
+    owner = {"X-Tenant-Id": tid}
     r = client.post(f"/api/v1/k8s/clusters/{cid}/kubeconfigs",
-                    json={"role": "admin", "ttl_h": 24})
+                    json={"role": "admin", "ttl_h": 24}, headers=owner)
     assert r.status_code == 201
     kc = r.json()
     assert kc["role"] == "admin" and kc["ttl_h"] == 24
@@ -268,6 +274,7 @@ def test_kubeconfig_issue_revoke_and_rbac_templates(client):
 
     lst = client.get(f"/api/v1/k8s/clusters/{cid}/kubeconfigs").json()
     assert [k["kubeconfig_id"] for k in lst] == [kc["kubeconfig_id"]]
+    assert "kubeconfig_yaml" not in lst[0]
 
     r = client.delete(f"/api/v1/k8s/clusters/{cid}/kubeconfigs/"
                       f"{kc['kubeconfig_id']}")
@@ -276,7 +283,7 @@ def test_kubeconfig_issue_revoke_and_rbac_templates(client):
                          f"{kc['kubeconfig_id']}").status_code == 409
     # Unsupported role
     assert client.post(f"/api/v1/k8s/clusters/{cid}/kubeconfigs",
-                       json={"role": "root"}).status_code == 422
+                       json={"role": "root"}, headers=owner).status_code == 422
 
     tpl = client.get("/api/v1/k8s/rbac-templates").json()
     assert {t["role"] for t in tpl} >= {"admin", "edit", "view"}

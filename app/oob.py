@@ -18,6 +18,8 @@ whatever events were received (`source: "local-fallback"`).
 
 from __future__ import annotations
 
+import hmac
+import ipaddress
 import os
 import threading
 from collections import deque
@@ -25,6 +27,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
+import httpx
 from fastapi.responses import JSONResponse, Response
 
 from . import dsx, events
@@ -233,9 +236,49 @@ def ingest(raw: dict) -> list[dict]:
     return out
 
 
+def _csv(env: str, default: str) -> list[str]:
+    return [x.strip() for x in os.environ.get(env, default).split(",") if x.strip()]
+
+
+def webhook_source_allowed(request: Request) -> bool:
+    """EventService receiver gate: shared secret when NOCP_WEBHOOK_SECRET is set,
+    else the client address must be in NOCP_WEBHOOK_SOURCES (IPs/CIDRs)."""
+    secret = os.environ.get("NOCP_WEBHOOK_SECRET")
+    if secret:
+        got = request.headers.get("x-webhook-token", "")
+        return hmac.compare_digest(got.encode(), secret.encode())
+    host = request.client.host if request.client else ""
+    for item in _csv("NOCP_WEBHOOK_SOURCES", "127.0.0.1,::1,testclient"):
+        if host == item:
+            return True
+        try:
+            if ipaddress.ip_address(host) in ipaddress.ip_network(item, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def destination_allowed(dest: str) -> bool:
+    """EventService subscription destinations must match NOCP_WEBHOOK_DESTINATIONS."""
+    try:
+        u = httpx.URL(dest)
+    except Exception:                              # noqa: BLE001
+        return False
+    if u.scheme not in ("http", "https") or u.userinfo:
+        return False
+    norm = f"{u.scheme}://{u.host}{':' + str(u.port) if u.port else ''}{u.path}"
+    return any(norm == a or norm.startswith(a.rstrip("/") + "/") for a in
+               _csv("NOCP_WEBHOOK_DESTINATIONS",
+                    "http://127.0.0.1:8000/api/v1/oob/events,"
+                    "http://localhost:8000/api/v1/oob/events"))
+
+
 @router.post("/oob/events", status_code=202)
 async def receive_events(request: Request) -> dict:
     """Redfish EventService destination (AI-Infra POSTs here)."""
+    if not webhook_source_allowed(request):
+        raise HTTPException(403, "event source not allowed")
     try:
         raw = await request.json()
     except Exception:                              # noqa: BLE001
@@ -258,6 +301,11 @@ def list_events(limit: int = Query(50, ge=1, le=500), topic: Optional[str] = Non
 def subscribe(destination: Optional[str] = None) -> dict:
     dest = destination or (os.environ.get("NOCP_PUBLIC_URL", "http://127.0.0.1:8000")
                            .rstrip("/") + "/api/v1/oob/events")
+    if not destination_allowed(dest):
+        rec = {"destination": dest, "status": None, "subscribed": False,
+               "error": "destination not in NOCP_WEBHOOK_DESTINATIONS", "at": _now()}
+        OOB.subscription = rec
+        return rec
     st, body = dsx.ai_send("POST", "/redfish/v1/EventService/Subscriptions",
                            json={"Destination": dest, "Protocol": "Redfish",
                                  "EventTypes": ["Alert", "StatusChange"],
@@ -271,6 +319,8 @@ def subscribe(destination: Optional[str] = None) -> dict:
 @router.post("/oob/subscribe")
 def subscribe_route(body: Optional[dict] = None) -> dict:
     rec = subscribe((body or {}).get("destination"))
+    if rec.get("error"):
+        return JSONResponse(rec, status_code=422)
     if not rec["subscribed"]:
         return JSONResponse(rec, status_code=502)
     return rec
@@ -322,10 +372,27 @@ INFRA_PREFIXES = ("emulator/v1/", "ufm/v1/", "netq/v1/", "vast/v1/", "converged/
                   "redfish/v1/", "dps/v1/", "exchange/v1/topics")
 
 
-@router.api_route("/infra/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
-async def infra_proxy(path: str, request: Request):
+def _safe_infra_path(request: Request, path: str) -> str:
+    """Reject traversal / absolute URLs / encoded tricks, then allow-list (SSRF)."""
+    raw = request.scope.get("raw_path", b"").decode("latin-1")
+    low = (path + " " + raw).lower()
+    if (".." in path.split("/") or "\\" in path or "://" in path or "//" in path
+            or path.startswith("/") or "@" in path
+            or any(t in low for t in ("%2e", "%2f", "%5c", "%00", "%40"))
+            or not path or any(ord(c) < 0x21 for c in path)):
+        raise HTTPException(400, "invalid infra path")
     if not path.startswith(INFRA_PREFIXES) or path.startswith("emulator/v1/reset"):
         raise HTTPException(403, f"infra path '{path}' is not proxied")
+    base = httpx.URL(dsx.ai_infra_url())
+    url = httpx.URL(f"{dsx.ai_infra_url()}/{path}")
+    if (url.scheme, url.host, url.port) != (base.scheme, base.host, base.port):
+        raise HTTPException(400, "invalid infra path")
+    return str(url)
+
+
+@router.api_route("/infra/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
+async def infra_proxy(path: str, request: Request):
+    target = _safe_infra_path(request, path)
     body = None
     if request.method != "GET":
         raw = await request.body()
@@ -334,7 +401,7 @@ async def infra_proxy(path: str, request: Request):
                 body = await request.json()
             except Exception:                      # noqa: BLE001
                 raise HTTPException(400, "proxied body must be JSON")
-    st, resp = dsx.call(request.method, f"{dsx.ai_infra_url()}/{path}", json=body,
+    st, resp = dsx.call(request.method, target, json=body,
                         params=dict(request.query_params), timeout=8.0)
     if st is None:
         return JSONResponse({"detail": "ai-infra unreachable", "path": path},

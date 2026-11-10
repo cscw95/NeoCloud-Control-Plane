@@ -27,11 +27,13 @@ Contract (console ↔ NOCP):
     `/api/v1/spec`) and non-API paths (HTML·/health·/docs·/static) are unchanged
     regardless of the header.
 
-Operator plane (DSX baseline, PLAN C security):
-  - A request without `X-Tenant-Id` is the operator plane only when it carries
-    `X-Operator: true`, or when the dev switch `NOCP_DEV_OPERATOR_DEFAULT=1`
-    is set (the old implicit-operator behaviour; the test suite and run.sh set
-    it). Otherwise → 403 {"detail": "operator header required"}.
+Authentication (DSX baseline security, see auth.py):
+  - Identity comes from a bearer token (role operator|tenant + tenant_id). The
+    `X-Tenant-Id`/`X-Tenant-Role`/`X-Operator` headers described above are
+    honoured only with `NOCP_DEV_INSECURE_HEADERS=1`; otherwise they are
+    stripped and replaced by the token's identity before routing.
+  - No identity on /api/* → 401, unless `NOCP_DEV_OPERATOR_DEFAULT=1` (dev:
+    implicit operator; the test suite and run.sh set it).
   - Exempt: public surfaces above and the Redfish EventService webhook
     (`POST /api/v1/oob/events`, pushed by the AI-Infra emulator).
 
@@ -55,7 +57,8 @@ from .store import STORE
 TENANT_HEADER = "x-tenant-id"
 OPERATOR_HEADER = "x-operator"
 _WEBHOOKS = frozenset({("POST", "/api/v1/oob/events")})
-# EventSource cannot send headers — the SSE stream accepts ?operator=true
+# EventSource cannot send headers — the SSE stream accepts a signed ?token=
+# (scope "events", POST /api/v1/events/token); see auth.py
 _SSE_PATHS = frozenset({"/api/v1/events"})
 # operator-only DSX surfaces (fleet health, power, raw infra) — closed to tenants
 _OPERATOR_ONLY = ("/api/v1/oob", "/api/v1/infra", "/api/v1/power", "/api/v1/rma",
@@ -76,6 +79,8 @@ _TENANT_PATH_RE = re.compile(r"^/api/v1/tenants/(?P<tid>[^/]+)")
 _ORDER_PATH_RE = re.compile(r"^/api/v1/orders/(?P<oid>[^/]+)")
 _CLUSTER_PATH_RE = re.compile(r"^/api/v1/k8s/clusters/(?P<cid>[^/]+)")
 _NVKE_PATH_RE = re.compile(r"^/api/v1/nvke/clusters/(?P<cid>[^/]+)")
+_TICKET_PATH_RE = re.compile(r"^/api/v1/tickets/(?P<id>[^/]+)")
+_NODE_PATH_RE = re.compile(r"^/api/v1/nodes/(?P<id>[^/]+)$")
 
 # list endpoints already supporting a tenant_id query filter (exact-match paths)
 # → force-rewrite the query string to reuse the existing filter logic
@@ -129,6 +134,18 @@ def _scope_violation(request: Request, tid: str) -> bool:
     if m:
         cluster = STORE.k8s_clusters.get(m.group("cid"))
         if cluster is not None and cluster.tenant_id != tid:
+            return True
+
+    m = _TICKET_PATH_RE.match(path)
+    if m:
+        t = STORE.tickets.get(m.group("id"))
+        if t is not None and t.tenant_id != tid:
+            return True
+
+    m = _NODE_PATH_RE.match(path)
+    if m:
+        n = STORE.node_instances.get(m.group("id"))
+        if n is not None and n.tenant_id not in (None, tid):
             return True
 
     m = _NVKE_PATH_RE.match(path)
@@ -199,26 +216,47 @@ def _guarded(path: str) -> bool:
             and not path.startswith(_PUBLIC_PREFIXES))
 
 
-def _operator_allowed(request: Request) -> bool:
-    import os
-    if os.environ.get("NOCP_DEV_OPERATOR_DEFAULT", "0") == "1":
-        return True
-    if (request.method == "GET" and request.url.path in _SSE_PATHS
-            and request.query_params.get("operator", "").lower() in ("true", "1")):
-        return True
-    return (request.headers.get(OPERATOR_HEADER) or "").strip().lower() in ("true", "1")
+_IDENTITY_HEADERS = (TENANT_HEADER.encode(), ROLE_HEADER.encode(),
+                     OPERATOR_HEADER.encode())
+
+
+def _bind_identity_headers(request: Request, ident) -> None:
+    """Make the authenticated identity the only source of tenant headers.
+
+    Handlers that read `X-Tenant-Id` (customer_ops) then see the token's tenant;
+    client-supplied identity headers are dropped unless they produced `ident`."""
+    hdrs = [(k, v) for k, v in request.scope["headers"] if k not in _IDENTITY_HEADERS]
+    if ident is not None and ident.role == "tenant":
+        hdrs += [(TENANT_HEADER.encode(), ident.tenant_id.encode()),
+                 (ROLE_HEADER.encode(), ident.tenant_role.encode())]
+    elif ident is not None:
+        hdrs.append((OPERATOR_HEADER.encode(), b"true"))
+    request.scope["headers"] = hdrs
+
+
+def _unauthorized(detail: str) -> JSONResponse:
+    return JSONResponse({"detail": detail}, status_code=401,
+                        headers={"WWW-Authenticate": "Bearer"})
 
 
 class TenancyGuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        tid = request.headers.get(TENANT_HEADER)
+        from . import auth
         path = request.url.path
-        if (not tid and _guarded(path)
+        try:
+            ident = auth.resolve(request, _SSE_PATHS)
+        except auth.AuthError as e:
+            return _unauthorized(str(e))
+        if (ident is None and _guarded(path)
                 and (request.method, path) not in _WEBHOOKS
-                and request.method != "OPTIONS"
-                and not _operator_allowed(request)):
-            return _forbidden("operator header required")
-        # management plane (no header)·non-API paths·public surfaces → no intervention at all
+                and request.method != "OPTIONS"):
+            if not auth.dev_operator_default():
+                return _unauthorized("authentication required")
+            ident = auth.Identity(role="operator", via="dev-default")
+        _bind_identity_headers(request, ident)
+        request.state.identity = ident
+        tid = ident.tenant_id if ident is not None and ident.role == "tenant" else None
+        # management plane·non-API paths·public surfaces → no tenant rules
         if (not tid
                 or not (path.startswith("/api/") or path.startswith("/fake-"))
                 or path.startswith(_PUBLIC_PREFIXES)):
@@ -235,7 +273,7 @@ class TenancyGuardMiddleware(BaseHTTPMiddleware):
             return _forbidden("tenant scope violation")
 
         # 2) RBAC — viewer is read-only
-        role = (request.headers.get(ROLE_HEADER) or "member").strip().lower()
+        role = ident.tenant_role.strip().lower()
         if role == "viewer" and request.method not in _READ_METHODS:
             return _forbidden("read-only role")
 

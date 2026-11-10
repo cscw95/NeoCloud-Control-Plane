@@ -19,7 +19,7 @@ import threading
 import time
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from .lifecycle import (
@@ -489,20 +489,27 @@ def _kubeconfig_yaml(cluster: K8sCluster, role: str, serial: str) -> str:
 
 @router.get("/k8s/clusters/{cluster_id}/kubeconfigs")
 def list_kubeconfigs(cluster_id: str) -> list:
+    """Issuance history — the kubeconfig body is returned once, at issuance."""
     with STORE.lock:
         _cluster_or_404(cluster_id)
-        return sorted((k for k in STORE.k8s_kubeconfigs.values()
+        rows = sorted((k for k in STORE.k8s_kubeconfigs.values()
                        if k.cluster_id == cluster_id),
                       key=lambda k: k.kubeconfig_id, reverse=True)
+        return [k.model_dump(exclude={"kubeconfig_yaml"}) for k in rows]
 
 
 @router.post("/k8s/clusters/{cluster_id}/kubeconfigs", status_code=201,
              response_model=K8sKubeconfig)
-def issue_kubeconfig(cluster_id: str, body: _KubeconfigBody) -> K8sKubeconfig:
-    """Issue kubeconfig — fake PKI serial + TTL (OIDC exec-plugin mock)."""
+def issue_kubeconfig(cluster_id: str, body: _KubeconfigBody,
+                     request: Request) -> K8sKubeconfig:
+    """Issue kubeconfig — fake PKI serial + TTL (OIDC exec-plugin mock).
+    Released only to the owning tenant."""
     from datetime import datetime, timedelta, timezone
+
+    from .nvke import require_owner
     with STORE.lock:
         cluster = _cluster_or_404(cluster_id)
+        require_owner(request, cluster.tenant_id)
         if cluster.state != "running":
             raise HTTPException(409, f"cluster '{cluster_id}'는 "
                                      f"{cluster.state} 상태 — 발급 불가")
@@ -532,7 +539,7 @@ def issue_kubeconfig(cluster_id: str, body: _KubeconfigBody) -> K8sKubeconfig:
 
 
 @router.delete("/k8s/clusters/{cluster_id}/kubeconfigs/{kubeconfig_id}")
-def revoke_kubeconfig(cluster_id: str, kubeconfig_id: str) -> K8sKubeconfig:
+def revoke_kubeconfig(cluster_id: str, kubeconfig_id: str) -> dict:
     """Revoke kubeconfig — history preserved, serial treated as entered into the CRL."""
     with STORE.lock:
         _cluster_or_404(cluster_id)
@@ -549,7 +556,7 @@ def revoke_kubeconfig(cluster_id: str, kubeconfig_id: str) -> K8sKubeconfig:
              f"PKI 시리얼 {kc.serial} CRL 등재 (즉시 실효)",
              payload={"cluster": cluster_id, "kubeconfig_id": kubeconfig_id,
                       "serial": kc.serial})
-        return kc
+        return kc.model_dump(exclude={"kubeconfig_yaml"})
 
 
 @router.get("/k8s/rbac-templates")
