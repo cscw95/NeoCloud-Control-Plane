@@ -12,5 +12,9 @@ else
   . .venv/bin/activate
 fi
 
+# Dev launcher keeps the implicit operator plane for the bundled static pages;
+# production leaves it 0 and consoles send X-Operator: true (see README).
+export NOCP_DEV_OPERATOR_DEFAULT="${NOCP_DEV_OPERATOR_DEFAULT:-1}"
+
 echo "NOCP starting →  dashboard http://127.0.0.1:8000/   ·   API docs http://127.0.0.1:8000/docs"
 exec uvicorn app.main:app --reload --host 127.0.0.1 --port 8000

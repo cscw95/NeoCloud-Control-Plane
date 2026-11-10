@@ -27,6 +27,14 @@ Contract (console ↔ NOCP):
     `/api/v1/spec`) and non-API paths (HTML·/health·/docs·/static) are unchanged
     regardless of the header.
 
+Operator plane (DSX baseline, PLAN C security):
+  - A request without `X-Tenant-Id` is the operator plane only when it carries
+    `X-Operator: true`, or when the dev switch `NOCP_DEV_OPERATOR_DEFAULT=1`
+    is set (the old implicit-operator behaviour; the test suite and run.sh set
+    it). Otherwise → 403 {"detail": "operator header required"}.
+  - Exempt: public surfaces above and the Redfish EventService webhook
+    (`POST /api/v1/oob/events`, pushed by the AI-Infra emulator).
+
 Implementation: instead of per-router dependency injection, path-pattern matching
 in a single middleware — not a single line of existing router code changes
 (minimizing regression risk).
@@ -45,6 +53,8 @@ from starlette.responses import JSONResponse, Response
 from .store import STORE
 
 TENANT_HEADER = "x-tenant-id"
+OPERATOR_HEADER = "x-operator"
+_WEBHOOKS = frozenset({("POST", "/api/v1/oob/events")})
 ROLE_HEADER = "x-tenant-role"
 
 # public (unauthenticated) surfaces never intervened in, even with the header
@@ -167,10 +177,27 @@ async def _body_tenant_mismatch(request: Request, tid: str) -> bool:
             and data["tenant_id"] != tid)
 
 
+def _guarded(path: str) -> bool:
+    return ((path.startswith("/api/") or path.startswith("/fake-"))
+            and not path.startswith(_PUBLIC_PREFIXES))
+
+
+def _operator_allowed(request: Request) -> bool:
+    import os
+    if os.environ.get("NOCP_DEV_OPERATOR_DEFAULT", "0") == "1":
+        return True
+    return (request.headers.get(OPERATOR_HEADER) or "").strip().lower() in ("true", "1")
+
+
 class TenancyGuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         tid = request.headers.get(TENANT_HEADER)
         path = request.url.path
+        if (not tid and _guarded(path)
+                and (request.method, path) not in _WEBHOOKS
+                and request.method != "OPTIONS"
+                and not _operator_allowed(request)):
+            return _forbidden("operator header required")
         # management plane (no header)·non-API paths·public surfaces → no intervention at all
         if (not tid
                 or not (path.startswith("/api/") or path.startswith("/fake-"))
