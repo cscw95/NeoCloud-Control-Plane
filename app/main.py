@@ -33,6 +33,8 @@ from . import (
     events,
     identity,
     ncp,
+    remediation,
+    sla,
     nvke,
     nvke_capi,
     oob,
@@ -77,6 +79,8 @@ async def lifespan(app: FastAPI):
     ncp.RMA.reset()
     token_quota.reset()            # F02 quota buckets·overrides
     metering.reset()               # F04 metering log
+    remediation.reset()
+    sla.reset()
     metrics.METRICS.reset()        # reset real-time API call counters
     token_api.reset()              # F01/F03 token gateway keys·usage·guard
     lifecycle.bootstrap_nodes()
@@ -140,6 +144,8 @@ app.include_router(billing_stripe.router)
 from . import capacity, compliance  # noqa: E402  (F34/F35)
 app.include_router(compliance.router)
 app.include_router(capacity.router)
+app.include_router(remediation.router)
+app.include_router(sla.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
@@ -212,6 +218,8 @@ def reseed(blueprints: str | None = None) -> dict:
     token_api.reset()
     token_quota.reset()            # F02 quota buckets·overrides
     metering.reset()               # F04 metering log
+    remediation.reset()
+    sla.reset()
     lifecycle.bootstrap_nodes()
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()

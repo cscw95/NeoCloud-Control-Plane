@@ -753,41 +753,38 @@ def sla_report(tenant_id: str, month: Optional[str] = None,
             inc_lines.append({"id": i["id"], "severity": i["severity"],
                               "downtime_min": round(dt_min, 2),
                               "mttr_min": i["mttr_min"]})
-        # total minutes in the month — demo simplification: treat the whole month as the service window
-        next_month = (month_dt.replace(year=month_dt.year + 1, month=1)
-                      if month_dt.month == 12
-                      else month_dt.replace(month=month_dt.month + 1))
-        window_min = (next_month - month_dt).total_seconds() / 60
-        avail = round(max(0.0, 100 - downtime_total / window_min * 100), 4)
+        # F09: per-instance availability over F10 downtime + incidents,
+        # minus SLA exception windows (app/sla.py)
+        from . import sla as _sla
+        av = _sla.availability(tenant_id, month, month_incs)
+        avail = av["availability_pct"]
         violated = avail < SLA_TARGET_PCT
 
         credits: list[dict] = []
+        ticket_id = None
         if violated:
-            ckey = f"{tenant_id}|{month}"
-            credit = next((c for c in STORE.sla_credits.values()
-                           if c["key"] == ckey), None)
-            if credit is None:
-                pct = _credit_pct_for(avail)
-                monthly = _tenant_monthly_usd_locked(tenant_id)
-                worst = max(month_incs,
-                            key=lambda i: i["mttr_min"] or 0, default=None)
-                credit = {
-                    "credit_id": f"crd-{STORE.next_seq('sla_credit')}",
-                    "key": ckey, "tenant_id": tenant_id, "month": month,
-                    "incident_id": worst["id"] if worst else None,
-                    "amount_usd": round(monthly * pct / 100, 2),
-                    "pct_of_monthly": pct,
-                    "status": "calculated",   # calculated|approved|applied
-                    "applied_invoice": None,
-                }
-                STORE.sla_credits[credit["credit_id"]] = credit
+            pct = _credit_pct_for(avail)
+            monthly = _tenant_monthly_usd_locked(tenant_id)
+            worst = max(month_incs,
+                        key=lambda i: i["mttr_min"] or 0, default=None)
+            refs = sorted({x["ref"] for x in av["lines"] if x["counted_minutes"] > 0})
+            before = {c["credit_id"]: dict(c) for c in STORE.sla_credits.values()
+                      if c.get("key", "").startswith(f"{tenant_id}|{month}")}
+            credit = _sla.upsert_credit(tenant_id, month, pct,
+                                        round(monthly * pct / 100, 2),
+                                        worst["id"] if worst else None, refs)
+            if before.get(credit["credit_id"]) != credit:
                 emit("NeoCloudOS.M7", "BizPortal", "internal",
                      f"service-credit:calculated → {credit['credit_id']}",
                      f"{tenant_id} {month} 가용률 {avail}% < "
                      f"{SLA_TARGET_PCT}% — 크레딧 {pct}% "
                      f"(${credit['amount_usd']}) 산정",
                      payload={k: v for k, v in credit.items() if k != "key"})
-            credits.append({k: v for k, v in credit.items() if k != "key"})
+            credits = [{k: v for k, v in c.items() if k != "key"}
+                       for c in sorted(STORE.sla_credits.values(),
+                                       key=lambda c: c["credit_id"])
+                       if c.get("key", "").startswith(f"{tenant_id}|{month}")]
+            ticket_id = _sla.open_violation_ticket(tenant_id, month, avail, refs)
 
         return {
             "tenant_id": tenant_id, "month": month,
@@ -797,6 +794,12 @@ def sla_report(tenant_id: str, month: Optional[str] = None,
             "credits": credits,
             "credit_table": SLA_CREDIT_TABLE,
             "monthly_amount_usd": _tenant_monthly_usd_locked(tenant_id),
+            "exceptions_minutes": av["exceptions_minutes"],
+            "downtime_min": av["downtime_min"],
+            "downtime": av["lines"],
+            "availability_basis": av["basis"],
+            "violation_ticket_id": ticket_id,
+            "kpi": _sla.kpi(tenant_id, month),
         }
 
 
