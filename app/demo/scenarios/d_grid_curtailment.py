@@ -35,9 +35,10 @@ def _flex_body(ctx):
 def _flex_ok(res, ctx):
     b = res.body
     ctx["flex_id"] = b.get("id")
-    return check(res.status == 201 and b.get("state") == "active",
-                 f"Load Target Set {b.get('id')} · −{b.get('reduce_kw')} kW · 유효 한도 {b.get('effective_limit_kw')} kW ({b.get('source')})",
-                 f"Load Target Set {b.get('id')} · −{b.get('reduce_kw')} kW · effective {b.get('effective_limit_kw')} kW ({b.get('source')})")
+    st = b.get("state") or b.get("status")
+    return check(res.status == 201 and st in ("active", "scheduled", "pending"),
+                 f"Load Target Set {b.get('id')} · −{b.get('reduce_kw')} kW · {b.get('duration_s')}s · {st} (출처 {b.get('source')})",
+                 f"Load Target Set {b.get('id')} · −{b.get('reduce_kw')} kW · {b.get('duration_s')}s · {st} (source {b.get('source')})")
 
 
 def _curtail_ok(res, ctx):

@@ -98,7 +98,7 @@ SCENARIO = {
          "narration_ko": "NetBox 대체 DCIM에 시리얼·위치·청사진·케이블 계획을 넣는다.",
          "narration_en": "Serial, location, blueprint and cable plan go into the NetBox-style DCIM.",
          "call": http("POST", "/api/v1/dcim/racks",
-                      {"serial": SERIAL, "site": "aif-igis-ansan-f2", "row": "R9", "position": "U01",
+                      {"serial": SERIAL, "site": "gasan", "row": "R9", "position": "U01",
                        "blueprint_key": "vr-nvl72", "cable_plan": PLAN}),
          "expect": _registered,
          "links": [link("ops", "bringup", "운영 · bring-up", "Ops · bring-up"),

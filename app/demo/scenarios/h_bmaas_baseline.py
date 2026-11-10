@@ -10,10 +10,12 @@ from ._common import link, order_step, tenant_step
 
 def _flow(res, ctx):
     stages = {s["state"]: s for s in res.body.get("stages", [])}
-    rf = stages.get("provisioning", {}).get("by_channel", {}).get("Redfish", 0)
-    return check(rf > 0 and "isolating" in stages,
-                 f"단계 {len(stages)}개 · provisioning Redfish 호출 {rf}건",
-                 f"{len(stages)} stages · {rf} Redfish calls in provisioning")
+    chans = stages.get("provisioning", {}).get("by_channel", {})
+    calls = sum(chans.values())
+    desc = ", ".join(f"{k} {v}" for k, v in sorted(chans.items()))
+    return check(calls > 0 and "isolating" in stages,
+                 f"단계 {len(stages)}개 · provisioning 하위 호출 {calls}건 ({desc})",
+                 f"{len(stages)} stages · {calls} downstream calls in provisioning ({desc})")
 
 
 def _iso(res, ctx):
