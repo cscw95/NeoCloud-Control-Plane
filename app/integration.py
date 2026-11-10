@@ -274,9 +274,17 @@ def consistency():
         except Exception:                          # noqa: BLE001
             return None
 
-    segs = _get(nico_base + "/nico-bridge/segments")
-    nico = (sorted({s.get("tenant_ref") for s in segs if s.get("tenant_ref")})
-            if isinstance(segs, list) else None)
+    from .adapters import nico_api_mode
+    if nico_api_mode() == "bridge":
+        segs = _get(nico_base + "/nico-bridge/segments")
+        nico = (sorted({s.get("tenant_ref") for s in segs if s.get("tenant_ref")})
+                if isinstance(segs, list) else None)
+    else:                                          # F08: tenant VPCs on NICo REST
+        org = os.environ.get("NOCP_NICO_ORG", "neocloud")
+        vpcs = _get(f"{nico_base}/v2/org/{org}/nico/vpc?pageSize=100")
+        nico = (sorted({(v.get("labels") or {}).get("nocp.tenant") or v.get("tenantId")
+                        for v in vpcs if (v.get("labels") or {}).get("nocp.tenant")})
+                if isinstance(vpcs, list) else None)
     twin = _get(ai_base + "/emulator/v1/twin")
     ai = sorted(twin.get("tenants") or []) if isinstance(twin, dict) else None
 

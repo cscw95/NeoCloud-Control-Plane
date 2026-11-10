@@ -47,15 +47,17 @@ def test_rest_list_hosts_maps_machines():
                  "siteId": "s1", "instanceTypeId": "6f2c-uuid",
                  "controllerMachineType": "vr-nvl72"},
                 {"id": "nh-t-2", "status": "Initializing", "lifecycleState": "validating"},
-                {"id": "nh-t-3", "status": "InUse", "lifecycleState": "assigned"}]
-    a, calls = _adapter({
-        ("GET", "/v2/org/neocloud/nico/machine"): (200, machines),
-        ("GET", "/nico-bridge/hosts"): (200, [{**BRIDGE_HOST, "host_id": "nh-t-3",
-                                               "state": "provisioned"}])})
+                {"id": "nh-t-3", "status": "InUse", "lifecycleState": "assigned",
+                 "instanceId": "i-3"},
+                {"id": "nh-t-4", "status": "Ready", "lifecycleState": "ready",
+                 "labels": {"nocp.state": "provisioned", "nocp.image": "img"}}]
+    a, calls = _adapter({("GET", "/v2/org/neocloud/nico/machine"): (200, machines)})
     hosts = a.list_hosts()
-    assert [h.state.value for h in hosts] == ["pool_ready", "discovered", "provisioned"]
+    assert [h.state.value for h in hosts] == ["pool_ready", "discovered", "allocated",
+                                              "provisioned"]
     assert hosts[0].tray_id == "t-1" and hosts[0].sku == "vr-nvl72"
-    assert calls[0] == ("GET", "/v2/org/neocloud/nico/machine")
+    assert hosts[3].image_ref == "img"
+    assert all(p.startswith("/v2/org/neocloud/nico/") for _, p in calls)   # F08: no bridge
 
 
 def test_rest_get_host_ready_stays_on_rest():
@@ -67,20 +69,12 @@ def test_rest_get_host_ready_stays_on_rest():
     assert calls == [("GET", "/v2/org/neocloud/nico/machine/nh-1")]
 
 
-def test_rest_falls_back_to_bridge_when_resource_missing():
+def test_rest_missing_resource_does_not_fall_back_to_bridge():
     a, calls = _adapter({("GET", "/nico-bridge/hosts"): (200, [BRIDGE_HOST])})
-    hosts = a.list_hosts()
-    assert hosts[0].host_id == "nh-1"
-    assert calls[-1] == ("GET", "/nico-bridge/hosts")
-
-
-def test_rest_host_state_steps_use_bridge():
-    a, calls = _adapter({
-        ("POST", "/nico-bridge/hosts/nh-1/reserve"): (200, {**BRIDGE_HOST, "state": "reserved"}),
-        ("POST", "/nico-bridge/instances"): (200, {**BRIDGE_HOST, "state": "allocated"})})
-    assert a.reserve("nh-1").state.value == "reserved"
-    assert a.allocate("nh-1", "tnt-a").state.value == "allocated"
-    assert [c[1] for c in calls] == ["/nico-bridge/hosts/nh-1/reserve", "/nico-bridge/instances"]
+    with pytest.raises(Exception) as e:
+        a.list_hosts()
+    assert getattr(e.value, "status_code", None) == 404
+    assert all(not p.startswith("/nico-bridge") for _, p in calls)
 
 
 def test_rest_errors_other_than_missing_surface():

@@ -371,85 +371,9 @@ class NicoRestClient:
         return self.request("GET", key, params=params, **kw)
 
 
-class NicoRestAdapter(NicoHttpAdapter):
-    """ComputeAdapter over the real NICo REST paths (NOCP_NICO_API=rest).
-
-    Host reads use the spec `machine` resource. The order pipeline's host-state
-    steps (reserve, provision job polling, allocate, release, sanitize, tenant
-    segments) have no 1:1 public REST object — a REST Instance needs a tenant VPC
-    and gets its own id — so they stay on the deprecated /nico-bridge, which
-    shares one state with the REST surface inside the emulator. A machine in the
-    REST `assigned` lifecycle is re-read on the bridge for its exact sub-state.
-    A REST read answered with 404/405/501 falls back to the bridge."""
-
-    _FALLBACK = {404, 405, 501}
-
-    def __init__(self, url: str, org: str = "neocloud",
-                 client: Optional[httpx.Client] = None) -> None:
-        root = nico_root(url)
-        c = client or httpx.Client(base_url=root, timeout=30.0, headers=_emu_headers())
-        self.rest = NicoRestClient(root, org, client=c)
-        super().__init__(root, client=_PrefixClient(c, "/nico-bridge"))
-
-    def _rest_get(self, key: str, params: Optional[dict] = None, **kw):
-        try:
-            return self.rest.get(key, params=params, **kw)
-        except HTTPException as e:
-            if e.status_code in self._FALLBACK:
-                return None
-            raise
-
-    def list_hosts(self) -> list[NicoHost]:
-        body = self._rest_get("machine", params={"pageSize": 100})
-        if body is None:
-            return super().list_hosts()
-        items = _items(body)
-        hosts = [_machine_to_host(m) for m in items]
-        total = len(items)
-        page = 2
-        while total == 100 * (page - 1):            # spec pagination (max 100)
-            more = _items(self._rest_get("machine", params={"pageSize": 100,
-                                                            "pageNumber": page}) or [])
-            if not more:
-                break
-            hosts += [_machine_to_host(m) for m in more]
-            total += len(more)
-            page += 1
-        if any(h.state.value == "allocated" for h in hosts):
-            exact = {h.host_id: h for h in super().list_hosts()}
-            hosts = [exact.get(h.host_id, h) if h.state.value == "allocated" else h
-                     for h in hosts]
-        return hosts
-
-    def get_host(self, host_id: str) -> NicoHost:
-        body = self._rest_get("machine_one", id=host_id)
-        if body is None:
-            return super().get_host(host_id)
-        host = _machine_to_host(body)
-        # REST folds several bridge states together: assigned (reserved..allocated)
-        # and sanitizing (released, wipe pending) — re-read the exact one.
-        if host.state.value in ("allocated", "sanitizing"):
-            return super().get_host(host_id)
-        return host
-
-
-class _PrefixClient:
-    """Wrap an httpx.Client so relative bridge paths get the /nico-bridge prefix."""
-
-    def __init__(self, c: httpx.Client, prefix: str) -> None:
-        self._c, self._p = c, prefix
-
-    def __getattr__(self, name):
-        fn = getattr(self._c, name)
-        if name in ("get", "post", "put", "patch", "delete", "request"):
-            def call(*a, **kw):
-                if name == "request":
-                    a = (a[0], self._p + a[1]) + a[2:]
-                else:
-                    a = (self._p + a[0],) + a[1:]
-                return fn(*a, **kw)
-            return call
-        return fn
+# F08: NicoRestAdapter (reads + writes on the REST surface, no /nico-bridge)
+# lives in app/nico_rest_adapter.py; imported at the bottom (it subclasses
+# NicoHttpAdapter and reuses the helpers above).
 
 
 def nico_api_mode() -> str:
@@ -465,3 +389,6 @@ def build_http_adapter(url: str) -> ComputeAdapter:
         base = url if url.rstrip("/").endswith("/nico-bridge") else nico_root(url) + "/nico-bridge"
         return NicoHttpAdapter(base)
     return NicoRestAdapter(url, org=os.environ.get("NOCP_NICO_ORG", "neocloud"))
+
+
+from .nico_rest_adapter import NicoRestAdapter  # noqa: E402  (F08, see module docstring)
