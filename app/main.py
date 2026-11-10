@@ -29,7 +29,9 @@ from . import (
     scenario_api,
     customer_ops,
     dsx,
+    events,
     nvke,
+    power,
     shared_services,
     tenancy,
     topology,
@@ -55,6 +57,8 @@ async def lifespan(app: FastAPI):
     shared_services.SHARED.reset()
     trace.TRACER.clear()
     nvke.NVKE.reset()
+    power.POWER.reset()
+    events.BUS.reset()
     metrics.METRICS.reset()        # reset real-time API call counters
     lifecycle.bootstrap_nodes()
     # compute-tray emulation — background tick (2s)
@@ -92,6 +96,8 @@ app.include_router(integration.router)
 app.include_router(shared_services.router)
 app.include_router(dsx.router)
 app.include_router(nvke.router)
+app.include_router(power.router)
+app.include_router(events.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.
@@ -147,6 +153,8 @@ def reseed(blueprints: str | None = None) -> dict:
     shared_services.SHARED.reset()
     trace.TRACER.clear()
     nvke.NVKE.reset()
+    power.POWER.reset()
+    events.BUS.reset()
     lifecycle.bootstrap_nodes()
     tray_emu.EMULATOR.reset()
     tray_emu.EMULATOR.sync_from_store()

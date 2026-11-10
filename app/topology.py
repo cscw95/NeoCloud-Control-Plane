@@ -421,16 +421,22 @@ def provision_su(
 
 @router.post("/racks/{rack_id}/power-policy")
 def set_power_policy(rack_id: str, body: PowerPolicyUpdate):
+    """Rack power policy. maxq/maxp = static caps; dps-dynamic = MaxLPS DPS
+    steering; optional WPPS `profile` sets the cap from the profile. The cap is
+    propagated to AI-Infra (DPS + Redfish PowerLimit, the cap source of truth)."""
+    from . import power
     rack = STORE.racks.get(rack_id)
     if not rack:
         raise HTTPException(404, f"rack '{rack_id}' not found")
     policy = body.policy.lower()
-    if policy not in ("maxq", "maxp"):
-        raise HTTPException(422, "policy must be 'maxq' or 'maxp'")
-    bp = spec.get_blueprint(rack.blueprint_key)   # per-generation caps
-    rack.power_cap_kw = bp.maxq_rack_kw if policy == "maxq" else bp.maxp_rack_kw
+    if policy not in power.RACK_POLICIES:
+        raise HTTPException(422, "policy must be 'maxq', 'maxp' or 'dps-dynamic'")
+    profile = body.profile.lower() if body.profile else None
+    if profile and profile not in power.PROFILE_IDS:
+        raise HTTPException(422, f"profile must be one of {sorted(power.PROFILE_IDS)}")
+    prop = power.apply_rack_policy(rack, policy, profile)
     return {"rack_id": rack_id, "model": rack.model, "policy": policy,
-            "power_cap_kw": rack.power_cap_kw}
+            "profile": profile, "power_cap_kw": rack.power_cap_kw, **prop}
 
 
 @router.get("/blueprints")

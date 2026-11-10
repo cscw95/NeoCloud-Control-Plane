@@ -221,7 +221,8 @@ class PartitionCreate(BaseModel):
 
 
 class PowerPolicyUpdate(BaseModel):
-    policy: str                       # "maxq" | "maxp"
+    policy: str                       # "maxq" | "maxp" | "dps-dynamic" (MaxLPS DPS)
+    profile: Optional[str] = None     # WPPS: max-p | max-q | training | inference | balanced
 
 
 # ===========================================================================
