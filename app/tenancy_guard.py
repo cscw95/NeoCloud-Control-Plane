@@ -68,6 +68,7 @@ _PUBLIC_PREFIXES = (
 _TENANT_PATH_RE = re.compile(r"^/api/v1/tenants/(?P<tid>[^/]+)")
 _ORDER_PATH_RE = re.compile(r"^/api/v1/orders/(?P<oid>[^/]+)")
 _CLUSTER_PATH_RE = re.compile(r"^/api/v1/k8s/clusters/(?P<cid>[^/]+)")
+_NVKE_PATH_RE = re.compile(r"^/api/v1/nvke/clusters/(?P<cid>[^/]+)")
 
 # list endpoints already supporting a tenant_id query filter (exact-match paths)
 # → force-rewrite the query string to reuse the existing filter logic
@@ -80,6 +81,7 @@ _QUERY_SCOPED_LISTS = frozenset({
     "/api/v1/nodes",
     "/api/v1/cpu-nodes",
     "/api/v1/nvlink-partitions",
+    "/api/v1/nvke/clusters",
 })
 
 # lists without a tenant filter parameter — post-filter the response JSON array
@@ -119,6 +121,13 @@ def _scope_violation(request: Request, tid: str) -> bool:
     if m:
         cluster = STORE.k8s_clusters.get(m.group("cid"))
         if cluster is not None and cluster.tenant_id != tid:
+            return True
+
+    m = _NVKE_PATH_RE.match(path)
+    if m:
+        from .nvke import cluster_tenant
+        owner = cluster_tenant(m.group("cid"))
+        if owner is not None and owner != tid:
             return True
 
     return False
