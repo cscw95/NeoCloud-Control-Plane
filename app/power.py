@@ -30,8 +30,9 @@ router = APIRouter(prefix="/api/v1/power", tags=["maxlps-power"])
 WPPS_PROFILES = [
     {"id": "max-p", "description": "Maximum performance — full TDP", "cap_factor": 1.0,
      "perf_per_watt": 1.0},
-    {"id": "max-q", "description": "Maximum efficiency (throughput / W)", "cap_factor": 0.82,
-     "perf_per_watt": 1.18},
+    # max-q is exactly the reference-design MaxQ / MaxP (187 / 227 kW, spec.py vr-nvl72)
+    {"id": "max-q", "description": "Maximum efficiency (throughput / W)",
+     "cap_factor": round(187 / 227, 4), "perf_per_watt": 1.18},
     {"id": "training", "description": "Training — sustained high draw, smoothing on",
      "cap_factor": 0.92, "perf_per_watt": 1.08},
     {"id": "inference", "description": "Inference — bursty, memory-bound", "cap_factor": 0.75,
@@ -259,6 +260,9 @@ def update_domain(domain_id: str, body: DomainUpdate) -> dict:
     _check_mode(body.mode)
     patch = body.model_dump(exclude_none=True)
     block = domain_id[3:] if domain_id.startswith("pd-") else None
+    if block not in STORE.blocks and body.operating_limit_kw is not None:
+        remote = _remote(f"/dps/v1/power-domains/{domain_id}")   # DPS-side link
+        block = remote.get("compute_block") if isinstance(remote, dict) else None
     if (block in STORE.blocks and body.operating_limit_kw is not None
             and body.operating_limit_kw > _budget_kw(block)):
         raise HTTPException(422, "operating_limit_kw exceeds the compute block budget "
@@ -383,19 +387,47 @@ def telemetry(domain: Optional[str] = None) -> dict:
 # ---------------------------------------------------------------------------
 # Rack power policy (topology.set_power_policy) — DPS dynamic + WPPS profiles
 # ---------------------------------------------------------------------------
-def apply_rack_policy(rack, policy: str, profile: Optional[str]) -> dict:
-    """Compute the rack cap for a policy/profile and push it to AI-Infra
-    (DPS rack profile + Redfish PowerLimit). Returns the propagation report."""
+def rack_policy_cap(rack, policy: str, profile: Optional[str]) -> int:
+    """Rack cap (kW) for a policy / WPPS profile on the rack's blueprint."""
     bp = spec.get_blueprint(rack.blueprint_key)
-    if policy == "maxq":
-        cap = bp.maxq_rack_kw
-    elif policy == "maxp":
-        cap = bp.maxp_rack_kw
-    else:                                  # dps-dynamic: DPS steers below TDP
-        cap = bp.maxp_rack_kw
     if profile:
         factor = next(p["cap_factor"] for p in WPPS_PROFILES if p["id"] == profile)
-        cap = int(round(bp.rack_tdp_kw * factor))
+        return int(round(bp.rack_tdp_kw * factor))
+    if policy == "maxq":
+        return bp.maxq_rack_kw
+    return bp.maxp_rack_kw                 # maxp, or dps-dynamic (DPS steers below)
+
+
+def _is_static(rack_id: str) -> bool:
+    return POWER.rack_policy.get(rack_id, {}).get("policy") != "dps-dynamic"
+
+
+def check_block_budget(rack, policy: str, cap_kw: float) -> None:
+    """Block budget rule: the caps of statically capped racks (maxq/maxp or a
+    WPPS profile without DPS steering) are firm reservations, so their sum over
+    the ComputeBlock must fit the block budget (power_mw). dps-dynamic racks
+    reserve nothing: DPS steers them inside the domain OperatingLimit, which is
+    itself bounded by the same budget on domain create/PATCH. 422 otherwise."""
+    block = _block_of_rack(rack.id)
+    if block is None:
+        return
+    budget = _budget_kw(block)
+    reserved = sum(r.power_cap_kw for r in _block_racks(block)
+                   if r.id != rack.id and _is_static(r.id))
+    if policy != "dps-dynamic":
+        reserved += cap_kw
+    if reserved > budget + 1e-6:
+        raise HTTPException(422, f"rack power policy would reserve {reserved:g} kW of static "
+                                 f"caps in compute block '{block}', above its budget "
+                                 f"({budget:g} kW); use dps-dynamic or lower other racks")
+
+
+def apply_rack_policy(rack, policy: str, profile: Optional[str]) -> dict:
+    """Compute the rack cap for a policy/profile, check the ComputeBlock budget
+    and push it to AI-Infra (DPS rack profile + Redfish PowerLimit). Returns
+    the propagation report."""
+    cap = rack_policy_cap(rack, policy, profile)
+    check_block_budget(rack, policy, cap)
     rack.power_cap_kw = cap
     POWER.rack_policy[rack.id] = {"policy": policy, "profile": profile}
     prop = {}

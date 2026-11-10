@@ -209,7 +209,18 @@ if section("power"):
     check("power domains from AI-Infra", d.get("source") == "ai-infra" and doms
           and all(x.get("rack_count") for x in doms),
           ",".join(f"{x['id']}:{x.get('rack_count')}" for x in doms))
-    dom = doms[0]["id"] if doms else "pd-gasan"
+    dom = doms[0]["id"] if doms else "pd-aif-stt-gasan-f1"
+    want = {"pd-aif-stt-gasan-f1": 6000, "pd-aif-stt-gasan-f2": 3000,
+            "pd-aif-igis-ansan-f1": 12900, "pd-aif-igis-ansan-f2": 10400}
+    got = {x["id"]: x.get("operating_limit_kw") for x in doms}
+    check("one DPS domain per NOCP ComputeBlock, limit = block budget",
+          got == want and all(x.get("site_budget_kw") == x.get("operating_limit_kw")
+                              and x.get("budget_ok") for x in doms), str(got))
+    bd = "pd-aif-stt-gasan-f2"
+    r = op.patch(f"/api/v1/power/domains/{bd}", json={"operating_limit_kw": 3001})
+    check("domain PATCH above block budget → 422, DPS unchanged", r.status_code == 422
+          and ai.get(f"/dps/v1/power-domains/{bd}").json().get("operating_limit_kw") == 3000,
+          str(r.status_code))
     g = op.get(f"/api/v1/power/domains/{dom}").json()
     check("power domain detail", g.get("source") == "ai-infra" and g["domain"]["rack_count"])
     p = op.get("/api/v1/power/profiles").json()
@@ -235,6 +246,25 @@ if section("power"):
           and float(pl.get("SetPoint") or 0) == rj["power_cap_kw"] * 1000,
           f"cap={rj.get('power_cap_kw')} kW SetPoint={pl.get('SetPoint')} "
           f"effective={pl.get('Oem', {}).get('Nvidia', {}).get('EffectiveLimitWatts')}")
+    nv = pl.get("Oem", {}).get("Nvidia", {})
+    check("Redfish rack range = MaxP 227 kW, 170 kW SetPoint not clamped",
+          pl.get("AllowableMax") == 227000 and rj.get("power_cap_kw") == 170
+          and abs(float(nv.get("EffectiveLimitWatts") or 0) - 170000) <= 100,
+          f"AllowableMax={pl.get('AllowableMax')} effective={nv.get('EffectiveLimitWatts')}")
+    over = ai.patch(f"/redfish/v1/Chassis/{rack}/Controls/PowerLimit", json={"SetPoint": 230000})
+    check("Redfish SetPoint above AllowableMax → 400", over.status_code == 400, str(over.status_code))
+    ps = ai.get(f"/redfish/v1/Chassis/{rack}/PowerSubsystem").json()
+    check("power shelf capacity 4 × 110 kW", ps.get("CapacityWatts") == 440000,
+          str(ps.get("CapacityWatts")))
+    # ansan-f2: 50 racks × 187 kW (maxq) = 9350 of 10400 kW; 26 racks fit maxp, the 27th is refused
+    f2 = [f"su-{su}-rack-{i:02d}" for su, n in ((8, 16), (9, 16), (10, 16), (11, 2))
+          for i in range(n)]
+    codes = [op.post(f"/api/v1/racks/{rid}/power-policy", json={"policy": "maxp"}).status_code
+             for rid in f2[:27]]
+    check("rack policy over the ComputeBlock budget → 422", codes[:26] == [200] * 26
+          and codes[26] == 422, f"{codes.count(200)} accepted, last={codes[26]}")
+    for rid in f2[:26]:
+        op.post(f"/api/v1/racks/{rid}/power-policy", json={"policy": "maxq"})
     tel = ai.get(f"/dps/v1/telemetry?rack={rack}").json()
     prof = next((x.get("profile") for dd in tel.get("domains", []) for gg in dd.get("groups", [])
                  for x in gg.get("racks", []) if x.get("rack_id") == rack), None)
