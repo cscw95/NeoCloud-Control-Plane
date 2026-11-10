@@ -67,11 +67,14 @@ def run_steps(scenario: dict, send) -> list[tuple]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("which", nargs="*", default=["f28", "f31"], choices=list(NAMES))
+    ap.add_argument("which", nargs="*", help="f28 and/or f31 (default: both)")
     ap.add_argument("--nocp", default=os.environ.get("NOCP_URL", "http://127.0.0.1:8000"))
     ap.add_argument("--lang", default="ko", choices=["ko", "en"])
     ap.add_argument("--raw", action="store_true")
     a = ap.parse_args()
+    a.which = a.which or list(NAMES)
+    if set(a.which) - set(NAMES):
+        ap.error(f"choose from {list(NAMES)}")
     headers = {"Authorization": f"Bearer {os.environ['NOCP_TOKEN']}"} if os.environ.get("NOCP_TOKEN") else {}
     client = httpx.Client(base_url=a.nocp.rstrip("/"), headers=headers, timeout=30)
 
