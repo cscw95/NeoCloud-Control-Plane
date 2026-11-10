@@ -107,14 +107,14 @@ def _terraform(ctx):
         plan = tfemu.plan(cfg, st, variables)
         out = tfemu.apply(dp, cfg, st, variables, quiet=True, client=c)
         state = json.loads((dp / "terraform.tfstate").read_text())
-        replan = tfemu.plan(cfg, state, variables)
-        tfemu.apply(dp, cfg, state, variables, destroy=True, quiet=True, client=c)
-    return Result(200, {"plan": [f"{x['address']} {x['change']['actions']}" for x in plan],
-                        "log": out["log"], "state_version": state["version"],
-                        "resources": [f"{r['type']}.{r['name']}" for r in state["resources"]],
-                        "outputs": {k: ("<sensitive>" if v["sensitive"] else v["value"])
-                                    for k, v in state["outputs"].items()},
-                        "replan": tfemu.summary(replan), "wire": c.history[-8:]})
+        view = {"plan": [f"{x['address']} {x['change']['actions']}" for x in plan],
+                "log": out["log"], "state_version": state["version"],
+                "resources": [f"{r['type']}.{r['name']}" for r in state["resources"]],
+                "outputs": {k: ("<sensitive>" if v["sensitive"] else v["value"])
+                            for k, v in state["outputs"].items()},
+                "replan": tfemu.summary(tfemu.plan(cfg, state, variables))}
+        gone = tfemu.apply(dp, cfg, state, variables, destroy=True, quiet=True, client=c)
+    return Result(200, {**view, "destroy_log": gone["log"], "wire": c.history[-8:]})
 
 
 _terraform.__qualname__ = "packaging/terraform/tfemu.py apply examples/us05-token-api"

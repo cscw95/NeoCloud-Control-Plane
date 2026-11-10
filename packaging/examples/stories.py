@@ -41,8 +41,11 @@ def _tenant(c: Client, name: str, tier: str = "bare_metal_dedicated") -> str:
 def _nico(nico_url: Optional[str], path: str):
     if not nico_url:
         return None
-    with urllib.request.urlopen(nico_url.rstrip("/") + path, timeout=30) as r:  # noqa: S310
-        return json.loads(r.read() or b"null")
+    try:
+        with urllib.request.urlopen(nico_url.rstrip("/") + path, timeout=30) as r:  # noqa: S310
+            return json.loads(r.read() or b"null")
+    except (OSError, ValueError):     # NICo unreachable (offline build): not checkable here
+        return None
 
 
 def us02(c: Client, start_date: str = "2026-11-01", tenant: str = "sdk-us02", **_) -> list:
