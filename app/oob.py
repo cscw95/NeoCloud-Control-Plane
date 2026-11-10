@@ -342,3 +342,83 @@ async def infra_proxy(path: str, request: Request):
     if isinstance(resp, (dict, list)):
         return JSONResponse(resp, status_code=st)
     return Response(content=str(resp), status_code=st, media_type="text/plain")
+
+
+# ---------------------------------------------------------------------------
+# /api/v1/machines — NICo REST Machine view for the operator console
+# ---------------------------------------------------------------------------
+def _local_machine(h) -> dict:
+    tray = STORE.trays.get(h.tray_id)
+    return {"id": h.host_id, "trayId": h.tray_id, "rackId": tray.rack_id if tray else None,
+            "siteId": h.site, "instanceTypeId": h.sku,
+            "status": {"pool_ready": "Ready", "discovered": "Initializing",
+                       "sanitizing": "Reset", "quarantined": "Error",
+                       "rma": "Maintenance"}.get(h.state.value, "InUse"),
+            "lifecycleState": h.state.value, "tenantId": h.tenant_ref,
+            "instanceId": h.instance_id,
+            "maintenanceMessage": "cordoned" if h.cordoned else None,
+            "firmwareOk": h.firmware_ok, "attested": h.attested}
+
+
+def _adapter():
+    from .lifecycle import get_adapter
+    return get_adapter()
+
+
+@router.get("/machines")
+def list_machines(rack: Optional[str] = None, status: Optional[str] = None,
+                  tenant_id: Optional[str] = None,
+                  limit: int = Query(200, ge=1, le=1000)) -> dict:
+    params = {k: v for k, v in (("rackId", rack), ("status", status),
+                                ("tenantId", tenant_id)) if v}
+    body = dsx.nico_get(dsx.nico_rest_path("machine"), params={**params, "pageSize": 100})
+    if body is not None:
+        from .adapters import _items
+        return {"source": "nico", "machines": _items(body)[:limit]}
+    rows = [_local_machine(h) for h in _adapter().list_hosts()]
+    rows = [r for r in rows if (not rack or r["rackId"] == rack)
+            and (not status or r["status"].lower() == status.lower())
+            and (not tenant_id or r["tenantId"] == tenant_id)]
+    return {"source": "local-fallback", "machines": rows[:limit]}
+
+
+def _machine_or_404(machine_id: str) -> dict:
+    body = dsx.nico_get(dsx.nico_rest_path("machine_one", id=machine_id))
+    if isinstance(body, dict):
+        return {"source": "nico", **body}
+    try:
+        return {"source": "local-fallback", **_local_machine(_adapter().get_host(machine_id))}
+    except HTTPException:
+        raise HTTPException(404, f"machine '{machine_id}' not found")
+
+
+@router.get("/machines/{machine_id}")
+def get_machine(machine_id: str) -> dict:
+    return _machine_or_404(machine_id)
+
+
+@router.get("/machines/{machine_id}/hardware")
+def machine_hardware(machine_id: str) -> dict:
+    m = _machine_or_404(machine_id)
+    tray = STORE.trays.get(m.get("trayId") or machine_id.removeprefix("nh-"))
+    gpus = [STORE.gpus[g] for g in (tray.gpu_ids if tray else []) if g in STORE.gpus]
+    cpus = [STORE.cpus[c] for c in (tray.cpu_ids if tray else []) if c in STORE.cpus]
+    dpu = STORE.dpus.get(tray.dpu_id) if tray and tray.dpu_id else None
+    return {"machine": machine_id, "source": m["source"],
+            "capabilities": m.get("machineCapabilities"),
+            "health": dsx.nico_get(dsx.nico_rest_path("machine_health", id=machine_id),
+                                   timeout=1.5),
+            "gpus": [g.model_dump() for g in gpus],
+            "cpus": [c.model_dump() for c in cpus],
+            "dpu": dpu.model_dump() if dpu else None,
+            "connectx_supernics": tray.connectx_supernics if tray else None}
+
+
+@router.get("/machines/{machine_id}/sanitize-report")
+def machine_sanitize_report(machine_id: str) -> dict:
+    try:
+        rep = _adapter().get_sanitize_report(machine_id)
+    except HTTPException as e:
+        raise HTTPException(e.status_code if e.status_code < 500 else 404,
+                            f"no sanitize report for '{machine_id}'")
+    return rep.model_dump()

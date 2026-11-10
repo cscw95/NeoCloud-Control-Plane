@@ -248,7 +248,7 @@ NICO_REST_PATHS = {
     "machine_power":     "/v2/org/{org}/nico/machine/{id}/power",
     "machine_health":    "/v2/org/{org}/nico/machine/{id}/health-report",
     "machine_validation": "/v2/org/{org}/nico/machine/{id}/validation/result",
-    "machine_gpu_reset": "/v2/org/{org}/nico/machine/{id}/gpu-reset",
+    "machine_gpu_reset": "/v2/org/{org}/nico/machine/{id}/gpu/reset",   # emulator ext
     "instance":          "/v2/org/{org}/nico/instance",
     "instance_one":      "/v2/org/{org}/nico/instance/{id}",
     "instance_type":     "/v2/org/{org}/nico/instance/type",
@@ -265,20 +265,25 @@ NICO_REST_PATHS = {
     "tray":              "/v2/org/{org}/nico/tray",
     "tray_health":       "/v2/org/{org}/nico/tray/{id}/health-report",
     "nvlink_domain":     "/v2/org/{org}/nico/domain/nvlink",
-    "firmware_host":     "/v2/org/{org}/nico/firmware-config/host",
-    "rack_firmware":     "/v2/org/{org}/nico/rack/firmware",
+    "firmware_baseline": "/v2/org/{org}/nico/firmware/baseline",      # emulator ext
+    "firmware_drift":    "/v2/org/{org}/nico/firmware/drift",         # emulator ext
+    "rack_firmware":     "/v2/org/{org}/nico/rack/{id}/firmware",
 }
 
-# NICo Machine.status → NOCP host state (statuses outside the table keep the
-# emulator's own hint, see _machine_to_host).
-_MACHINE_STATUS_MAP = {
-    "expected": "discovered", "discovered": "discovered",
-    "initializing": "discovered", "validating": "discovered",
-    "ready": "pool_ready", "assigned": "allocated", "inuse": "allocated",
-    "sanitizing": "sanitizing", "reset": "sanitizing",
-    "failed": "quarantined", "error": "quarantined",
-    "maintenance": "rma", "decommissioned": "rma",
+# NICo Machine → NOCP host state. `lifecycleState` (emulator extension, see
+# NICo-Emulator/docs/nico-rest-paths.md) wins over the spec `status` enum.
+# `assigned`/`InUse` covers several bridge sub-states (reserved, provisioning,
+# provisioned, allocated) — the adapter resolves those on the bridge.
+_LIFECYCLE_MAP = {
+    "expected": "discovered", "discovered": "discovered", "validating": "discovered",
+    "ready": "pool_ready", "sanitizing": "sanitizing", "failed": "quarantined",
 }
+_STATUS_MAP = {
+    "initializing": "discovered", "ready": "pool_ready", "reset": "sanitizing",
+    "error": "quarantined", "maintenance": "rma", "decommissioning": "rma",
+    "decommissioned": "rma",
+}
+AMBIGUOUS = object()
 
 
 def nico_root(url: str) -> str:
@@ -295,14 +300,19 @@ def _machine_to_host(m: dict) -> NicoHost:
         return NicoHost(**{k: v for k, v in m.items() if k in NicoHost.model_fields})
     labels = m.get("labels") or {}
     meta = m.get("metadata") or {}
-    hint = labels.get("nocp.state") or meta.get("nocpState")
+    lc = str(m.get("lifecycleState") or "").lower()
     status = str(m.get("status") or "").lower()
-    state = hint or _MACHINE_STATUS_MAP.get(status, "discovered")
+    state = (labels.get("nocp.state") or _LIFECYCLE_MAP.get(lc)
+             or ("allocated" if lc == "assigned" or status == "inuse" else None)
+             or _STATUS_MAP.get(status, "discovered"))
+    mid = m.get("id", "")
     return NicoHost(
-        host_id=m.get("id", ""),
-        tray_id=labels.get("trayId") or meta.get("trayId") or "",
+        host_id=mid,
+        tray_id=(labels.get("trayId") or meta.get("trayId")
+                 or (mid[3:] if mid.startswith("nh-") else "")),
         sku=m.get("instanceTypeId") or labels.get("sku") or "",
         site=m.get("siteId") or "",
+        firmware_ok=not m.get("firmwareDrift", False),
         state=state,
         cordoned=bool(m.get("maintenanceMessage")),
         instance_id=m.get("instanceId"),
@@ -354,12 +364,13 @@ class NicoRestClient:
 class NicoRestAdapter(NicoHttpAdapter):
     """ComputeAdapter over the real NICo REST paths (NOCP_NICO_API=rest).
 
-    Machines and Instances use the spec.yaml resources. Host-state steps that the
-    public REST has no object for (reserve, provision job polling, sanitize,
-    tenant segments) stay on the deprecated /nico-bridge, which shares one state
-    with the REST surface inside the emulator. Any REST call answered with
-    404/405/501 (an emulator that has not shipped that resource yet) falls back
-    to the bridge so the order pipeline keeps working."""
+    Host reads use the spec `machine` resource. The order pipeline's host-state
+    steps (reserve, provision job polling, allocate, release, sanitize, tenant
+    segments) have no 1:1 public REST object — a REST Instance needs a tenant VPC
+    and gets its own id — so they stay on the deprecated /nico-bridge, which
+    shares one state with the REST surface inside the emulator. A machine in the
+    REST `assigned` lifecycle is re-read on the bridge for its exact sub-state.
+    A REST read answered with 404/405/501 falls back to the bridge."""
 
     _FALLBACK = {404, 405, 501}
 
@@ -368,59 +379,46 @@ class NicoRestAdapter(NicoHttpAdapter):
         root = nico_root(url)
         c = client or httpx.Client(base_url=root, timeout=30.0)
         self.rest = NicoRestClient(root, org, client=c)
-        self._bridge_prefix = "/nico-bridge"
-        super().__init__(root, client=_PrefixClient(c, self._bridge_prefix))
-        self._jobs: dict[str, NicoJob] = {}
+        super().__init__(root, client=_PrefixClient(c, "/nico-bridge"))
 
-    def _rest(self, method: str, key: str, fallback, **kw):
+    def _rest_get(self, key: str, params: Optional[dict] = None, **kw):
         try:
-            return self.rest.request(method, key, **kw)
+            return self.rest.get(key, params=params, **kw)
         except HTTPException as e:
             if e.status_code in self._FALLBACK:
-                return fallback()
+                return None
             raise
 
-    _SENTINEL = object()
-
     def list_hosts(self) -> list[NicoHost]:
-        body = self._rest("GET", "machine", lambda: self._SENTINEL)
-        if body is self._SENTINEL:
+        body = self._rest_get("machine", params={"pageSize": 100})
+        if body is None:
             return super().list_hosts()
-        return [_machine_to_host(m) for m in _items(body)]
+        items = _items(body)
+        hosts = [_machine_to_host(m) for m in items]
+        total = len(items)
+        page = 2
+        while total == 100 * (page - 1):            # spec pagination (max 100)
+            more = _items(self._rest_get("machine", params={"pageSize": 100,
+                                                            "pageNumber": page}) or [])
+            if not more:
+                break
+            hosts += [_machine_to_host(m) for m in more]
+            total += len(more)
+            page += 1
+        if any(h.state.value == "allocated" for h in hosts):
+            exact = {h.host_id: h for h in super().list_hosts()}
+            hosts = [exact.get(h.host_id, h) if h.state.value == "allocated" else h
+                     for h in hosts]
+        return hosts
 
     def get_host(self, host_id: str) -> NicoHost:
-        body = self._rest("GET", "machine_one", lambda: self._SENTINEL, id=host_id)
-        if body is self._SENTINEL:
+        body = self._rest_get("machine_one", id=host_id)
+        if body is None:
             return super().get_host(host_id)
-        return _machine_to_host(body)
-
-    def allocate(self, host_id: str, tenant_ref: str) -> NicoHost:
-        body = self._rest("POST", "instance", lambda: self._SENTINEL, json={
-            "name": f"nocp-{host_id}", "tenantId": tenant_ref,
-            "machineId": host_id})
-        if body is self._SENTINEL:
-            return super().allocate(host_id, tenant_ref)
-        return super().get_host(host_id)        # bridge shape carries host_ip etc.
-
-    def release(self, instance_id: str) -> NicoJob:
-        body = self._rest("DELETE", "instance_one", lambda: self._SENTINEL,
-                          id=instance_id)
-        if body is self._SENTINEL:
-            return super().release(instance_id)
-        # REST delete is asynchronous on the NICo side; the emulator may return
-        # the bridge job it started — otherwise synthesize a converged job.
-        if isinstance(body, dict) and "job_id" in body:
-            return NicoJob(**{k: v for k, v in body.items() if k in NicoJob.model_fields})
-        job = NicoJob(job_id=f"rest-release-{instance_id}", op="release",
-                      host_id=str((body or {}).get("machineId") or ""),
-                      state="succeeded", detail="nico rest: instance deleted")
-        self._jobs[job.job_id] = job
-        return job
-
-    def get_job(self, job_id: str) -> NicoJob:
-        if job_id in self._jobs:
-            return self._jobs[job_id]
-        return super().get_job(job_id)
+        host = _machine_to_host(body)
+        if host.state.value == "allocated":
+            return super().get_host(host_id)
+        return host
 
 
 class _PrefixClient:

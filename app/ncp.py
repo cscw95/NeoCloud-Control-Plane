@@ -336,7 +336,7 @@ FIRMWARE_BASELINE = [
 
 @router.get("/firmware/baseline")
 def firmware_baseline() -> dict:
-    body = dsx.nico_get(dsx.nico_rest_path("firmware_host"), timeout=1.5)
+    body = dsx.nico_get(dsx.nico_rest_path("firmware_baseline"), timeout=1.5)
     if body is not None:
         from .adapters import _items
         items = _items(body) or (body.get("components") if isinstance(body, dict) else None)
@@ -348,9 +348,11 @@ def firmware_baseline() -> dict:
 
 @router.get("/firmware/drift")
 def firmware_drift() -> dict:
-    body = dsx.nico_get(dsx.nico_rest_path("rack_firmware"), timeout=1.5)
-    if isinstance(body, dict) and isinstance(body.get("drift"), list):
-        return {"source": "nico", "drift": body["drift"]}
+    body = dsx.nico_get(dsx.nico_rest_path("firmware_drift"), timeout=1.5)
+    if body is not None:
+        from .adapters import _items
+        rows = _items(body) or (body.get("drift") if isinstance(body, dict) else None) or []
+        return {"source": "nico", "drift": rows}
     adapter = _adapter()
     try:
         hosts = adapter.list_hosts()

@@ -43,15 +43,27 @@ def test_mode_defaults_to_rest(monkeypatch):
 
 
 def test_rest_list_hosts_maps_machines():
-    machines = [{"id": "nh-1", "status": "Ready", "siteId": "s1",
-                 "instanceTypeId": "vr-nvl72", "labels": {"trayId": "t-1"}},
-                {"id": "nh-2", "status": "InUse", "tenantId": "tnt-1",
-                 "instanceId": "i-9", "maintenanceMessage": "leak"}]
-    a, calls = _adapter({("GET", "/v2/org/neocloud/nico/machine"): (200, machines)})
+    machines = [{"id": "nh-t-1", "status": "Ready", "lifecycleState": "ready",
+                 "siteId": "s1", "instanceTypeId": "vr-nvl72"},
+                {"id": "nh-t-2", "status": "Initializing", "lifecycleState": "validating"},
+                {"id": "nh-t-3", "status": "InUse", "lifecycleState": "assigned"}]
+    a, calls = _adapter({
+        ("GET", "/v2/org/neocloud/nico/machine"): (200, machines),
+        ("GET", "/nico-bridge/hosts"): (200, [{**BRIDGE_HOST, "host_id": "nh-t-3",
+                                               "state": "provisioned"}])})
     hosts = a.list_hosts()
-    assert [h.state.value for h in hosts] == ["pool_ready", "allocated"]
-    assert hosts[0].tray_id == "t-1" and hosts[1].cordoned
-    assert calls == [("GET", "/v2/org/neocloud/nico/machine")]
+    assert [h.state.value for h in hosts] == ["pool_ready", "discovered", "provisioned"]
+    assert hosts[0].tray_id == "t-1"
+    assert calls[0] == ("GET", "/v2/org/neocloud/nico/machine")
+
+
+def test_rest_get_host_ready_stays_on_rest():
+    a, calls = _adapter({("GET", "/v2/org/neocloud/nico/machine/nh-1"):
+                         (200, {"id": "nh-1", "status": "Ready", "lifecycleState": "ready",
+                                "maintenanceMessage": "leak"})})
+    h = a.get_host("nh-1")
+    assert h.state.value == "pool_ready" and h.cordoned
+    assert calls == [("GET", "/v2/org/neocloud/nico/machine/nh-1")]
 
 
 def test_rest_falls_back_to_bridge_when_resource_missing():
@@ -61,25 +73,13 @@ def test_rest_falls_back_to_bridge_when_resource_missing():
     assert calls[-1] == ("GET", "/nico-bridge/hosts")
 
 
-def test_rest_allocate_and_release_use_instance_resource():
-    seen = {}
-
-    def create(req):
-        seen["body"] = json.loads(req.content)
-        return 201, {"id": "i-1", "machineId": "nh-1"}
+def test_rest_host_state_steps_use_bridge():
     a, calls = _adapter({
-        ("POST", "/v2/org/neocloud/nico/instance"): create,
-        ("GET", "/nico-bridge/hosts/nh-1"): (200, {**BRIDGE_HOST, "state": "allocated",
-                                                   "instance_id": "i-1"}),
-        ("DELETE", "/v2/org/neocloud/nico/instance/i-1"): (202, {"machineId": "nh-1"}),
-    })
-    host = a.allocate("nh-1", "tnt-a")
-    assert seen["body"]["machineId"] == "nh-1" and seen["body"]["tenantId"] == "tnt-a"
-    assert host.state.value == "allocated"
-    job = a.release("i-1")
-    assert job.state == "succeeded" and a.get_job(job.job_id) is job
-    # host-state ops without a REST object stay on the bridge
-    assert ("POST", "/v2/org/neocloud/nico/instance") in calls
+        ("POST", "/nico-bridge/hosts/nh-1/reserve"): (200, {**BRIDGE_HOST, "state": "reserved"}),
+        ("POST", "/nico-bridge/instances"): (200, {**BRIDGE_HOST, "state": "allocated"})})
+    assert a.reserve("nh-1").state.value == "reserved"
+    assert a.allocate("nh-1", "tnt-a").state.value == "allocated"
+    assert [c[1] for c in calls] == ["/nico-bridge/hosts/nh-1/reserve", "/nico-bridge/instances"]
 
 
 def test_rest_errors_other_than_missing_surface():

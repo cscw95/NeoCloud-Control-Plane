@@ -178,3 +178,24 @@ def test_wpps_policy_from_console(client):
     assert r["policy"] == "maxq" and r["profile"] == "max-q"
     r = client.post("/api/v1/racks/su-2-rack-00/power-policy", json={"policy": "training"}).json()
     assert r["policy"] == "dps-dynamic" and r["power_cap_kw"] == round(227 * 0.92)
+
+
+def test_machines_local(client):
+    ms = client.get("/api/v1/machines?rack=su-1-rack-00").json()
+    assert ms["source"] == "local-fallback" and len(ms["machines"]) == 18
+    mid = ms["machines"][0]["id"]
+    assert client.get(f"/api/v1/machines/{mid}").json()["status"] == "Ready"
+    hw = client.get(f"/api/v1/machines/{mid}/hardware").json()
+    assert len(hw["gpus"]) == 4 and hw["dpu"]
+    assert client.get("/api/v1/machines/nh-nope").status_code == 404
+    assert client.get(f"/api/v1/machines/{mid}/sanitize-report").status_code == 404
+
+
+def test_machines_from_nico_rest(client, upstream):
+    routes, _ = upstream
+    routes[("GET", "/v2/org/neocloud/nico/machine")] = lambda b: (200, [
+        {"id": "nh-x", "status": "Ready", "lifecycleState": "ready"}])
+    routes[("POST", "/v2/org/neocloud/nico/machine/nh-x/gpu/reset")] = lambda b: (202, {})
+    assert client.get("/api/v1/machines").json()["machines"][0]["id"] == "nh-x"
+    r = client.post("/api/v1/oob/machines/nh-x/actions/gpu-reset").json()
+    assert r["via"] == "nico"
