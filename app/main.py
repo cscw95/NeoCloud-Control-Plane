@@ -33,6 +33,7 @@ from . import (
     events,
     ncp,
     nvke,
+    nvke_capi,
     oob,
     power,
     shared_services,
@@ -107,6 +108,8 @@ app.include_router(shared_services.router)
 app.include_router(dsx.router)
 app.include_router(auth.router)
 app.include_router(nvke.router)
+app.include_router(nvke_capi.router)
+app.include_router(nvke_capi.topograph_router)
 app.include_router(power.router)
 app.include_router(events.router)
 app.include_router(oob.router)

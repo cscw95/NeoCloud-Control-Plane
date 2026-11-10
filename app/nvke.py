@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import trace
+from . import nvke_capi, trace
 from .adapters import wait_job
 from .dsx import VERSIONS
 from .store import STORE
@@ -88,6 +88,7 @@ class ClusterCreate(BaseModel):
     k8s_version: Optional[str] = None      # "1.34" | "v1.34.1"
     release: Optional[str] = None          # release id (wins over k8s_version)
     nodepools: list[NodePoolSpec] = Field(default_factory=list)
+    control_plane: Optional[dict] = None   # F11: {etcd_encryption: true} (default true)
 
 
 class ClusterUpdate(BaseModel):
@@ -103,6 +104,7 @@ class NodePoolUpdate(BaseModel):
 class UpgradeRequest(BaseModel):
     k8s_version: Optional[str] = None
     release: Optional[str] = None
+    max_unavailable: int = Field(1, ge=1, le=72)   # F11: in-place rolling batch size
 
 
 class ReplaceRequest(BaseModel):
@@ -173,6 +175,8 @@ class _NvkeStore:
             self.nodepools.clear()
             self.claimed_racks.clear()
             self._seq = 0
+        from .nvke_capi import CAPI
+        CAPI.reset()
 
 
 NVKE = _NvkeStore()
@@ -254,7 +258,8 @@ def _unclaim(node: "NvkeNode") -> None:
         cn.state, cn.role, cn.tenant_id = "pool_ready", "general", None
 
 
-def _acquire_nodes(pool: NvkeNodePool, n: int, tenant_id: str) -> list[NvkeNode]:
+def _acquire_nodes(pool: NvkeNodePool, n: int, tenant_id: str,
+                   prefer_rack: Optional[str] = None) -> list[NvkeNode]:
     adapter = _adapter()
     used = {nd.nico_host_id for p in NVKE.nodepools.values() for nd in p.nodes}
     ranked = []
@@ -263,8 +268,12 @@ def _acquire_nodes(pool: NvkeNodePool, n: int, tenant_id: str) -> list[NvkeNode]
                 or h.cordoned or h.host_id in used):
             continue
         rank = _eligible(h, tenant_id)
-        if rank >= 0:
-            ranked.append((rank, h.host_id, h))
+        if rank < 0:
+            continue
+        if prefer_rack and h.tray_id in STORE.trays \
+                and STORE.trays[h.tray_id].rack_id == prefer_rack:
+            rank = -1                       # F11: keep the CAPI failure domain
+        ranked.append((rank, h.host_id, h))
     ranked.sort(key=lambda x: (x[0], x[1]))
     free = [h for _, _, h in ranked]
     if len(free) < n:
@@ -396,7 +405,8 @@ def create_cluster(body: ClusterCreate) -> dict:
             id=cid, name=body.name, tenant_id=body.tenant_id, release=rel["id"],
             k8s_version=rel["k8s_version"], created_at=_now(),
             control_plane={"dedicated": True, "etcd": "dedicated",
-                           "etcd_encryption": True, "replicas": 3,
+                           "etcd_encryption": bool((body.control_plane or {}).get(
+                               "etcd_encryption", True)), "replicas": 3,
                            "endpoint": f"https://{cid}.nvke.neocloud.local:6443",
                            "attestation": "TPM + SPIFFE/SPIRE"},
             aicr_recipe=aicr_recipe(rel, [p.instance_type for p in body.nodepools]),
@@ -413,6 +423,7 @@ def create_cluster(body: ClusterCreate) -> dict:
             del NVKE.clusters[cid]
             raise
         c.state = "running"
+        nvke_capi.reconcile(c, "cluster create")
         return _view(c)
 
 
@@ -444,6 +455,7 @@ def delete_cluster(cluster_id: str) -> dict:
         for pid in list(c.nodepool_ids):
             _delete_nodepool(c, pid)
         c.state = "deleted"
+        nvke_capi.drop(c)
         _emit("NVKE cluster delete", f"{cluster_id} — nodes returned to NICo",
               cluster=cluster_id)
         return {"id": cluster_id, "state": "deleted"}
@@ -497,7 +509,9 @@ def create_nodepool(cluster_id: str, body: NodePoolSpec) -> dict:
         raise HTTPException(422, f"unknown instance_type '{body.instance_type}'")
     with NVKE.lock:
         c = _get(cluster_id)
-        return _add_nodepool(c, body).model_dump()
+        out = _add_nodepool(c, body).model_dump()
+        nvke_capi.reconcile(c, "nodepool create")
+        return out
 
 
 @router.get("/clusters/{cluster_id}/nodepools/{pool_id}")
@@ -514,6 +528,7 @@ def update_nodepool(cluster_id: str, pool_id: str, body: NodePoolUpdate) -> dict
             pool.labels = body.labels
         if body.count is not None and body.count != pool.count:
             _scale(pool, body.count, c.tenant_id)
+            nvke_capi.reconcile(c, "nodepool scale")
         return pool.model_dump()
 
 
@@ -523,6 +538,7 @@ def delete_nodepool(cluster_id: str, pool_id: str) -> dict:
         c = _get(cluster_id)
         _pool(c, pool_id)
         _delete_nodepool(c, pool_id)
+        nvke_capi.reconcile(c, "nodepool delete")
         return {"id": pool_id, "state": "deleted"}
 
 
@@ -582,17 +598,19 @@ def upgrade(cluster_id: str, body: UpgradeRequest) -> dict:
         if tuple(map(int, rel["k8s_minor"].split("."))) < tuple(
                 map(int, cur["k8s_minor"].split("."))):
             raise HTTPException(422, "downgrade not supported")
+        cur_minor = tuple(map(int, cur["k8s_minor"].split(".")))
+        new_minor = tuple(map(int, rel["k8s_minor"].split(".")))
+        if new_minor[0] != cur_minor[0] or new_minor[1] - cur_minor[1] > 1:
+            raise HTTPException(422, "control plane moves one minor version at a time")
         c.state = "upgrading"
-        steps = [{"step": "control-plane", "status": "succeeded", "at": _now()}]
-        for pid in c.nodepool_ids:                 # surge-1 rolling per node pool
+        steps = [{"step": "control-plane", "status": "succeeded",
+                  "detail": f"NodeAgent.KubeadmUpgradeApply {cur['k8s_version']} → "
+                            f"{rel['k8s_version']} on 3 control-plane nodes", "at": _now()}]
+        for pid in c.nodepool_ids:   # F11: CAPI in-place rolling per MachineDeployment
             pool = NVKE.nodepools[pid]
-            for node in pool.nodes:
-                node.k8s_version = rel["k8s_version"]
+            steps.append(nvke_capi.rollout(c, pool, rel["k8s_version"], body.max_unavailable))
             pool.release, pool.k8s_version = rel["id"], rel["k8s_version"]
             pool.node_image = rel["node_image"]
-            steps.append({"step": f"nodepool/{pool.name}", "nodes": len(pool.nodes),
-                          "strategy": "rolling (maxSurge=1)", "status": "succeeded",
-                          "at": _now()})
         rec = {"id": NVKE.next_id("upg"), "from": cur["k8s_version"],
                "to": rel["k8s_version"], "release": rel["id"], "state": "succeeded",
                "steps": steps, "at": _now()}
@@ -601,6 +619,7 @@ def upgrade(cluster_id: str, body: UpgradeRequest) -> dict:
         c.aicr_recipe = aicr_recipe(rel, [NVKE.nodepools[p].instance_type
                                           for p in c.nodepool_ids])
         c.state = "running"
+        nvke_capi.reconcile(c, "upgrade")
         _emit("NVKE upgrade", f"{cluster_id} {rec['from']} → {rec['to']}",
               cluster=cluster_id)
         return {"cluster": _view(c), "upgrade": rec}
@@ -626,7 +645,8 @@ def replace_node(cluster_id: str, node_ref: str, reason: str,
                 adapter = _adapter()
                 adapter.cordon(node.nico_host_id, reason)
                 node.state = "replacing"
-                new = _acquire_nodes(pool, 1, c.tenant_id)[0]
+                rack = nvke_capi.rack_of(node)
+                new = _acquire_nodes(pool, 1, c.tenant_id, prefer_rack=rack)[0]
                 new.name = node.name
                 _return_node(node, sanitize=False)
                 pool.nodes[i] = new
@@ -634,8 +654,11 @@ def replace_node(cluster_id: str, node_ref: str, reason: str,
                        "old_host": node.nico_host_id, "new_host": new.nico_host_id,
                        "reason": reason, "source": source,
                        "steps": ["cordon", "drain", "nico-cordon", "join-replacement",
-                                 "release-faulty"], "at": _now()}
+                                 "release-faulty"], "at": _now(),
+                       "failure_domain": rack,
+                       "failure_domain_kept": nvke_capi.rack_of(new) == rack}
                 c.replacements.append(rec)
+                nvke_capi.reconcile(c, f"replace {node.name} ({source})")
                 _emit("NVKE node replace", f"{node.name}: {node.nico_host_id} → "
                                            f"{new.nico_host_id} ({source})",
                       cluster=cluster_id)
