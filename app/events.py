@@ -37,7 +37,12 @@ class _Bus:
                   "source": source, "data": data,
                   "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
             self.buf.append(ev)
-            return ev
+        for fn in list(LISTENERS):       # F21/F22 subscribers (never break producers)
+            try:
+                fn(ev)
+            except Exception:            # noqa: BLE001
+                pass
+        return ev
 
     def since(self, after: int = 0, topic: Optional[str] = None,
               limit: int = 200) -> list:
@@ -54,6 +59,13 @@ class _Bus:
 
 BUS = _Bus()
 publish = BUS.publish
+LISTENERS: list = []
+
+
+def add_listener(fn) -> None:
+    """Call fn(event) after every publish (in-process Exchange subscription)."""
+    if fn not in LISTENERS:
+        LISTENERS.append(fn)
 
 
 @router.get("/events/topics")
