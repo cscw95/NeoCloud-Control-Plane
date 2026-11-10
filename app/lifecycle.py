@@ -31,6 +31,7 @@ from .adapters import (
     LocalNicoAdapter,
     LocalVastAdapter,
     NicoHttpAdapter,
+    build_http_adapter,
     StorageAdapter,
     wait_job,
 )
@@ -90,11 +91,12 @@ K8S_MANAGED_ADDONS = [
 
 def get_adapter() -> ComputeAdapter:
     """Adapter seam. Set NOCP_NICO_URL to drive the standalone NICo emulator
-    over REST (NicoHttpAdapter); unset uses the in-process FakeNico."""
+    over HTTP — NOCP_NICO_API=rest (default, real NICo REST paths) or bridge
+    (deprecated /nico-bridge); unset uses the in-process FakeNico."""
     import os
     url = os.environ.get("NOCP_NICO_URL")
     if url:
-        return NicoHttpAdapter(url)
+        return build_http_adapter(url)
     return LocalNicoAdapter(FAKE_NICO)
 
 

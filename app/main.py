@@ -28,6 +28,7 @@ from . import (
     nico_fake,
     scenario_api,
     customer_ops,
+    dsx,
     shared_services,
     tenancy,
     topology,
@@ -87,6 +88,7 @@ app.include_router(nico_fake.router)
 app.include_router(vast_fake.router)
 app.include_router(integration.router)
 app.include_router(shared_services.router)
+app.include_router(dsx.router)
 
 
 # Customer-facing tenant isolation / RBAC — guard based on the X-Tenant-Id/X-Tenant-Role headers.

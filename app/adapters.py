@@ -233,3 +233,225 @@ class NicoHttpAdapter:
         return NicoSegment(**self._unwrap(self._c.patch(
             f"/segments/{segment_id}/hosts",
             json={"host_ids": host_ids, "purpose": purpose})))
+
+
+# ---------------------------------------------------------------------------
+# DSX OS baseline — real NICo REST (infra-controller rest-api/openapi/spec.yaml)
+# ---------------------------------------------------------------------------
+# Every path NOCP calls on the NICo REST surface, relative to the emulator root.
+# Names follow spec.yaml v2 (`/v2/org/{org}/nico/...`); the NICo emulator records
+# the same list in NICo-Emulator/docs/nico-rest-paths.md.
+NICO_REST_PATHS = {
+    "site":              "/v2/org/{org}/nico/site",
+    "machine":           "/v2/org/{org}/nico/machine",
+    "machine_one":       "/v2/org/{org}/nico/machine/{id}",
+    "machine_power":     "/v2/org/{org}/nico/machine/{id}/power",
+    "machine_health":    "/v2/org/{org}/nico/machine/{id}/health-report",
+    "machine_validation": "/v2/org/{org}/nico/machine/{id}/validation/result",
+    "machine_gpu_reset": "/v2/org/{org}/nico/machine/{id}/gpu-reset",
+    "instance":          "/v2/org/{org}/nico/instance",
+    "instance_one":      "/v2/org/{org}/nico/instance/{id}",
+    "instance_type":     "/v2/org/{org}/nico/instance/type",
+    "allocation":        "/v2/org/{org}/nico/allocation",
+    "vpc":               "/v2/org/{org}/nico/vpc",
+    "subnet":            "/v2/org/{org}/nico/subnet",
+    "nsg":               "/v2/org/{org}/nico/network-security-group",
+    "ib_partition":      "/v2/org/{org}/nico/infiniband-partition",
+    "nvlink_partition":  "/v2/org/{org}/nico/nvlink-logical-partition",
+    "spectrumx_partition": "/v2/org/{org}/nico/spectrumx-partition",
+    "rack":              "/v2/org/{org}/nico/rack",
+    "rack_one":          "/v2/org/{org}/nico/rack/{id}",
+    "rack_health":       "/v2/org/{org}/nico/rack/{id}/health-report",
+    "tray":              "/v2/org/{org}/nico/tray",
+    "tray_health":       "/v2/org/{org}/nico/tray/{id}/health-report",
+    "nvlink_domain":     "/v2/org/{org}/nico/domain/nvlink",
+    "firmware_host":     "/v2/org/{org}/nico/firmware-config/host",
+    "rack_firmware":     "/v2/org/{org}/nico/rack/firmware",
+}
+
+# NICo Machine.status → NOCP host state (statuses outside the table keep the
+# emulator's own hint, see _machine_to_host).
+_MACHINE_STATUS_MAP = {
+    "expected": "discovered", "discovered": "discovered",
+    "initializing": "discovered", "validating": "discovered",
+    "ready": "pool_ready", "assigned": "allocated", "inuse": "allocated",
+    "sanitizing": "sanitizing", "reset": "sanitizing",
+    "failed": "quarantined", "error": "quarantined",
+    "maintenance": "rma", "decommissioned": "rma",
+}
+
+
+def nico_root(url: str) -> str:
+    """Emulator root from NOCP_NICO_URL (accepts either root or /nico-bridge base)."""
+    return url.rstrip("/").rsplit("/nico-bridge", 1)[0]
+
+
+def _machine_to_host(m: dict) -> NicoHost:
+    """Map a NICo REST Machine object to the NicoHost contract.
+
+    Accepts the native bridge shape too (an emulator may embed it), so the
+    pipeline sees identical hosts in either API mode."""
+    if "host_id" in m:
+        return NicoHost(**{k: v for k, v in m.items() if k in NicoHost.model_fields})
+    labels = m.get("labels") or {}
+    meta = m.get("metadata") or {}
+    hint = labels.get("nocp.state") or meta.get("nocpState")
+    status = str(m.get("status") or "").lower()
+    state = hint or _MACHINE_STATUS_MAP.get(status, "discovered")
+    return NicoHost(
+        host_id=m.get("id", ""),
+        tray_id=labels.get("trayId") or meta.get("trayId") or "",
+        sku=m.get("instanceTypeId") or labels.get("sku") or "",
+        site=m.get("siteId") or "",
+        state=state,
+        cordoned=bool(m.get("maintenanceMessage")),
+        instance_id=m.get("instanceId"),
+        tenant_ref=m.get("tenantId"),
+        bmc_ip=labels.get("bmcIp") or meta.get("bmcIp") or "",
+        dpu_ip=labels.get("dpuIp") or meta.get("dpuIp") or "",
+        host_ip=labels.get("hostIp") or meta.get("hostIp") or "",
+    )
+
+
+def _items(body) -> list:
+    """NICo list responses are bare arrays; tolerate {items|results:[...]} envelopes."""
+    if isinstance(body, list):
+        return body
+    if isinstance(body, dict):
+        for k in ("items", "results", "data"):
+            if isinstance(body.get(k), list):
+                return body[k]
+    return []
+
+
+class NicoRestClient:
+    """Thin client over the NICo REST surface (v2.3 objects NOCP reads directly:
+    racks, trays, health reports, validation, firmware, power actions)."""
+
+    def __init__(self, root_url: str, org: str = "neocloud",
+                 client: Optional[httpx.Client] = None) -> None:
+        self.org = org
+        self._c = client or httpx.Client(base_url=nico_root(root_url), timeout=15.0)
+
+    def path(self, key: str, **kw) -> str:
+        return NICO_REST_PATHS[key].format(org=self.org, **kw)
+
+    def request(self, method: str, key: str, *, json: Optional[dict] = None,
+                params: Optional[dict] = None, **kw):
+        r = self._c.request(method, self.path(key, **kw), json=json, params=params)
+        if r.status_code >= 400:
+            try:
+                detail = r.json().get("detail") or r.json().get("message") or r.text
+            except ValueError:
+                detail = r.text
+            raise HTTPException(r.status_code, detail)
+        return r.json() if r.content else {}
+
+    def get(self, key: str, params: Optional[dict] = None, **kw):
+        return self.request("GET", key, params=params, **kw)
+
+
+class NicoRestAdapter(NicoHttpAdapter):
+    """ComputeAdapter over the real NICo REST paths (NOCP_NICO_API=rest).
+
+    Machines and Instances use the spec.yaml resources. Host-state steps that the
+    public REST has no object for (reserve, provision job polling, sanitize,
+    tenant segments) stay on the deprecated /nico-bridge, which shares one state
+    with the REST surface inside the emulator. Any REST call answered with
+    404/405/501 (an emulator that has not shipped that resource yet) falls back
+    to the bridge so the order pipeline keeps working."""
+
+    _FALLBACK = {404, 405, 501}
+
+    def __init__(self, url: str, org: str = "neocloud",
+                 client: Optional[httpx.Client] = None) -> None:
+        root = nico_root(url)
+        c = client or httpx.Client(base_url=root, timeout=30.0)
+        self.rest = NicoRestClient(root, org, client=c)
+        self._bridge_prefix = "/nico-bridge"
+        super().__init__(root, client=_PrefixClient(c, self._bridge_prefix))
+        self._jobs: dict[str, NicoJob] = {}
+
+    def _rest(self, method: str, key: str, fallback, **kw):
+        try:
+            return self.rest.request(method, key, **kw)
+        except HTTPException as e:
+            if e.status_code in self._FALLBACK:
+                return fallback()
+            raise
+
+    _SENTINEL = object()
+
+    def list_hosts(self) -> list[NicoHost]:
+        body = self._rest("GET", "machine", lambda: self._SENTINEL)
+        if body is self._SENTINEL:
+            return super().list_hosts()
+        return [_machine_to_host(m) for m in _items(body)]
+
+    def get_host(self, host_id: str) -> NicoHost:
+        body = self._rest("GET", "machine_one", lambda: self._SENTINEL, id=host_id)
+        if body is self._SENTINEL:
+            return super().get_host(host_id)
+        return _machine_to_host(body)
+
+    def allocate(self, host_id: str, tenant_ref: str) -> NicoHost:
+        body = self._rest("POST", "instance", lambda: self._SENTINEL, json={
+            "name": f"nocp-{host_id}", "tenantId": tenant_ref,
+            "machineId": host_id})
+        if body is self._SENTINEL:
+            return super().allocate(host_id, tenant_ref)
+        return super().get_host(host_id)        # bridge shape carries host_ip etc.
+
+    def release(self, instance_id: str) -> NicoJob:
+        body = self._rest("DELETE", "instance_one", lambda: self._SENTINEL,
+                          id=instance_id)
+        if body is self._SENTINEL:
+            return super().release(instance_id)
+        # REST delete is asynchronous on the NICo side; the emulator may return
+        # the bridge job it started — otherwise synthesize a converged job.
+        if isinstance(body, dict) and "job_id" in body:
+            return NicoJob(**{k: v for k, v in body.items() if k in NicoJob.model_fields})
+        job = NicoJob(job_id=f"rest-release-{instance_id}", op="release",
+                      host_id=str((body or {}).get("machineId") or ""),
+                      state="succeeded", detail="nico rest: instance deleted")
+        self._jobs[job.job_id] = job
+        return job
+
+    def get_job(self, job_id: str) -> NicoJob:
+        if job_id in self._jobs:
+            return self._jobs[job_id]
+        return super().get_job(job_id)
+
+
+class _PrefixClient:
+    """Wrap an httpx.Client so relative bridge paths get the /nico-bridge prefix."""
+
+    def __init__(self, c: httpx.Client, prefix: str) -> None:
+        self._c, self._p = c, prefix
+
+    def __getattr__(self, name):
+        fn = getattr(self._c, name)
+        if name in ("get", "post", "put", "patch", "delete", "request"):
+            def call(*a, **kw):
+                if name == "request":
+                    a = (a[0], self._p + a[1]) + a[2:]
+                else:
+                    a = (self._p + a[0],) + a[1:]
+                return fn(*a, **kw)
+            return call
+        return fn
+
+
+def nico_api_mode() -> str:
+    """NOCP_NICO_API=rest|bridge (default rest) — only meaningful with NOCP_NICO_URL."""
+    import os
+    mode = os.environ.get("NOCP_NICO_API", "rest").strip().lower()
+    return mode if mode in ("rest", "bridge") else "rest"
+
+
+def build_http_adapter(url: str) -> ComputeAdapter:
+    import os
+    if nico_api_mode() == "bridge":
+        base = url if url.rstrip("/").endswith("/nico-bridge") else nico_root(url) + "/nico-bridge"
+        return NicoHttpAdapter(base)
+    return NicoRestAdapter(url, org=os.environ.get("NOCP_NICO_ORG", "neocloud"))
