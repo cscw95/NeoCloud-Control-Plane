@@ -107,8 +107,8 @@ SCENARIO = {
     "order": 3,
     "feature": "F10/F09/F05",
     "story": "US-07",
-    "title_ko": "(c) XID 장애 주입 → 자동 cordon/drain/교체 → SLA 크레딧 → 청구서 차감",
-    "title_en": "(c) XID fault → auto cordon/drain/replace → SLA credit → invoice deduction",
+    "title_ko": "XID 장애 주입 → 자동 cordon/drain/교체 → SLA 크레딧 → 청구서 차감",
+    "title_en": "XID fault → auto cordon/drain/replace → SLA credit → invoice deduction",
     "summary_ko": "GPU가 버스에서 떨어지면 NVSentinel 흐름대로 자동 교체되고, 가용성 미달분이 다음 청구서에서 빠진다 (DoD 체인 c).",
     "summary_en": "A GPU off the bus is replaced by the NVSentinel flow and the SLA shortfall is credited (DoD chain c).",
     "steps": [

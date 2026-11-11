@@ -595,7 +595,9 @@ def demo_setup() -> dict:
         for k in [k for k, c in RMA.cases.items() if c.get("tenant") == t.id]:
             RMA.cases.pop(k)
     trays = sorted(x.id for x in STORE.trays.values() if x.tenant_id == t.id)
-    if not trays:
+    # the demo needs >= 2 trays (transient + persistent fault); a lone spare left
+    # behind by a reclaimed earlier run does not count as the demo rack
+    if len(trays) < 2:
         create_order(OrderCreate(tenant_id=t.id, kind=OrderKind.new,
                                  blueprint_key="vr-nvl72", racks=1))
         trays = sorted(x.id for x in STORE.trays.values() if x.tenant_id == t.id)

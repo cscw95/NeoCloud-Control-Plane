@@ -218,6 +218,10 @@ def _eligible(h, tenant_id: str) -> int:
         if rack.tenant_id == tenant_id:
             return 0
         return 1 if rack.tenant_id is None and rack.state.value == "ready" else -1
+    if getattr(h, "tray_id", None) and _cpu_node(h.host_id) is None:
+        # a GPU tray NOCP has no rack for yet (e.g. a rack just brought up on NICo):
+        # no NVLink clique / failure domain known → not placeable, never "CPU rank 0"
+        return -1
     cn = _cpu_node(h.host_id)
     return 0 if cn is None or cn.state == "pool_ready" else -1
 
@@ -274,7 +278,16 @@ def _acquire_nodes(pool: NvkeNodePool, n: int, tenant_id: str,
                 and STORE.trays[h.tray_id].rack_id == prefer_rack:
             rank = -1                       # F11: keep the CAPI failure domain
         ranked.append((rank, h.host_id, h))
-    ranked.sort(key=lambda x: (x[0], x[1]))
+    # Clique-aware packing: within a rank, fill the racks with the most free trays
+    # first, so 36 nodes land on 2 whole NVL72 racks (2 cliques), not on 3 racks
+    # that earlier allocations, RMA or sanitize left partly used.
+    rack_of = {h.host_id: STORE.trays[h.tray_id].rack_id
+               for _, _, h in ranked if h.tray_id in STORE.trays}
+    per_rack: dict[str, int] = {}
+    for r in rack_of.values():
+        per_rack[r] = per_rack.get(r, 0) + 1
+    ranked.sort(key=lambda x: (x[0], -per_rack.get(rack_of.get(x[1], ""), 0),
+                               rack_of.get(x[1], ""), x[1]))
     free = [h for _, _, h in ranked]
     if len(free) < n:
         raise HTTPException(409, f"insufficient '{pool.instance_type}' capacity: "
@@ -459,6 +472,27 @@ def delete_cluster(cluster_id: str) -> dict:
         _emit("NVKE cluster delete", f"{cluster_id} — nodes returned to NICo",
               cluster=cluster_id)
         return {"id": cluster_id, "state": "deleted"}
+
+
+def retire_cluster(cluster_id: str) -> dict:
+    """delete_cluster for background cleanup (demo janitor): detach the pools under the
+    lock, then return the nodes to NICo (release + sanitize, slow on a live NICo)
+    without holding it, so other NVKE calls keep going. Returned hosts stay bound to
+    the old tenant's racks until each one is unclaimed, so placement cannot take them."""
+    with NVKE.lock:
+        c = _get(cluster_id)
+        pools = [NVKE.nodepools.pop(pid) for pid in list(c.nodepool_ids)
+                 if pid in NVKE.nodepools]
+        c.nodepool_ids.clear()
+        c.state = "deleted"
+        nvke_capi.drop(c)
+    for pool in pools:
+        for node in pool.nodes:
+            if node.state != "removed":
+                _return_node(node)
+    _emit("NVKE cluster delete", f"{cluster_id} — nodes returned to NICo",
+          cluster=cluster_id)
+    return {"id": cluster_id, "state": "deleted"}
 
 
 def _add_nodepool(c: NvkeCluster, spec: NodePoolSpec) -> NvkeNodePool:

@@ -273,10 +273,12 @@ def test_demo_scenario_passes(client):
             except ValueError:
                 self.body = r.text
 
-    ctx = {}
+    from app.demo.engine import _resolve
+    from app.demo.janitor import new_uid
+    ctx = {"uid": new_uid()}
     for st in mod.SCENARIO["steps"]:
         call = st["call"]
-        v = lambda x: x(ctx) if callable(x) else x  # noqa: E731
+        v = lambda x: _resolve(x, ctx)  # noqa: E731
         res = Res(client.request(call["method"], v(call["path"]), json=v(call.get("json")),
                                  params=v(call.get("params"))))
         ok, ko, en = st["expect"](res, ctx)

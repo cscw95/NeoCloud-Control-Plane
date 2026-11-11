@@ -2,12 +2,15 @@
 # Run every registered demo scenario against a running NOCP and print a pass/fail table.
 # Starts nothing: point it at a stack you already run.
 #
-#   scripts/demo_all.sh [NOCP_URL] [--reset] [--reset-all] [--only <id>[,<id>]] [--steps] [--lang ko|en]
+#   scripts/demo_all.sh [NOCP_URL] [--reset] [--reset-all] [--only <id>[,<id>]] [--day 0|1|2]
+#                       [--reverse] [--steps] [--lang ko|en]
 #
 #   NOCP_URL     default $NOCP_URL or http://127.0.0.1:8000
 #   --reset      POST /api/v1/demo/reset before each scenario (deterministic NOCP seed)
 #   --reset-all  same, scope=all (also resets NICo with cascade and AI-Infra)
 #   --only       comma list of scenario ids
+#   --day        only one demo day (Day 0 build · 1 turn-up · 2 operate)
+#   --reverse    run in reverse presentation order (isolation check: any order passes)
 #   --steps      print every step: request line, response summary, assertion
 #   --lang       narration language for --steps (default ko)
 #   NOCP_TOKEN   operator bearer token (omit on a dev stack with NOCP_DEV_OPERATOR_DEFAULT=1)
@@ -16,15 +19,17 @@
 set -euo pipefail
 
 URL="${NOCP_URL:-http://127.0.0.1:8000}"
-RESET=""; ONLY=""; STEPS=0; LANG_="ko"
+RESET=""; ONLY=""; STEPS=0; LANG_="ko"; DAY=""; REV=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --reset) RESET="nocp" ;;
     --reset-all) RESET="all" ;;
     --only) ONLY="$2"; shift ;;
+    --day) DAY="$2"; shift ;;
+    --reverse) REV=1 ;;
     --steps) STEPS=1 ;;
     --lang) LANG_="$2"; shift ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     http*) URL="$1" ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -48,7 +53,7 @@ if ! curl -sS --max-time 5 "$URL/health" >/dev/null 2>&1; then
   exit 2
 fi
 
-LIST="$(api GET /api/v1/demo/scenarios)"
+LIST="$(api GET "/api/v1/demo/scenarios${DAY:+?day=$DAY}")"
 IDS="$(printf '%s' "$LIST" | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
@@ -61,6 +66,9 @@ for s in d["scenarios"]:
     if not only or s["id"] in only:
         print(s["id"])
 ' "$ONLY")"
+if [ "$REV" = 1 ]; then
+  IDS="$(printf '%s\n' "$IDS" | awk '{a[NR]=$0} END {for (i = NR; i > 0; i--) print a[i]}')"
+fi
 
 RESULTS="$(mktemp)"
 trap 'rm -f "$RESULTS"' EXIT

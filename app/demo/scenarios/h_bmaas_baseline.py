@@ -52,8 +52,8 @@ SCENARIO = {
     "id": "h-bmaas-baseline",
     "order": 8,
     "feature": "baseline",
-    "title_ko": "(h) BMaaS 주문 기준선",
-    "title_en": "(h) BMaaS order baseline",
+    "title_ko": "BMaaS 주문 기준선",
+    "title_en": "BMaaS order baseline",
     "summary_ko": "v2 이전부터 있던 흐름: 테넌트 → 1랙 주문 → 격리 → 인수 → 계측 → 반납.",
     "summary_en": "The pre-v2 flow: tenant → 1-rack order → isolation → acceptance → metering → reclaim.",
     "steps": [

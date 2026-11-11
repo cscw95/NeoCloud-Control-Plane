@@ -63,8 +63,8 @@ SCENARIO = {
     "order": 7,
     "feature": "F11",
     "story": "US-04",
-    "title_ko": "(g) NVKE 클러스터: 클리크 인식 노드풀 + kubeconfig",
-    "title_en": "(g) NVKE cluster: clique-aware nodepool + kubeconfig",
+    "title_ko": "NVKE 클러스터: 클리크 인식 노드풀 + kubeconfig",
+    "title_en": "NVKE cluster: clique-aware nodepool + kubeconfig",
     "summary_ko": "2랙 노드풀을 만들면 랙 단위 NVLink 클리크·IMEX 도메인이 생기고 kubeconfig가 나온다 (US-04).",
     "summary_en": "A 2-rack nodepool yields per-rack NVLink cliques, IMEX domains and a kubeconfig (US-04).",
     "steps": [

@@ -1,6 +1,9 @@
 """NOCP demo runner — `/api/v1/demo/*` (operator only).
 
-  GET  /api/v1/demo/scenarios                    registered scenarios (+ pending features)
+  GET  /api/v1/demo/scenarios                    registered scenarios (+ pending features),
+                                                 Day 0 → 2 order; ?day=0|1|2, ?showcase=1
+  GET  /api/v1/demo/playlist                     Day 0 → 2 presentation list (DEMO-ORDER.md),
+                                                 scenario + screen-only items; ?day=
   GET  /api/v1/demo/scenarios/{id}               one scenario with its step list
   POST /api/v1/demo/scenarios/{id}/run           {mode:"all"|"step", pace_ms?, reset?}
                                                  ?wait=true runs to the end before answering
@@ -30,6 +33,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from . import janitor, playlist
 from .engine import RUNNER, missing_routes
 
 router = APIRouter(prefix="/api/v1/demo", tags=["demo"])
@@ -65,6 +69,7 @@ def load_scenarios() -> dict[str, dict]:
             if sc["id"] in _SCENARIOS:
                 raise ValueError(f"duplicate scenario id '{sc['id']}'")
             sc.setdefault("module", m.name)
+            sc.update({k: v for k, v in playlist.meta(sc["id"]).items() if k != "seq"})
             _SCENARIOS[sc["id"]] = sc
             if callable(getattr(mod, "reset", None)):
                 _RESET_HOOKS.append(mod.reset)
@@ -98,8 +103,10 @@ def _features(sc: dict) -> dict:
 
 
 def _brief(sc: dict) -> dict:
+    m = playlist.meta(sc["id"])
     return {"id": sc["id"], "title_ko": sc["title_ko"], "title_en": sc["title_en"],
-            "feature": sc.get("feature"), "order": sc.get("order", 99),
+            "feature": sc.get("feature"), "day": m["day"], "order": m["order"],
+            "seq": m["seq"], "showcase_order": m["showcase_order"],
             "summary_ko": sc.get("summary_ko", ""), "summary_en": sc.get("summary_en", ""),
             "story": sc.get("story", ""), "steps": len(sc["steps"]),
             "links": sc.get("links", []), **_features(sc)}
@@ -115,14 +122,38 @@ def _step_brief(st: dict) -> dict:
             "links": st.get("links", [])}
 
 
+def _day(v: Optional[str]) -> Optional[int]:
+    try:
+        return playlist.parse_day(v)
+    except ValueError:
+        raise HTTPException(422, "day must be 0, 1 or 2") from None
+
+
 @router.get("/scenarios")
-def list_scenarios(request: Request, reload: bool = False) -> dict:
+def list_scenarios(request: Request, reload: bool = False, day: Optional[str] = None,
+                   showcase: bool = False) -> dict:
+    """Scenarios in Day 0 → 2 presentation order (DEMO-ORDER.md). `day` keeps one day;
+    `showcase=1` keeps the eight flagship scenarios in showcase order."""
     _operator(request)
     if reload:
         load_scenarios()
-    items = sorted((_brief(s) for s in _scenarios().values()),
-                   key=lambda b: (b["order"], b["id"]))
+    d = _day(day)
+    items = [_brief(s) for s in _scenarios().values()]
+    if d is not None:
+        items = [b for b in items if b["day"] == d]
+    if showcase:
+        items = sorted((b for b in items if b["showcase_order"]), key=lambda b: b["showcase_order"])
+    else:
+        items.sort(key=lambda b: (b["day"], b["order"], b["seq"], b["id"]))
     return {"scenarios": items, "load_errors": dict(_LOAD_ERRORS)}
+
+
+@router.get("/playlist")
+def get_playlist(request: Request, day: Optional[str] = None) -> dict:
+    """Day 0 → Day 1 → Day 2 presentation list: every DEMO-ORDER.md step with its
+    scenarios, plus screen-only items (console + route) for steps shown on a screen."""
+    _operator(request)
+    return playlist.build(_scenarios(), _day(day))
 
 
 @router.get("/scenarios/{scenario_id}")
@@ -244,6 +275,7 @@ class ResetBody(BaseModel):
 
 def _do_reset(scope: str, blueprints: Optional[str] = None) -> dict:
     from .. import main
+    janitor.wait()                                 # no background reclaim during a reseed
     out = (main.reset_all(blueprints) if scope == "all"
            else {"nocp": main.reseed(blueprints)})
     for hook in list(_RESET_HOOKS):
@@ -252,6 +284,7 @@ def _do_reset(scope: str, blueprints: Optional[str] = None) -> dict:
         except Exception:                          # noqa: BLE001
             pass
     RUNNER.reset()
+    janitor.reset()
     return out
 
 

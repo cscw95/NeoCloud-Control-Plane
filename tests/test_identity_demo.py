@@ -4,6 +4,8 @@ import importlib.util
 from pathlib import Path
 
 from app import auth
+from app.demo.engine import _resolve
+from app.demo.janitor import new_uid
 
 _PATH = Path(__file__).resolve().parents[1] / "app" / "demo" / "scenarios" / "f07_identity.py"
 
@@ -18,9 +20,9 @@ class _Res:
 
 
 def _run(client, scenario):
-    ctx, out = {}, []
+    ctx, out = {"uid": new_uid()}, []    # each run signs up its own org (demo isolation)
     for step in scenario["steps"]:
-        spec = {k: (v(ctx) if callable(v) else v) for k, v in step["call"].items()}
+        spec = _resolve(step["call"], ctx)
         headers = dict(spec.get("headers") or {})
         if spec.get("as", "operator") == "operator":
             headers["Authorization"] = "Bearer " + auth.mint("operator", ttl_s=600)
@@ -37,6 +39,6 @@ def test_f07_demo_scenario_passes_twice(client):
     spec = importlib.util.spec_from_file_location("f07_identity", _PATH)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    for _ in range(2):                    # step 00 makes reruns deterministic
+    for _ in range(2):                    # own org per run + step 00 withdraws the last one
         results = _run(client, mod.SCENARIO)
         assert all(ok for _, ok, _ in results), results

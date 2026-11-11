@@ -12,21 +12,21 @@ def link(console: str, route: str, ko: str, en: str) -> dict:
 
 def tenant_step(sid: str, name: str, key: str = "tenant_id",
                 tier: str = "bare_metal_dedicated") -> dict:
-    """Create (or reuse after a previous run) a demo tenant via POST /api/v1/tenants."""
+    """Create this run's own demo tenant (`<name>-<run uid>`) via POST /api/v1/tenants."""
 
     def expect(res, ctx):
-        ok = res.status in (201, 409)
-        return check(ok, f"테넌트 tnt-{name} 준비 (HTTP {res.status})",
-                     f"tenant tnt-{name} ready (HTTP {res.status})")
+        ok = res.status == 201
+        return check(ok, f"테넌트 tnt-{name}-{ctx['uid']} 생성 (HTTP {res.status})",
+                     f"tenant tnt-{name}-{ctx['uid']} created (HTTP {res.status})")
 
     def save(res, ctx):
-        ctx[key] = res.body["id"] if res.status == 201 else f"tnt-{name}"
+        ctx[key] = res.body["id"]
 
     return {"id": sid, "title_ko": f"테넌트 {name} 생성", "title_en": f"Create tenant {name}",
             "narration_ko": "고객 조직을 만들면 VRF·L3VNI·IAM realm이 자동으로 묶인다.",
             "narration_en": "Creating the customer org binds a VRF, an L3VNI and an IAM realm.",
             "call": http("POST", "/api/v1/tenants",
-                         {"name": name, "isolation_tier": tier}),
+                         {"name": lambda c: f"{name}-{c['uid']}", "isolation_tier": tier}),
             "expect": expect, "save": save,
             "links": [link("ops", "orchestration", "운영 · 테넌트", "Ops · tenants")]}
 

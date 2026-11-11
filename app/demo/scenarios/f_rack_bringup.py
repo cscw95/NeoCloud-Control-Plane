@@ -12,21 +12,34 @@ reported as skipped (LLDP unreachable → local fallback), never as failed.
 from ..engine import check, http
 from ._common import link
 
-SERIAL = "DEMO-VR72-0001"
-RACK = "bu-demo-vr72-0001"                       # NOCP slug of the serial
-PLAN = [{"a": f"{RACK}-tray-{i:02d}:p0", "b": f"{RACK}-leaf-sw-0:swp{i + 1}"} for i in range(18)]
-MISWIRE = {"a": PLAN[1]["a"], "actual_b": f"{RACK}-leaf-sw-0:swp31"}
+# Each run brings up its own rack (serial DEMO-VR72-<uid>), so reruns never meet a
+# rack an earlier run already made sellable.
+
+
+def SERIAL(c):
+    return f"DEMO-VR72-{c['uid'].upper()}"
+
+
+def RACK(c):
+    return f"bu-demo-vr72-{c['uid']}"                # NOCP slug of the serial
+
+
+def PLAN(c):
+    r = RACK(c)
+    return [{"a": f"{r}-tray-{i:02d}:p0", "b": f"{r}-leaf-sw-0:swp{i + 1}"} for i in range(18)]
+
+
+def MISWIRE(c):
+    return {"a": PLAN(c)[1]["a"], "actual_b": f"{RACK(c)}-leaf-sw-0:swp31"}
 
 
 def _registered(res, ctx):
     b = res.body
     if res.status == 201:
         ctx["rack"] = b.get("id")
-    elif res.status == 409:
-        ctx["rack"] = RACK
-    return check(res.status in (201, 409) and ctx.get("rack"),
-                 f"DCIM 등록 {ctx.get('rack')} · 상태 {b.get('state', 'planned')} · 케이블 {len(PLAN)}개",
-                 f"DCIM registered {ctx.get('rack')} · state {b.get('state', 'planned')} · {len(PLAN)} cables")
+    return check(res.status == 201 and ctx.get("rack") == RACK(ctx),
+                 f"DCIM 등록 {ctx.get('rack')} · 상태 {b.get('state', 'planned')} · 케이블 {len(PLAN(ctx))}개",
+                 f"DCIM registered {ctx.get('rack')} · state {b.get('state', 'planned')} · {len(PLAN(ctx))} cables")
 
 
 def _miswired(res, ctx):
@@ -35,8 +48,9 @@ def _miswired(res, ctx):
     if not applied:
         return (None, "AI-Infra 미연결 — 오결선 주입 안 됨(건너뜀)",
                 "AI-Infra offline — miswire not applied (skipped)")
-    return check(True, f"AI-Infra 물리 트윈: {MISWIRE['a']} → {MISWIRE['actual_b']} 로 잘못 연결",
-                 f"AI-Infra twin: {MISWIRE['a']} physically cabled to {MISWIRE['actual_b']}")
+    m = MISWIRE(ctx)
+    return check(True, f"AI-Infra 물리 트윈: {m['a']} → {m['actual_b']} 로 잘못 연결",
+                 f"AI-Infra twin: {m['a']} physically cabled to {m['actual_b']}")
 
 
 def _cables(res, ctx):
@@ -88,8 +102,8 @@ SCENARIO = {
     "id": "f-rack-bringup",
     "order": 6,
     "feature": "F23",
-    "title_ko": "(f) 신규 랙 bring-up 15단계 (04 케이블 불일치 실패 포함)",
-    "title_en": "(f) New rack bring-up, 15 steps (incl. cable mismatch failing at 04)",
+    "title_ko": "신규 랙 bring-up 15단계 (04 케이블 불일치 실패 포함)",
+    "title_en": "New rack bring-up, 15 steps (incl. cable mismatch failing at 04)",
     "summary_ko": "DCIM 등록부터 판매 가능 재고까지 자동 진행. 케이블이 계획과 다르면 04 LLDP 검증에서 멈춘다 (Phase 2 DoD ③).",
     "summary_en": "From DCIM to sellable stock automatically; a cable off-plan stops at step 04 LLDP validation.",
     "steps": [
@@ -98,7 +112,7 @@ SCENARIO = {
          "narration_ko": "NetBox 대체 DCIM에 시리얼·위치·청사진·케이블 계획을 넣는다.",
          "narration_en": "Serial, location, blueprint and cable plan go into the NetBox-style DCIM.",
          "call": http("POST", "/api/v1/dcim/racks",
-                      {"serial": SERIAL, "site": "gasan", "row": "R9", "position": "U01",
+                      {"serial": SERIAL, "site": "gasan", "row": "R9", "position": lambda c: "U-" + c["uid"].upper(),
                        "blueprint_key": "vr-nvl72", "cable_plan": PLAN}),
          "expect": _registered,
          "links": [link("ops", "bringup", "운영 · bring-up", "Ops · bring-up"),
@@ -107,7 +121,7 @@ SCENARIO = {
          "title_ko": "케이블 오결선 주입 (AI-Infra)", "title_en": "Inject a miswire (AI-Infra)",
          "requires": ["POST /api/v1/bringup/inject"],
          "call": http("POST", "/api/v1/bringup/inject",
-                      lambda c: {"kind": "miswire", "rack": c["rack"], **MISWIRE}),
+                      lambda c: {"kind": "miswire", "rack": c["rack"], **MISWIRE(c)}),
          "expect": _miswired},
         {"id": "03-bringup-fail", "feature": "F23", "requires": ["POST /api/v1/bringup/racks/{id}:start"],
          "title_ko": "bring-up 시작 → 04 실패", "title_en": "Start bring-up → fails at 04",

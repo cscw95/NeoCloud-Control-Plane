@@ -50,14 +50,21 @@ def _baseline(res, ctx):
             f"{FEED} measured {b.get('measured_kw')} kW · no target · {b.get('compliance')}")
 
 
+def _reduce_kw(ctx):
+    """−400 kW, or half the feed when it carries less than 800 kW (what ran before
+    may have released racks on this feed); a target of 0 kW could never be met."""
+    base = ctx.get("baseline_kw") or 0
+    return 400 if base >= 800 else max(1, round(base / 2))
+
+
 def _lts(res, ctx):
     b = _body(res)
     ctx["lts_id"] = b.get("id")
     ce = b.get("cloudevent") or {}
     return (res.status == 201 and ce.get("specversion") == "1.0.2",
-            f"Load Target Set {b.get('id')} · 목표 {b.get('target_kw')} kW (−400) · "
+            f"Load Target Set {b.get('id')} · 목표 {b.get('target_kw')} kW (−{_reduce_kw(ctx)}) · "
             f"{ce.get('type')} specversion {ce.get('specversion')}",
-            f"Load Target Set {b.get('id')} · target {b.get('target_kw')} kW (−400) · "
+            f"Load Target Set {b.get('id')} · target {b.get('target_kw')} kW (−{_reduce_kw(ctx)}) · "
             f"{ce.get('type')} specversion {ce.get('specversion')}")
 
 
@@ -116,7 +123,7 @@ SCENARIO = {
          "call": http("GET", "/flex/v1/power-state-status", params={"site": FEED}), "expect": _baseline},
         {"id": "02-load-target", "title_ko": "Load Target Set −400 kW", "title_en": "Load Target Set −400 kW",
          "call": http("POST", "/flex/v1/load-target-sets",
-                      {"site": FEED, "reduce_kw": 400, "duration_s": 900}), "expect": _lts},
+                      {"site": FEED, "reduce_kw": _reduce_kw, "duration_s": 900}), "expect": _lts},
         {"id": "03-breach", "title_ko": "감축 전: 목표 초과", "title_en": "Before shedding: over target",
          "call": http("GET", "/flex/v1/power-state-status", params={"site": FEED}), "expect": _breach_now},
         {"id": "04-clock", "title_ko": "30초 지속 (모사 시계)", "title_en": "Sustained 30 s (emulated clock)",

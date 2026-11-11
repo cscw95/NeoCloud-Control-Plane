@@ -133,8 +133,8 @@ SCENARIO = {
     "order": 2,
     "feature": "F01/F02/F03/F04/F05",
     "story": "US-05 · US-06",
-    "title_ko": "(b) 토큰 API: 스트리밍 · 429 · 가드 → 사용량 대조 → 청구 라인",
-    "title_en": "(b) Token API: streaming · 429 · guard → usage reconciliation → invoice line",
+    "title_ko": "토큰 API: 스트리밍 · 429 · 가드 → 사용량 대조 → 청구 라인",
+    "title_en": "Token API: streaming · 429 · guard → usage reconciliation → invoice line",
     "summary_ko": "OpenAI SDK 그대로 base_url만 바꿔 호출하고, 같은 요청 ID는 한 번만 청구된다 (DoD 체인 b).",
     "summary_en": "Call with the OpenAI SDK by changing base_url; one request id is billed once (DoD chain b).",
     "steps": [

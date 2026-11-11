@@ -1488,40 +1488,48 @@ def run_terminate_order(body: OrderCreate, adapter: ComputeAdapter) -> ServiceOr
 
         rma_nodes: list[str] = []
         stuck_nodes: list[str] = []
-        for node in sorted(nodes, key=lambda n: n.id):
-            # per-node isolation: one stuck node (e.g. NICo diverged) must not
-            # block reclaiming the rest — it is escalated, not retried blindly
-            try:
-                if node.state == NS.in_service:
-                    advance_node(node, NS.draining, "reclaim: tenant workload drain")
-                if node.state in (NS.draining, NS.cordoned):
-                    if node.state == NS.cordoned:
-                        advance_node(node, NS.draining, "reclaim")
-                    if node.nico_instance_id:
-                        wait_job(adapter, adapter.release(node.nico_instance_id))
-                        node.nico_instance_id = None
-                    advance_node(node, NS.releasing, "reclaim: nico release")
-                    job = wait_job(adapter, adapter.sanitize(node.nico_host_id))
-                    advance_node(node, NS.sanitizing,
-                                 "nvme erase / gpu+mem wipe / tpm reset / re-attest")
-                    if job.state == "succeeded":
-                        report = adapter.get_sanitize_report(node.nico_host_id)
-                        advance_node(node, NS.pool_ready,
-                                     f"sanitized ok ({len(report.steps)} steps) — "
-                                     "pool return")
-                    else:
-                        advance_node(node, NS.rma, f"sanitize failed: {job.detail}")
-                        rma_nodes.append(node.id)
-            except HTTPException as exc:
-                stuck_nodes.append(node.id)
-                node.history.append(LifecycleEvent(
-                    state=node.state.value,
-                    detail=f"reclaim step failed: {exc.detail} — "
-                           "manual intervention / reconcile required", at=_now()))
+        # The per-node NICo release/sanitize waits (seconds per node on a live NICo)
+        # run without the store lock, so the rest of NOCP keeps answering while a
+        # rack is reclaimed. The nodes stay bound to this tenant/allocation until the
+        # allocation is deleted below, so placement cannot pick them meanwhile.
+        s.lock.release()
+        try:
+            for node in sorted(nodes, key=lambda n: n.id):
+                # per-node isolation: one stuck node (e.g. NICo diverged) must not
+                # block reclaiming the rest — it is escalated, not retried blindly
+                try:
+                    if node.state == NS.in_service:
+                        advance_node(node, NS.draining, "reclaim: tenant workload drain")
+                    if node.state in (NS.draining, NS.cordoned):
+                        if node.state == NS.cordoned:
+                            advance_node(node, NS.draining, "reclaim")
+                        if node.nico_instance_id:
+                            wait_job(adapter, adapter.release(node.nico_instance_id))
+                            node.nico_instance_id = None
+                        advance_node(node, NS.releasing, "reclaim: nico release")
+                        job = wait_job(adapter, adapter.sanitize(node.nico_host_id))
+                        advance_node(node, NS.sanitizing,
+                                     "nvme erase / gpu+mem wipe / tpm reset / re-attest")
+                        if job.state == "succeeded":
+                            report = adapter.get_sanitize_report(node.nico_host_id)
+                            advance_node(node, NS.pool_ready,
+                                         f"sanitized ok ({len(report.steps)} steps) — "
+                                         "pool return")
+                        else:
+                            advance_node(node, NS.rma, f"sanitize failed: {job.detail}")
+                            rma_nodes.append(node.id)
+                except HTTPException as exc:
+                    stuck_nodes.append(node.id)
+                    node.history.append(LifecycleEvent(
+                        state=node.state.value,
+                        detail=f"reclaim step failed: {exc.detail} — "
+                               "manual intervention / reconcile required", at=_now()))
+                    node.order_id = oid
+                    continue                      # keep tenant binding — truthful
+                node.tenant_id = None
                 node.order_id = oid
-                continue                      # keep tenant binding — truthful
-            node.tenant_id = None
-            node.order_id = oid
+        finally:
+            s.lock.acquire()
 
         # release racks / partitions / allocation (audit stays in history)
         # Shared Services (⑦): revoke the original provisioning order's service account/secrets

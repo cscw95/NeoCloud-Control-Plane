@@ -7412,6 +7412,57 @@
     ]
    }
   },
+  "/api/v1/demo/playlist": {
+   "get": {
+    "description": "Day 0 → Day 1 → Day 2 presentation list: every DEMO-ORDER.md step with its\nscenarios, plus screen-only items (console + route) for steps shown on a screen.",
+    "operationId": "get_playlist_api_v1_demo_playlist_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "day",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Day"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Get Playlist Api V1 Demo Playlist Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Playlist",
+    "tags": [
+     "demo"
+    ]
+   }
+  },
   "/api/v1/demo/reset": {
    "post": {
     "description": "Deterministic reseed (fixed Phase-1 layout + fixed demo samples) and clear runs.\nscope=all also resets NICo (cascade) and AI-Infra.",
@@ -7695,6 +7746,7 @@
   },
   "/api/v1/demo/scenarios": {
    "get": {
+    "description": "Scenarios in Day 0 → 2 presentation order (DEMO-ORDER.md). `day` keeps one day;\n`showcase=1` keeps the eight flagship scenarios in showcase order.",
     "operationId": "list_scenarios_api_v1_demo_scenarios_get",
     "parameters": [
      {
@@ -7704,6 +7756,32 @@
       "schema": {
        "default": false,
        "title": "Reload",
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "day",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Day"
+      }
+     },
+     {
+      "in": "query",
+      "name": "showcase",
+      "required": false,
+      "schema": {
+       "default": false,
+       "title": "Showcase",
        "type": "boolean"
       }
      }
@@ -8977,7 +9055,7 @@
   },
   "/api/v1/infra/{path}": {
    "delete": {
-    "operationId": "infra_proxy_api_v1_infra__path__post",
+    "operationId": "infra_proxy_api_v1_infra__path__put",
     "parameters": [
      {
       "in": "path",
@@ -9015,7 +9093,7 @@
     ]
    },
    "get": {
-    "operationId": "infra_proxy_api_v1_infra__path__post",
+    "operationId": "infra_proxy_api_v1_infra__path__put",
     "parameters": [
      {
       "in": "path",
@@ -9053,7 +9131,7 @@
     ]
    },
    "patch": {
-    "operationId": "infra_proxy_api_v1_infra__path__post",
+    "operationId": "infra_proxy_api_v1_infra__path__put",
     "parameters": [
      {
       "in": "path",
@@ -9091,7 +9169,7 @@
     ]
    },
    "post": {
-    "operationId": "infra_proxy_api_v1_infra__path__post",
+    "operationId": "infra_proxy_api_v1_infra__path__put",
     "parameters": [
      {
       "in": "path",
@@ -9129,7 +9207,7 @@
     ]
    },
    "put": {
-    "operationId": "infra_proxy_api_v1_infra__path__post",
+    "operationId": "infra_proxy_api_v1_infra__path__put",
     "parameters": [
      {
       "in": "path",
@@ -23178,7 +23256,7 @@
   },
   "/realms/{realm}/protocol/openid-connect/userinfo": {
    "get": {
-    "operationId": "userinfo_realms__realm__protocol_openid_connect_userinfo_post",
+    "operationId": "userinfo_realms__realm__protocol_openid_connect_userinfo_get",
     "parameters": [
      {
       "in": "path",
@@ -23216,7 +23294,7 @@
     ]
    },
    "post": {
-    "operationId": "userinfo_realms__realm__protocol_openid_connect_userinfo_post",
+    "operationId": "userinfo_realms__realm__protocol_openid_connect_userinfo_get",
     "parameters": [
      {
       "in": "path",

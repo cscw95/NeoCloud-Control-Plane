@@ -3,16 +3,37 @@ grant (JWT, Keycloak paths) → JWT and the old HMAC token both accepted → exp
 401 → customer SSO (Keycloak identity brokering, emulated).
 
 Self-contained; format follows app/demo/engine.py (WAVE-v2 시연 요건). Deterministic:
-fixed org and business number, step 00 withdraws the previous run's signup.
+each run signs up its own org (demo-f07-acme-<uid>) with its own business number,
+and step 00 withdraws the previous run's signup.
 The gated call is POST /api/v1/api-keys (no racks are bound, so reruns stay clean).
 """
 
 import time
 
-ORG = "demo-f07-acme"
-TID = "tnt-demo-f07-acme"
-BRN = "214-86-00001"
-EMAIL = "admin@demo-f07-acme.example"
+from app.demo.janitor import brn_for
+
+_LAST = {"tid": None}                       # previous run's signup (withdrawn by step 00)
+
+
+def ORG(c):
+    return f"demo-f07-acme-{c['uid']}"
+
+
+def TID(c):
+    return f"tnt-demo-f07-acme-{c['uid']}"
+
+
+def BRN(c):
+    return brn_for(c["uid"], "5")
+
+
+def EMAIL(c):
+    return f"admin@demo-f07-acme-{c['uid']}.example"
+
+
+def _p(fmt):
+    """Path template with {tid} resolved per run."""
+    return lambda c: fmt.format(tid=TID(c))
 
 
 def http(method, path, json=None, as_="operator", headers=None):
@@ -54,12 +75,13 @@ def _signup_ok(res, ctx):
 def _save_signup(res, ctx):
     b = _b(res)
     ctx["tenant_id"] = b["tenant_id"]
+    _LAST["tid"] = b["tenant_id"]
     ctx["password"] = b["admin"]["initial_password"]
 
 
 def _discovery_ok(res, ctx):
     b = _b(res)
-    ok = b.get("issuer", "").endswith(f"/realms/{TID}") and "password" in b.get("grant_types_supported", [])
+    ok = b.get("issuer", "").endswith(f"/realms/{TID(ctx)}") and "password" in b.get("grant_types_supported", [])
     return (ok, f"OIDC Discovery: issuer {b.get('issuer')} · token {b.get('token_endpoint')}",
             f"OIDC Discovery: issuer {b.get('issuer')} · token {b.get('token_endpoint')}")
 
@@ -70,7 +92,7 @@ def _token_ok(res, ctx):
     if res.status != 200:
         return (False, f"토큰 발급 실패 HTTP {res.status}", f"token failed HTTP {res.status}")
     h, c = jwt_lite.unverified(b["access_token"])
-    return (c.get("tid") == TID and c.get("trole") == "admin",
+    return (c.get("tid") == TID(ctx) and c.get("trole") == "admin",
             f"JWT {h['alg']} · sub {c['sub'][:8]}… · tid {c['tid']} · trole {c['trole']} · {b['expires_in']}초",
             f"JWT {h['alg']} · sub {c['sub'][:8]}… · tid {c['tid']} · trole {c['trole']} · {b['expires_in']} s")
 
@@ -120,7 +142,7 @@ SCENARIO = {
     "summary_en": "Signup creates tenant, realm and admin; orders are 403 until verified; then the OIDC JWT works, and the old HMAC token still does.",
     "steps": [
         {"id": "00-reset", "title_ko": "초기화", "title_en": "Reset",
-         "call": http("DELETE", f"/api/v1/signup/{TID}"), "expect": _reset_ok},
+         "call": http("DELETE", lambda c: f"/api/v1/signup/{_LAST['tid'] or TID(c)}"), "expect": _reset_ok},
         {"id": "01-signup", "title_ko": "셀프 가입", "title_en": "Self signup",
          "narration_ko": "사업자번호·관리자 이메일로 가입하면 테넌트가 '확인 대기'로 생긴다.",
          "narration_en": "Signing up creates the tenant as pending verification.",
@@ -129,13 +151,13 @@ SCENARIO = {
                        "admin_name": "Demo Admin", "public_sector": False}, as_="none"),
          "expect": _signup_ok, "save": _save_signup},
         {"id": "02-discovery", "title_ko": "OIDC Discovery 문서", "title_en": "OIDC discovery document",
-         "call": http("GET", f"/realms/{TID}/.well-known/openid-configuration", as_="none"),
+         "call": http("GET", _p("/realms/{tid}/.well-known/openid-configuration"), as_="none"),
          "expect": _discovery_ok},
         {"id": "03-token", "title_ko": "관리자 로그인 (password grant → JWT)",
          "title_en": "Admin sign-in (password grant → JWT)",
-         "call": http("POST", f"/realms/{TID}/protocol/openid-connect/token",
-                      lambda c: {"grant_type": "password", "client_id": f"{TID}-portal",
-                                 "username": EMAIL, "password": c["password"]}, as_="none"),
+         "call": http("POST", _p("/realms/{tid}/protocol/openid-connect/token"),
+                      lambda c: {"grant_type": "password", "client_id": f"{TID(c)}-portal",
+                                 "username": EMAIL(c), "password": c["password"]}, as_="none"),
          "expect": _token_ok, "save": lambda r, c: c.__setitem__("jwt", r.body["access_token"])},
         {"id": "04-whoami-jwt", "title_ko": "JWT로 NOCP 호출", "title_en": "Call NOCP with the JWT",
          "call": http("GET", "/api/v1/auth/whoami", as_="none", headers=_bearer),
@@ -144,23 +166,23 @@ SCENARIO = {
          "call": http("POST", "/api/v1/api-keys", {"name": "demo-key"}, as_="none", headers=_bearer),
          "expect": _status(403, "확인 전 차단", "blocked before verification")},
         {"id": "06-verify", "title_ko": "운영자 사업자 확인", "title_en": "Operator verifies the business",
-         "call": http("POST", f"/api/v1/signup/{TID}/verify"), "expect": _verified},
+         "call": http("POST", _p("/api/v1/signup/{tid}/verify")), "expect": _verified},
         {"id": "07-allowed", "title_ko": "확인 후 주문 허용", "title_en": "Order allowed after verification",
          "call": http("POST", "/api/v1/api-keys", {"name": "demo-key"}, as_="none", headers=_bearer),
          "expect": _status(201, "주문(API 키 발급) 허용", "order (API key) allowed")},
         {"id": "08-expired", "title_ko": "만료된 JWT → 401", "title_en": "Expired JWT → 401",
-         "call": http("GET", f"/api/v1/tenants/{TID}/users", as_="none", headers=_expired_bearer),
+         "call": http("GET", _p("/api/v1/tenants/{tid}/users"), as_="none", headers=_expired_bearer),
          "expect": _status(401, "만료 거부", "expired rejected")},
         {"id": "09-hmac", "title_ko": "기존 HMAC 토큰도 그대로", "title_en": "Old HMAC token still works",
          "call": http("GET", "/api/v1/auth/whoami"), "expect": _whoami("token")},
         {"id": "10-sso", "title_ko": "고객 IdP(SSO) 연동 설정", "title_en": "Set up customer IdP (SSO)",
-         "call": http("PUT", f"/api/v1/tenants/{TID}/sso",
+         "call": http("PUT", _p("/api/v1/tenants/{tid}/sso"),
                       {"issuer_url": "https://login.demo-f07-acme.example/realms/corp",
                        "client_id": "neocloud", "allowed_domains": ["demo-f07-acme.example"]},
                       as_="none", headers=_bearer),
          "expect": _sso_ok},
         {"id": "11-sso-login", "title_ko": "SSO 첫 로그인 (모사)", "title_en": "SSO first login (emulated)",
-         "call": http("POST", f"/api/v1/tenants/{TID}/sso/simulate-login",
+         "call": http("POST", _p("/api/v1/tenants/{tid}/sso/simulate-login"),
                       {"email": "lee@demo-f07-acme.example", "name": "Lee SM"}, as_="none",
                       headers=_bearer),
          "expect": _sso_login_ok},

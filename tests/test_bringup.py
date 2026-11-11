@@ -325,10 +325,12 @@ def _load_scenario(name):
 
 def _run_scenario(client, sc):
     """Minimal stand-in for v2-demo's runner: NOCP calls in-process, checks expect."""
-    ctx, out = {}, []
+    from app.demo.engine import _resolve
+    from app.demo.janitor import new_uid
+    ctx, out = {"uid": new_uid()}, []     # per-run names (demo isolation)
     for st in sc["steps"]:
         call = st["call"]
-        r = lambda v: v(ctx) if callable(v) else v  # noqa: E731
+        r = lambda v: _resolve(v, ctx)  # noqa: E731
         res = client.request(call["method"], r(call["path"]), json=r(call.get("json")),
                              params=r(call.get("params")))
         body = res.json() if res.content else None

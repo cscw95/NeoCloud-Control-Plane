@@ -195,7 +195,11 @@ app.add_middleware(
     allow_origins=CORS_ORIGINS,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Tenant-Id", "X-Tenant-Role",
-                   "X-Operator", "X-Webhook-Token"],
+                   "X-Operator", "X-Webhook-Token", "X-Request-Id", "Last-Event-ID"],
+    # browsers only let page JS read non-safelisted response headers listed here
+    expose_headers=["X-Request-Id", "Retry-After", "Location",
+                    "X-RateLimit-Limit-Requests", "X-RateLimit-Remaining-Requests",
+                    "X-RateLimit-Limit-Tokens", "X-RateLimit-Remaining-Tokens"],
     allow_credentials=False,
 )
 

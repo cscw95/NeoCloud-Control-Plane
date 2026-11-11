@@ -76,8 +76,8 @@ SCENARIO = {
     "id": "e-leak-workload-move",
     "order": 5,
     "feature": "F22/F10",
-    "title_ko": "(e) 누수 → cordon → 워크로드 이전",
-    "title_en": "(e) Leak → cordon → workload move",
+    "title_ko": "누수 → cordon → 워크로드 이전",
+    "title_en": "Leak → cordon → workload move",
     "summary_ko": "트레이 냉각수 누수가 감지되면 해당 노드를 격리하고 NVKE 워크로드를 예비 노드로 옮긴다 (Phase 2 DoD ②).",
     "summary_en": "A coolant leak cordons the tray and moves the NVKE workload to a spare node (Phase 2 DoD ②).",
     "steps": [

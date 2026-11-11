@@ -45,8 +45,10 @@ def _story(sid: str):
     def call(ctx):
         import stories
         c = _client()
+        name = f"demo-f29-{sid}-{ctx['uid']}"          # own tenant per run (demo isolation)
+        ctx[f"tenant_{sid}"] = f"tnt-{name}"           # janitor returns its capacity on rerun
         try:
-            checks = stories.STORIES[sid](c, nico_url=_nico_url(), tenant=f"demo-f29-{sid}",
+            checks = stories.STORIES[sid](c, nico_url=_nico_url(), tenant=name,
                                           as_tenant=lambda tid: _client(tid))
         except Exception as e:  # surface SDK errors as a failed step, not a crash
             return Result(599, {"error": f"{type(e).__name__}: {e}", "wire": c.history[-8:]})
@@ -102,7 +104,7 @@ def _terraform(ctx):
         dp = Path(d)
         copyfile(src / "main.tf.json", dp / "main.tf.json")
         cfg = tfemu.load_config(dp)
-        variables = tfemu.variables_of(cfg, {"tenant_name": "demo-f29-tf", "base_url": "http://nocp.demo"})
+        variables = tfemu.variables_of(cfg, {"tenant_name": f"demo-f29-tf-{ctx['uid']}", "base_url": "http://nocp.demo"})
         st = tfemu.load_state(dp)
         plan = tfemu.plan(cfg, st, variables)
         out = tfemu.apply(dp, cfg, st, variables, quiet=True, client=c)

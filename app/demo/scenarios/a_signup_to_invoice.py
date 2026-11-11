@@ -8,10 +8,11 @@ the order carries racks/blueprint itself.
 
 import math
 
-from ..engine import check, http, won
+from ..engine import check, http, uniq, won
+from ..janitor import brn_for
 from ._common import link
 
-ORG = "demo-a-bio"
+ORG = uniq("demo-a-bio")           # per run: demo-a-bio-<uid> (own tenant, own business number)
 
 
 def _signup_ok(res, ctx):
@@ -103,8 +104,8 @@ SCENARIO = {
     "order": 1,
     "feature": "F07/F06/F05",
     "story": "US-01 · US-02 · US-06",
-    "title_ko": "(a) 가입 → 계약 → 4랙 예약 → 인수 → 청구서(KRW+VAT)",
-    "title_en": "(a) Signup → contract → 4 reserved racks → acceptance → invoice (KRW+VAT)",
+    "title_ko": "가입 → 계약 → 4랙 예약 → 인수 → 청구서(KRW+VAT)",
+    "title_en": "Signup → contract → 4 reserved racks → acceptance → invoice (KRW+VAT)",
     "summary_ko": "기업 고객이 웹 가입부터 첫 원화 청구서·세금계산서를 받기까지 (Phase 1 DoD 체인 a).",
     "summary_en": "An enterprise goes from web signup to its first KRW invoice and tax invoice (Phase 1 DoD chain a).",
     "steps": [
@@ -114,8 +115,9 @@ SCENARIO = {
          "narration_en": "Signing up with a business number creates the tenant as pending verification.",
          "expect_ko": "status = pending_verification", "expect_en": "status = pending_verification",
          "call": http("POST", "/api/v1/signup",
-                      {"org_name": ORG, "business_reg_no": "214-86-00001",
-                       "admin_email": "admin@demo-a-bio.example", "admin_name": "Demo Admin",
+                      {"org_name": ORG, "business_reg_no": lambda c: brn_for(c["uid"], "3"),
+                       "admin_email": lambda c: f"admin@demo-a-bio-{c['uid']}.example",
+                       "admin_name": "Demo Admin",
                        "public_sector": False}, as_="none"),
          "fallback": http("POST", "/api/v1/tenants",
                           {"name": ORG, "isolation_tier": "bare_metal_dedicated"}),

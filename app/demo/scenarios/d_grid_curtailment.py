@@ -100,8 +100,8 @@ SCENARIO = {
     "id": "d-grid-curtailment",
     "order": 4,
     "feature": "F20/F21/F02/F09/F13/F27",
-    "title_ko": "(d) 그리드 감축(DSX Flex) → 예약 보호 · Batch 축소 · 원복 · 정산",
-    "title_en": "(d) Grid curtailment (DSX Flex) → reserved protected, batch shrunk, restore, settlement",
+    "title_ko": "그리드 감축(DSX Flex) → 예약 보호 · Batch 축소 · 원복 · 정산",
+    "title_en": "Grid curtailment (DSX Flex) → reserved protected, batch shrunk, restore, settlement",
     "summary_ko": "전력망 감축 요청이 오면 예약 고객 랙은 그대로 두고 토큰 Batch·스팟부터 줄인 뒤 원복·정산한다 (Phase 2 DoD ①).",
     "summary_en": "On a grid request, reserved racks stay untouched; token batch and spot shrink first, then restore and settle.",
     "steps": [

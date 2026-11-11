@@ -44,6 +44,7 @@ from typing import Any, Callable, Optional
 import httpx
 
 from .. import auth
+from . import janitor
 
 STEP_STATES = ("waiting", "running", "passed", "failed", "pending", "skipped")
 _BODY_LIMIT = 6000
@@ -236,7 +237,7 @@ class Run:
         self.state = "ready"                     # ready | running | paused | done
         self.created_at = _now()
         self.finished_at: Optional[str] = None
-        self.ctx: dict = {"run_id": run_id,
+        self.ctx: dict = {"run_id": run_id, "uid": janitor.new_uid(),
                           "period": datetime.now(timezone.utc).strftime("%Y-%m")}
         self.cursor = 0
         self.steps = [self._blank(s) for s in scenario["steps"]]
@@ -286,6 +287,7 @@ class Run:
             view["assertion"] = {"ok": False, "detail_ko": f"실행 오류: {exc}",
                                  "detail_en": f"execution error: {exc}"}
         view["duration_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+        janitor.note(self.scenario["id"], janitor.tenants_in_ctx(self.ctx), self.ctx["uid"])
         self._emit("step", {"index": i, "step": dict(view)})
         with self.lock:
             if self.cursor >= len(self.steps):
@@ -469,6 +471,9 @@ class Runner:
         with self.lock:
             self.seq += 1
             rid = f"demo-run-{self.seq:04d}"
+            if janitor.leftovers(scenario["id"]):     # rerun: return what the last run held
+                scenario = {**scenario,
+                            "steps": [janitor.cleanup_step(scenario["id"])] + scenario["steps"]}
             run = Run(rid, scenario, mode)
             self.runs[rid] = run
             while len(self.runs) > 50:            # keep the newest 50
@@ -494,6 +499,16 @@ def http(method: str, path, json=None, params=None, as_: str = "operator",
     if params is not None:
         spec["params"] = params
     return spec
+
+
+def uid(ctx: dict) -> str:
+    """This run's unique suffix (put it in every name a scenario creates)."""
+    return ctx["uid"]
+
+
+def uniq(base: str) -> Callable[[dict], str]:
+    """`base-<uid>` resolved per run, e.g. uniq("demo-g-nvke") → "demo-g-nvke-k3x9a"."""
+    return lambda ctx: f"{base}-{ctx['uid']}"
 
 
 def tenant_as(key: str = "tenant_id") -> Callable[[dict], str]:

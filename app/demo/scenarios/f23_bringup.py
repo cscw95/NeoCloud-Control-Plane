@@ -2,13 +2,31 @@
 
 Self-contained (no import of app/demo/engine.py) so it also loads on branches
 without the v2-demo runner; the step format follows engine.py. Deterministic:
-fixed serial SN-DEMO-0001, step 00 resets the demo rack and its LLDP faults.
+each run brings up its own rack (serial SN-DEMO-<uid>), so a rerun never meets a
+rack an earlier run already made sellable; step 00 still resets the legacy fixed demo
+rack SN-DEMO-0001 and its LLDP faults.
 """
 
-SERIAL = "SN-DEMO-0001"
-RACK = "bu-sn-demo-0001"
-PLAN = [{"a": f"{RACK}-tray-{i:02d}:p0", "b": f"{RACK}-leaf-sw-0:swp{i + 1}"} for i in range(18)]
-MISWIRE = {"a": PLAN[4]["a"], "actual_b": f"{RACK}-leaf-sw-0:swp30"}
+
+def SERIAL(c):
+    return f"SN-DEMO-{c['uid'].upper()}"
+
+
+def RACK(c):
+    return f"bu-sn-demo-{c['uid']}"
+
+
+def PLAN(c):
+    r = RACK(c)
+    return [{"a": f"{r}-tray-{i:02d}:p0", "b": f"{r}-leaf-sw-0:swp{i + 1}"} for i in range(18)]
+
+
+def MISWIRE(c):
+    return {"a": PLAN(c)[4]["a"], "actual_b": f"{RACK(c)}-leaf-sw-0:swp30"}
+
+
+def _p(fmt):
+    return lambda c: fmt.format(rack=RACK(c))
 
 
 def http(method, path, json=None, params=None):
@@ -39,8 +57,8 @@ def _registered(res, ctx):
 def _injected(res, ctx):
     b = _body(res)
     return (b.get("applied") is True,
-            f"AI-Infra LLDP 주입: {MISWIRE['a']} → {MISWIRE['actual_b']} (HTTP {res.status})",
-            f"AI-Infra LLDP fault: {MISWIRE['a']} → {MISWIRE['actual_b']} (HTTP {res.status})")
+            f"AI-Infra LLDP 주입: {MISWIRE(ctx)['a']} → {MISWIRE(ctx)['actual_b']} (HTTP {res.status})",
+            f"AI-Infra LLDP fault: {MISWIRE(ctx)['a']} → {MISWIRE(ctx)['actual_b']} (HTTP {res.status})")
 
 
 def _failed_at_4(res, ctx):
@@ -74,7 +92,7 @@ def _sellable(res, ctx):
 def _pool(res, ctx):
     b = _body(res)
     ids = [r.get("id") for r in b.get("racks") or []]
-    return (RACK in ids,
+    return (RACK(ctx) in ids,
             f"판매 가능 재고: 랙 {b.get('rack_count')} · GPU {b.get('gpu_count')}",
             f"sellable inventory: {b.get('rack_count')} racks · {b.get('gpu_count')} GPUs")
 
@@ -95,24 +113,24 @@ SCENARIO = {
          "narration_ko": "시리얼·위치·케이블 계획 18개를 NetBox 대체 DCIM에 넣는다.",
          "narration_en": "Serial, position and an 18-cable plan go into the NetBox-style DCIM.",
          "call": http("POST", "/api/v1/dcim/racks",
-                      {"serial": SERIAL, "site": "gasan", "row": "DEMO", "position": "01",
+                      {"serial": SERIAL, "site": "gasan", "row": "DEMO", "position": lambda c: c["uid"].upper(),
                        "blueprint_key": "vr-nvl72", "cable_plan": PLAN}),
          "expect": _registered, "links": [link("bringup", "운영 · bring-up", "Ops · bring-up")]},
         {"id": "02-inject-miswire", "title_ko": "케이블 오결선 주입", "title_en": "Inject a miswired cable",
          "call": http("POST", "/api/v1/bringup/inject",
-                      {"kind": "miswire", "rack": RACK, **MISWIRE}),
+                      lambda c: {"kind": "miswire", "rack": RACK(c), **MISWIRE(c)}),
          "expect": _injected},
         {"id": "03-start-fails", "title_ko": "bring-up 실행 → 04단계 실패",
          "title_en": "Start bring-up → step 04 fails",
-         "call": http("POST", f"/api/v1/bringup/racks/{RACK}:start"), "expect": _failed_at_4},
+         "call": http("POST", _p("/api/v1/bringup/racks/{rack}:start")), "expect": _failed_at_4},
         {"id": "04-cables", "title_ko": "케이블 불일치 확인 (NetBox 형식)",
          "title_en": "Check cable mismatch (NetBox shape)",
-         "call": http("GET", "/api/v1/dcim/cables", params={"rack": RACK}), "expect": _cables},
+         "call": http("GET", "/api/v1/dcim/cables", params=lambda c: {"rack": RACK(c)}), "expect": _cables},
         {"id": "05-fix", "title_ko": "케이블 조치", "title_en": "Fix the cable",
-         "call": http("POST", "/api/v1/bringup/inject", {"kind": "clear", "rack": RACK}),
+         "call": http("POST", "/api/v1/bringup/inject", lambda c: {"kind": "clear", "rack": RACK(c)}),
          "expect": _cleared},
         {"id": "06-retry", "title_ko": "재시도 → 15단계 통과", "title_en": "Retry → all 15 steps pass",
-         "call": http("POST", f"/api/v1/bringup/racks/{RACK}:start"), "expect": _sellable},
+         "call": http("POST", _p("/api/v1/bringup/racks/{rack}:start")), "expect": _sellable},
         {"id": "07-inventory", "title_ko": "판매 가능 재고 확인", "title_en": "Sellable inventory",
          "call": http("GET", "/api/v1/dcim/sellable"), "expect": _pool},
     ],
